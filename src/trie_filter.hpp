@@ -37,14 +37,23 @@ public:
     }
 
     bool try_get_child(size_t const node, char const label, size_t& out_child) {
-        auto fc = nodes_[node].first_child;
+        auto const fc = nodes_[node].first_child;
         auto v = fc;
         while(v) {
+            auto const ns = nodes_[v].next_sibling;
             if(nodes_[v].label == label) {
                 out_child = v;
+
+                if(v != fc) {
+                    // MTF
+                    nodes_[fc].next_sibling = ns;
+                    nodes_[v].next_sibling = fc;
+                    nodes_[node].first_child = v;
+                }
+
                 return true;
             }
-            v = nodes_[v].next_sibling;
+            v = ns;
         }
         return false;
     }
