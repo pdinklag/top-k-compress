@@ -5,6 +5,7 @@
 #include <tdc/util/concepts.hpp>
 
 #include "trie_filter.hpp"
+#include "min_pq.hpp"
 #include "count_min.hpp"
 #include "rolling_karp_rabin.hpp"
 
@@ -19,6 +20,8 @@ private:
     std::unique_ptr<char[]> hash_window_;
 
     TrieFilter<size_t> filter_;
+    MinPQ<size_t> min_pq_;
+    std::unique_ptr<MinPQ<size_t>::Location[]> min_pq_map_;
     CountMin<size_t> sketch_;
 
     size_t k_;
@@ -31,6 +34,8 @@ public:
     : hash_(hash_window_size_, rolling_fp_base_),
       hash_window_(std::make_unique<char[]>(len + 1)), // +1 is just for debugging purposes...
       filter_(k),
+      min_pq_(),
+      min_pq_map_(std::make_unique<MinPQ<size_t>::Location[]>(k)),
       sketch_(sketch_rows, sketch_columns),
       k_(k),
       len_(len),
@@ -72,41 +77,45 @@ public:
             }
 
             // try and find prefix of length i+1 in filter
-            if(maybe_frequent) {
-                size_t child;
-                if(filter_.try_get_child(filter_node, c, child)) {
-                    // frequent
-                    filter_node = child;
+            size_t child;
+            if(maybe_frequent && filter_.try_get_child(filter_node, c, child)) {
+                // frequent
+                filter_node = child;
 
-                    // update longest match
-                    match.index = filter_node;
-                    match.length = i + 1;
+                // update longest match
+                match.index = filter_node;
+                match.length = i + 1;
 
-                    // increment frequency
-                    auto const freq = filter_.increment(filter_node);
+                // increment frequency
+                auto const freq = filter_.increment(filter_node);
+                min_pq_map_[filter_node] = min_pq_.increase_key(min_pq_map_[filter_node]);
 
-                    // debug print
-                    // std::cout << "\t-> frequent: " << freq << std::endl;
-                } else {
-                    // not frequent
-                    maybe_frequent = false;
-                }
+                // advance to next prefix
+                continue;
             }
 
-            if(!maybe_frequent)
-            {
-                if(filter_.full()) {
-                    // count in sketch
-                    auto est = sketch_.increment_and_estimate(fp);
-                    // TODO: test if now frequent and maybe swap
-                    // std::cout << "\t-> non-frequent: " << est << std::endl;
-                } else {
-                    // insert into filter, which is not yet full
-                    auto child = filter_.new_node();
-                    filter_.insert_child(child, filter_node, c, 1);
-                    filter_node = child;
-                    // std::cout << "\t-> insert into filter" << std::endl;
-                }
+            // if we dropped out of the filter, it means our current prefix is no longer frequent
+            maybe_frequent = false;
+            if(filter_.full()) {
+                // count in sketch
+                auto est = sketch_.increment_and_estimate(fp);
+
+                // TODO: test if now frequent and maybe swap!
+
+                // std::cout << "\t-> non-frequent: " << est << std::endl;
+            } else {
+                // insert into filter, which is not yet full
+                auto child = filter_.new_node();
+                filter_.insert_child(child, filter_node, c, 1);
+
+                // insert into min-PQ as a maximal string
+                min_pq_map_[child] = min_pq_.insert(child, 1, true);
+
+                // mark the immediate prefix of this string no longer maximal
+                min_pq_map_[filter_node] = min_pq_.mark_non_maximal(min_pq_map_[filter_node]);
+
+                // make new node the current one
+                filter_node = child;
             }
         }
         return match;
