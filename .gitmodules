@@ -1,0 +1,3 @@
+[submodule "extlib/tudocomp2"]
+	path = extlib/tudocomp2
+	url = git@github.com:tudocomp/tudocomp2.git
