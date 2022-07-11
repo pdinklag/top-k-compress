@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 
 #include <tdc/util/concepts.hpp>
@@ -10,6 +11,9 @@ class TopKSubstrings {
 private:
     static constexpr size_t hash_window_size_ = 8;
 
+    static constexpr uint64_t rolling_fp_offset_ = (1ULL << 63) - 25;
+    static constexpr uint64_t rolling_fp_base_ = (1ULL << 14) - 15;
+
     RollingKarpRabin hash_;
     std::unique_ptr<char[]> hash_window_;
     CountMin<size_t> sketch_;
@@ -17,14 +21,16 @@ private:
     size_t k_;
     size_t len_;
 
+    size_t debug_total_;
+
 public:
     inline TopKSubstrings(size_t const k, size_t const len, size_t sketch_rows, size_t sketch_columns)
-    : hash_(hash_window_size_, 256),
+    : hash_(hash_window_size_, rolling_fp_base_),
       hash_window_(std::make_unique<char[]>(len + 1)), // +1 is just for debugging purposes...
       sketch_(sketch_rows, sketch_columns),
       k_(k),
-      len_(len) {
-    
+      len_(len),
+      debug_total_(0) {
     }
     
     struct LongestFrequentPrefix {
@@ -38,10 +44,11 @@ public:
         size_t i = 0;
         LongestFrequentPrefix match = { SIZE_MAX, 0 };
 
-        uint64_t fp = 0;
+        uint64_t fp = rolling_fp_offset_;
 
         for(size_t i = 0; i < len_; i++) {
             // get next character
+            ++debug_total_;
             char const c = s[i];
 
             // update fingerprint
@@ -67,5 +74,10 @@ public:
             }
         }
         return match;
+    }
+
+    void print_debug_info() const {
+        std::cout << "debug_total=" << debug_total_ << std::endl;
+        sketch_.print_debug_info();
     }
 };

@@ -6,8 +6,6 @@
 #include <memory>
 #include <random>
 
-#include "fnv.hpp"
-
 template<std::unsigned_integral Frequency>
 class CountMin {
 private:
@@ -18,12 +16,12 @@ private:
     using Row = std::unique_ptr<Frequency[]>;
 
     std::unique_ptr<Row[]> table_;
-    std::unique_ptr<uintmax_t[]> hash_seed_;
+    std::unique_ptr<uintmax_t[]> hash_;
     size_t num_rows_;
     size_t num_columns_;
 
     size_t hash(size_t const i, uintmax_t const item) const {
-        return fnv(item, hash_seed_[i], fnv_prime_, fnv_bpp_) % num_columns_; // fnv may be too slow?
+        return (item ^ hash_[i]) % num_columns_;
     }
 
 public:
@@ -40,12 +38,11 @@ public:
         // initialize hash functions
         {
             std::mt19937_64 gen(random_seed_);
-            std::uniform_int_distribution<uintmax_t> dist(0, UINTMAX_MAX);
 
-            hash_seed_ = std::make_unique<uintmax_t[]>(num_rows_);
+            hash_ = std::make_unique<uintmax_t[]>(num_rows_);
             for(size_t i = 0; i < num_rows_; i++) {
-                hash_seed_[i] = dist(gen);
-                // std::cout << "hash_seed_[" << i << "] = 0x" << std::hex << hash_seed_[i] << std::endl;
+                hash_[i] = gen();
+                // std::cout << "hash_[" << i << "] = 0x" << std::hex << hash_[i] << std::endl;
             }
         }
     }
@@ -67,6 +64,16 @@ public:
         for(size_t i = 0; i < num_rows_; i++) {
             size_t const j = hash(i, item);
             table_[i][j] += inc;
+        }
+    }
+
+    void print_debug_info() const {
+        std::cout << std::dec;
+        for(size_t i = 0; i < num_rows_; i++) {
+            for(size_t j = 0; j < num_columns_; j++) {
+                std::cout << table_[i][j] << " ";
+            }
+            std::cout << std::endl;
         }
     }
 };
