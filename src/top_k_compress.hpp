@@ -6,9 +6,9 @@
 #include "top_k_substrings.hpp"
 
 template<tdc::InputIterator<char> In>
-void top_k_compress(In begin, In const end, size_t const k, size_t const window_size) {
+void top_k_compress(In begin, In const end, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns) {
     tlx::RingBuffer<char> buf(window_size);
-    TopKSubstrings topk(k, window_size);
+    TopKSubstrings topk(k, window_size, sketch_rows, sketch_columns);
 
     size_t i = 0;
     while(begin != end) {

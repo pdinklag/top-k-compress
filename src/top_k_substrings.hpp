@@ -3,6 +3,7 @@
 
 #include <tdc/util/concepts.hpp>
 
+#include "count_min.hpp"
 #include "rolling_karp_rabin.hpp"
 
 class TopKSubstrings {
@@ -11,14 +12,16 @@ private:
 
     RollingKarpRabin hash_;
     std::unique_ptr<char[]> hash_window_;
+    CountMin<size_t> sketch_;
 
     size_t k_;
     size_t len_;
 
 public:
-    inline TopKSubstrings(size_t const k, size_t const len)
+    inline TopKSubstrings(size_t const k, size_t const len, size_t sketch_rows, size_t sketch_columns)
     : hash_(hash_window_size_, 256),
-      hash_window_(std::make_unique<char[]>(len)),
+      hash_window_(std::make_unique<char[]>(len + 1)), // +1 is just for debugging purposes...
+      sketch_(sketch_rows, sketch_columns),
       k_(k),
       len_(len) {
     
@@ -49,6 +52,19 @@ public:
             }
 
             // TODO: process prefix of length i+1
+
+            // count in sketch
+            // TODO: only do it if not frequent!
+            {
+                // debug print current prefix and fingerprint
+                {
+                    // hash_window_[i + 1] = 0;
+                    // std::cout << hash_window_.get() << " -> fp=0x" << std::hex << fp << std::dec << std::endl;
+                }
+
+                auto est = sketch_.increment_and_estimate(fp);
+                // TODO: test if now frequent!
+            }
         }
         return match;
     }
