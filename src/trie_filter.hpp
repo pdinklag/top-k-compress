@@ -8,9 +8,9 @@ template<std::unsigned_integral Frequency>
 class TrieFilter {
 private:
     struct Node {
-        char label;
         size_t first_child;
         size_t next_sibling;
+        char label;
         Frequency freq;
         Frequency insert_freq;
         size_t parent;
@@ -32,7 +32,7 @@ public:
     TrieFilter(size_t const capacity) : capacity_(capacity), size_(1) {
         nodes_ = std::make_unique<Node[]>(capacity_);
         for(size_t i = 0; i < capacity_; i++) {
-            nodes_[i] = Node { (char)0, 0, 0, 0, 0, 0, 0 };
+            nodes_[i] = Node { 0, 0, (char)0, 0, 0, 0, 0 };
         }
     }
 
@@ -42,7 +42,7 @@ public:
 
         auto sibling = nodes_[parent].first_child;
         nodes_[parent].first_child = node;
-        nodes_[node] = Node { label, 0, sibling, freq, freq, parent, fingerprint };
+        nodes_[node] = Node { 0, sibling, label, freq, freq, parent, fingerprint };
 
         assert(is_child_of(node, parent));
         assert(is_leaf(node));
