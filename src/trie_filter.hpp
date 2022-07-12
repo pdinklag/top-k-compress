@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <concepts>
 #include <cstddef>
@@ -150,22 +151,17 @@ public:
         return nodes_[node].freq;
     }
 
-    std::string spell(size_t const node) const {
-        // determine depth
+    size_t spell(size_t const node, char* buffer) const {
+        // spell reverse
         size_t d = 0;
         auto v = node;
         while(v) {
+            buffer[d++] = nodes_[v].label;
             v = nodes_[v].parent;
-            ++d;
         }
 
-        // spell
-        std::string s(d, 0);
-        v = node;
-        while(v) {
-            s[d--] = nodes_[v].label;
-            v = nodes_[v].parent;
-        }
-        return s;
+        // reverse and return length
+        std::reverse(buffer, buffer + d);
+        return d;
     }
 };

@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 
 #include <tdc/util/concepts.hpp>
@@ -190,6 +191,10 @@ public:
             }
         }
         return match;
+    }
+
+    size_t get(size_t const index, char* buffer) const {
+        return filter_.spell(index, buffer);
     }
 
     void print_debug_info() const {

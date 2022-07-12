@@ -75,3 +75,29 @@ void top_k_compress(In begin, In const end, Out out, size_t const k, size_t cons
         << ", naive_enc_size=" << tdc::idiv_ceil(naive_enc_size, 8)
         << std::endl;
 }
+
+template<tdc::io::BitSource In, std::output_iterator<char> Out>
+void top_k_decompress(In in, Out out, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns) {
+    tlx::RingBuffer<char> buf(window_size);
+    TopKSubstrings topk(k, window_size, sketch_rows, sketch_columns);
+
+    tdc::code::Universe const u_literal(0, 255);
+    tdc::code::Universe const u_freq(0, k-1);
+    char frequent_string[window_size];
+
+    while(true) { // TODO: when to stop?
+        auto const p = tdc::code::Binary::decode(in, u_freq);
+        if(p) {
+            // decode frequent phrase
+            auto const len = topk.get(p, frequent_string);
+            for(size_t i = 0; i < len; i++) {
+                *out++ = frequent_string[i];
+                // TODO: update top-k
+            }
+        } else {
+            // decode literal phrase
+            *out++ = (char)tdc::code::Binary::decode(in, u_literal);
+            // TODO: update top-k
+        }
+    }
+}
