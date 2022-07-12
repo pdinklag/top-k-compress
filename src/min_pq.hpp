@@ -8,19 +8,13 @@ class MinPQ {
 private:
     struct Bucket {
         Frequency freq;
-
-        std::list<size_t> non_maximal;
-        std::list<size_t> maximal;
+        std::list<size_t> items;
 
         Bucket(Frequency f) : freq(f) {
         }
 
-        std::list<size_t>& list(bool maximal) {
-            return maximal ? this->maximal : non_maximal;
-        }
-
         bool empty() const {
-            return non_maximal.empty() && maximal.empty();
+            return items.empty();
         }
     };
 
@@ -30,7 +24,10 @@ public:
     struct Location {
         std::list<Bucket>::iterator bucket;
         std::list<size_t>::iterator entry;
-        bool maximal;
+
+        inline operator bool() const {
+            return bucket._M_node;
+        }
     };
 
     MinPQ() {
@@ -38,32 +35,46 @@ public:
 
     Location increase_key(Location const& former) {
         // 
-        size_t const item = *former.entry;
+        if(former) {
+            size_t const item = *former.entry;
 
-        // find next bucket
-        auto const cur_freq = former.bucket->freq;
-        auto next = former.bucket;
-        ++next;
+            // find next bucket
+            auto const cur_freq = former.bucket->freq;
+            auto next = former.bucket;
+            ++next;
 
-        if(next == buckets_.end() || next->freq > cur_freq + 1) {
-            // frequency of next bucket too large or current bucket was last bucket, insert new bucket with proper frequency
-            next = buckets_.emplace(next, cur_freq + 1);
+            if(next == buckets_.end() || next->freq > cur_freq + 1) {
+                // frequency of next bucket too large or current bucket was last bucket, insert new bucket with proper frequency
+                next = buckets_.emplace(next, cur_freq + 1);
+            }
+            assert(next->freq == cur_freq + 1);
+
+            // remove item, and possibly its bucket if it is empty
+            remove(former);
+
+            // insert item into next bucket
+            next->items.emplace_front(item);
+
+            // return new location
+            return { next, next->items.begin() };
+        } else {
+            return former;
+        }
+    }
+
+    Location remove(Location const& what) {
+        if(what) {
+            // remove item from bucket
+            what.bucket->items.erase(what.entry);
+
+            // delete bucket if empty
+            if(what.bucket->empty()) {
+                buckets_.erase(what.bucket);
+            }
         }
 
-        // remove item from former bucket
-        former.bucket->list(former.maximal).erase(former.entry);
-
-        // maybe delete former bucket
-        if(former.bucket->empty()) {
-            buckets_.erase(former.bucket);
-        }
-
-        // insert item into next bucket
-        auto& new_list = next->list(former.maximal);
-        new_list.emplace_front(item);
-
-        // return new location
-        return { next, new_list.begin(), former.maximal };
+        // return invalid location
+        return {};
     }
 
     Location insert(size_t const item, Frequency const freq) {
@@ -76,31 +87,37 @@ public:
         }
 
         // insert item
-        auto& list = bucket->list(true); // newly inserted item is always maximal
-        list.emplace_front(item);
+        assert(bucket->freq == freq);
+        bucket->items.emplace_front(item);
 
         // return insert location
-        return { bucket, list.begin(), true };
-    }
-
-    Location mark_non_maximal(Location const& former) {
-        if(former.maximal) {
-            // remove from maximal list
-            size_t const item = *former.entry;
-            former.bucket->maximal.erase(former.entry);
-
-            // insert into non-maximal list
-            former.bucket->non_maximal.emplace_front(item);
-
-            // return new location
-            return { former.bucket, former.bucket->non_maximal.begin(), false };
-        } else {
-            return former;
-        }
+        return { bucket, bucket->items.begin() };
     }
 
     size_t min_frequency() const {
         assert(!buckets_.empty());
-        return buckets_.front().freq;
+        auto& min_bucket = buckets_.front();
+        return min_bucket.freq;
+    }
+
+    size_t extract_min() {
+        assert(!buckets_.empty());
+        
+        auto& min_bucket = buckets_.front();
+        assert(!min_bucket.empty());
+
+        size_t const item = min_bucket.items.front();
+        min_bucket.items.pop_front();
+
+        // delete bucket if empty
+        if(min_bucket.empty()) {
+            buckets_.pop_front();
+        }
+
+        return item;
+    }
+
+    Frequency freq(Location const& what) {
+        return what.bucket->freq;
     }
 };

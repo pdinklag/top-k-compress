@@ -1,6 +1,8 @@
+#include <cassert>
 #include <concepts>
 #include <cstddef>
 #include <memory>
+#include <string>
 
 template<std::unsigned_integral Frequency>
 class TrieFilter {
@@ -11,6 +13,8 @@ private:
         size_t next_sibling;
         Frequency freq;
         Frequency insert_freq;
+        size_t parent;
+        uint64_t fingerprint;
     };
 
     size_t capacity_;
@@ -19,17 +23,65 @@ private:
     std::unique_ptr<Node[]> nodes_;
 
 public:
+    struct ExtractInfo {
+        size_t parent;
+        Frequency freq_delta;
+        uint64_t fingerprint;
+    };
+
     TrieFilter(size_t const capacity) : capacity_(capacity), size_(1) {
         nodes_ = std::make_unique<Node[]>(capacity_);
         for(size_t i = 0; i < capacity_; i++) {
-            nodes_[i] = Node { (char)0, 0, 0, 0, 0 };
+            nodes_[i] = Node { (char)0, 0, 0, 0, 0, 0, 0 };
         }
     }
 
-    void insert_child(size_t const node, size_t const parent, char const label, Frequency freq) {
+    void insert_child(size_t const node, size_t const parent, char const label, Frequency freq, uint64_t fingerprint) {
+        size_t discard;
+        assert(!try_get_child(parent, label, discard));
+
         auto sibling = nodes_[parent].first_child;
         nodes_[parent].first_child = node;
-        nodes_[node] = Node { label, 0, sibling, freq, freq };
+        nodes_[node] = Node { label, 0, sibling, freq, freq, parent, fingerprint };
+
+        assert(is_child_of(node, parent));
+        assert(is_leaf(node));
+    }
+
+    ExtractInfo extract(size_t const node) {
+        assert(is_leaf(node)); // cannot extract an inner node
+
+        auto const parent = nodes_[node].parent;
+        assert(is_child_of(node, parent));
+
+        auto fc = nodes_[parent].first_child;
+        if(fc == node) {
+            // removing the first child
+            nodes_[parent].first_child = nodes_[node].next_sibling;
+        } else {
+            // removing some other child
+            // find previous sibling and remove
+            auto prev_sibling = fc;
+            auto v = nodes_[fc].next_sibling;
+            while(v && v != node) {
+                prev_sibling = v;
+                v = nodes_[v].next_sibling;
+            }
+
+            if(v == node) {
+                nodes_[prev_sibling].next_sibling = nodes_[node].next_sibling;
+            } else {
+                // "this kid is not my son"
+                assert(false);
+            }
+        }
+
+        assert(nodes_[node].freq >= nodes_[node].insert_freq);
+        return ExtractInfo {
+            parent,
+            nodes_[node].freq - nodes_[node].insert_freq,
+            nodes_[node].fingerprint
+        };
     }
 
     size_t new_node() {
@@ -44,13 +96,17 @@ public:
             if(nodes_[v].label == label) {
                 out_child = v;
 
+                // FIXME: There must be a bug in here, but what is it??
                 if(v != fc) {
                     // MTF
                     nodes_[fc].next_sibling = ns;
                     nodes_[v].next_sibling = fc;
                     nodes_[node].first_child = v;
-                }
 
+                    assert(is_child_of(v, node));
+                    assert(is_child_of(fc, node));
+                    if(ns) assert(is_child_of(ns, node));  
+                }
                 return true;
             }
             v = ns;
@@ -62,11 +118,49 @@ public:
         return ++nodes_[node].freq;
     }
 
+    bool is_leaf(size_t const node) const {
+        return nodes_[node].first_child == 0;
+    }
+
+    bool is_child_of(size_t const node, size_t const parent) const {
+        auto fc = nodes_[parent].first_child;
+        if(fc == node) return true;
+
+        auto v = nodes_[fc].next_sibling;
+        while(v && v != node) {
+            v = nodes_[v].next_sibling;
+        }
+        return v == node;
+    }
+
     size_t root() const {
         return 0;
     }
 
     bool full() const { 
         return size_ == capacity_;
+    }
+
+    Frequency freq(size_t const node) const {
+        return nodes_[node].freq;
+    }
+
+    std::string spell(size_t const node) const {
+        // determine depth
+        size_t d = 0;
+        auto v = node;
+        while(v) {
+            v = nodes_[v].parent;
+            ++d;
+        }
+
+        // spell
+        std::string s(d, 0);
+        v = node;
+        while(v) {
+            s[d--] = nodes_[v].label;
+            v = nodes_[v].parent;
+        }
+        return s;
     }
 };
