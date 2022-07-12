@@ -205,6 +205,15 @@ public:
                   << ", num_swaps=" << stats_.num_swaps
                   << ", num_overestimates=" << stats_.num_overestimates
                   << std::endl;
+
+        /*
+        char buffer[len_ + 1];
+        for(size_t i = 1; i < k_; i++) {
+            auto const l = get(i, buffer);
+            buffer[l] = 0;
+            std::cout << i << " -> \"" << buffer << "\" (" << filter_.freq(i) << ")" << std::endl;
+        }
+        */
         // sketch_.print_debug_info();
     }
 };
