@@ -71,7 +71,7 @@ public:
 
         uint64_t fp = rolling_fp_offset_;
 
-        bool maybe_frequent = true;
+        bool look_in_filter = true;
         size_t previous = filter_.root();
 
         for(size_t i = 0; i < len; i++) {
@@ -94,7 +94,7 @@ public:
 
             // try and find prefix of length i+1 in filter
             size_t child;
-            if(maybe_frequent && filter_.try_get_child(previous, c, child)) {
+            if(look_in_filter && filter_.try_get_child(previous, c, child)) {
                 // the current prefix is frequent
                 // update longest match
                 match.index = child;
@@ -109,15 +109,12 @@ public:
                 previous = child;
             } else {
                 // the current prefix is non-frequent
-                if(!maybe_frequent || filter_.full()) {
-                    // we dropped out of the filter, no extensions may be frequent
-                    maybe_frequent = false;
-
-                    // count in sketch
+                if(filter_.full()) {
+                    // the filter is full, count current prefix in the sketch
                     if constexpr(gather_stats_) ++stats_.num_sketch_inc;
                     auto est = sketch_.increment_and_estimate(fp);
 
-                    // test if now frequent
+                    // test if it is now frequent
                     if(est > min_pq_.min_frequency()) {
                         // it is now frequent, test if we can swap
                         if((previous && filter_.freq(previous) >= est) || i == 0) {
@@ -127,11 +124,11 @@ public:
                             if constexpr(gather_stats_) ++stats_.num_swaps;
 
                             // extract maximal frequent substring with minimal frequency
-                            size_t const s_to_sketch = min_pq_.extract_min();
+                            size_t const swap = min_pq_.extract_min();
 
                             // extract the substring from the filter and get the fingerprint and frequency delta
-                            assert(filter_.is_leaf(s_to_sketch));
-                            auto const extracted = filter_.extract(s_to_sketch);
+                            assert(filter_.is_leaf(swap));
+                            auto const extracted = filter_.extract(swap);
 
                             // the parent may now be maximal
                             if(extracted.parent && filter_.is_leaf(extracted.parent)) {
@@ -144,12 +141,12 @@ public:
                             sketch_.increment(extracted.fingerprint, extracted.freq_delta);
 
                             // insert the current prefix into the filter, reusing the old entries' node ID
-                            filter_.insert_child(s_to_sketch, previous, c, est, fp);
-                            assert(filter_.is_leaf(s_to_sketch));
+                            filter_.insert_child(swap, previous, c, est, fp);
+                            assert(filter_.is_leaf(swap));
 
                             // also insert it into the min PQ
-                            min_pq_map_[s_to_sketch] = min_pq_.insert(s_to_sketch, est);
-                            assert(min_pq_.freq(min_pq_map_[s_to_sketch]) == est);
+                            min_pq_map_[swap] = min_pq_.insert(swap, est);
+                            assert(min_pq_.freq(min_pq_map_[swap]) == est);
                             
                             // the previous prefix is no longer maximal, remove from min PQ
                             if(previous) {
@@ -157,17 +154,19 @@ public:
                             }
 
                             // make new node the previous node
-                            previous = s_to_sketch;
+                            previous = swap;
                         } else {
                             // the immediate prefix was non-frequent or its frequency was too low
-                            // -> the current prefix is overestimated
+                            // -> the current prefix is overestimated, abort swap
                             if constexpr(gather_stats_) ++stats_.num_overestimates;
+
+                            // invalidate previous node
+                            previous = 0;
                         }
                     } else {
                         // nope, invalidate previous node
                         previous = 0;
                     }
-                    // std::cout << "\t-> non-frequent: " << est << std::endl;
                 } else {
                     // insert into filter, which is not yet full
                     if constexpr(gather_stats_) ++stats_.num_filter_inc;
@@ -185,6 +184,9 @@ public:
                     // make new node the previous node
                     previous = child;
                 }
+
+                // we dropped out of the filter, so no extension can be in the filter (even if the current prefix was inserted or swapped in)
+                look_in_filter = false;
             }
         }
         return match;
