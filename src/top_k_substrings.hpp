@@ -11,6 +11,20 @@
 
 class TopKSubstrings {
 private:
+    static constexpr bool gather_stats_ = true;
+    struct Stats {
+        size_t num_strings_total;
+        size_t num_filter_inc;
+        size_t num_sketch_inc;
+        size_t num_swaps;
+
+        inline Stats() : num_strings_total(0),
+                         num_filter_inc(0),
+                         num_sketch_inc(0),
+                         num_swaps(0) {
+        }
+    };
+
     static constexpr size_t hash_window_size_ = 8;
 
     static constexpr uint64_t rolling_fp_offset_ = (1ULL << 63) - 25;
@@ -27,7 +41,7 @@ private:
     size_t k_;
     size_t len_;
 
-    size_t debug_total_;
+    Stats stats_;
 
 public:
     inline TopKSubstrings(size_t const k, size_t const len, size_t sketch_rows, size_t sketch_columns)
@@ -39,7 +53,7 @@ public:
       sketch_(sketch_rows, sketch_columns),
       k_(k),
       len_(len),
-      debug_total_(0) {
+      stats_() {
     }
     
     struct LongestFrequentPrefix {
@@ -56,11 +70,11 @@ public:
         uint64_t fp = rolling_fp_offset_;
 
         bool maybe_frequent = true;
-        size_t filter_node = filter_.root();
+        size_t previous = filter_.root();
 
         for(size_t i = 0; i < len; i++) {
             // get next character
-            ++debug_total_;
+            if constexpr(gather_stats_) ++stats_.num_strings_total;
             char const c = s[i];
 
             // update fingerprint
@@ -78,51 +92,67 @@ public:
 
             // try and find prefix of length i+1 in filter
             size_t child;
-            if(maybe_frequent && filter_.try_get_child(filter_node, c, child)) {
-                // frequent
-                filter_node = child;
-
+            if(maybe_frequent && filter_.try_get_child(previous, c, child)) {
+                // the current prefix is frequent
                 // update longest match
-                match.index = filter_node;
+                match.index = child;
                 match.length = i + 1;
 
                 // increment frequency
-                auto const freq = filter_.increment(filter_node);
-                min_pq_map_[filter_node] = min_pq_.increase_key(min_pq_map_[filter_node]);
+                if constexpr(gather_stats_) ++stats_.num_filter_inc;
+                auto const freq = filter_.increment(child);
+                min_pq_map_[child] = min_pq_.increase_key(min_pq_map_[child]);
 
                 // advance to next prefix
-                continue;
-            }
-
-            // if we dropped out of the filter, it means our current prefix is no longer frequent
-            maybe_frequent = false;
-            if(filter_.full()) {
-                // count in sketch
-                auto est = sketch_.increment_and_estimate(fp);
-
-                // TODO: test if now frequent and maybe swap!
-
-                // std::cout << "\t-> non-frequent: " << est << std::endl;
+                previous = child;
             } else {
-                // insert into filter, which is not yet full
-                auto child = filter_.new_node();
-                filter_.insert_child(child, filter_node, c, 1);
+                // the current prefix is non-frequent
+                if(!maybe_frequent || filter_.full()) {
+                    // we dropped out of the filter, no extensions may be frequent
+                    maybe_frequent = false;
 
-                // insert into min-PQ as a maximal string
-                min_pq_map_[child] = min_pq_.insert(child, 1, true);
+                    // count in sketch
+                    if constexpr(gather_stats_) ++stats_.num_sketch_inc;
+                    auto est = sketch_.increment_and_estimate(fp);
 
-                // mark the immediate prefix of this string no longer maximal
-                min_pq_map_[filter_node] = min_pq_.mark_non_maximal(min_pq_map_[filter_node]);
+                    // test if now frequent
+                    if(est > min_pq_.min_frequency()) {
+                        // it is, swap with a maximal frequent string with minimal frequency
+                        if constexpr(gather_stats_) ++stats_.num_swaps;
+                        // std::cout << "swap! est=" << est << ", min=" << min_pq_.min_frequency() << std::endl;
+                    }
 
-                // make new node the current one
-                filter_node = child;
+                    // invalidate previous node
+                    previous = 0;
+
+                    // std::cout << "\t-> non-frequent: " << est << std::endl;
+                } else {
+                    // insert into filter, which is not yet full
+                    if constexpr(gather_stats_) ++stats_.num_filter_inc;
+
+                    auto child = filter_.new_node();
+                    filter_.insert_child(child, previous, c, 1);
+
+                    // insert into min-PQ as a maximal string
+                    min_pq_map_[child] = min_pq_.insert(child, 1);
+
+                    // mark the immediate prefix of this string no longer maximal
+                    min_pq_map_[previous] = min_pq_.mark_non_maximal(min_pq_map_[previous]);
+
+                    // make new node the previous node
+                    previous = child;
+                }
             }
         }
         return match;
     }
 
     void print_debug_info() const {
-        std::cout << "debug_total=" << debug_total_ << std::endl;
-        sketch_.print_debug_info();
+        std::cout << "num_strings_total=" << stats_.num_strings_total
+                  << ", num_filter_inc=" << stats_.num_filter_inc
+                  << ", num_sketch_inc=" << stats_.num_sketch_inc
+                  << ", num_swaps=" << stats_.num_swaps
+                  << std::endl;
+        // sketch_.print_debug_info();
     }
 };

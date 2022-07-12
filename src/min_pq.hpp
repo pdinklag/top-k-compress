@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cassert>
 #include <concepts>
 #include <list>
 
@@ -46,7 +47,7 @@ public:
 
         if(next == buckets_.end() || next->freq > cur_freq + 1) {
             // frequency of next bucket too large or current bucket was last bucket, insert new bucket with proper frequency
-            next = buckets_.insert(next, Bucket(cur_freq + 1));
+            next = buckets_.emplace(next, cur_freq + 1);
         }
 
         // remove item from former bucket
@@ -59,27 +60,27 @@ public:
 
         // insert item into next bucket
         auto& new_list = next->list(former.maximal);
-        new_list.push_front(item);
+        new_list.emplace_front(item);
 
         // return new location
         return { next, new_list.begin(), former.maximal };
     }
 
-    Location insert(size_t const item, Frequency const freq, bool const maximal) {
+    Location insert(size_t const item, Frequency const freq) {
         // find first bucket with frequency greater or equal to given frequency
         auto bucket = std::find_if(buckets_.begin(), buckets_.end(), [&](Bucket const& bucket){ return bucket.freq >= freq; });
 
         // maybe insert bucket
         if(bucket == buckets_.end() || bucket->freq > freq) {
-            bucket = buckets_.insert(bucket, Bucket(freq));
+            bucket = buckets_.emplace(bucket, freq);
         }
 
         // insert item
-        auto& list = bucket->list(maximal);
-        list.push_front(item);
+        auto& list = bucket->list(true); // newly inserted item is always maximal
+        list.emplace_front(item);
 
         // return insert location
-        return { bucket, list.begin(), maximal };
+        return { bucket, list.begin(), true };
     }
 
     Location mark_non_maximal(Location const& former) {
@@ -89,12 +90,17 @@ public:
             former.bucket->maximal.erase(former.entry);
 
             // insert into non-maximal list
-            former.bucket->non_maximal.push_front(item);
+            former.bucket->non_maximal.emplace_front(item);
 
             // return new location
             return { former.bucket, former.bucket->non_maximal.begin(), false };
         } else {
             return former;
         }
+    }
+
+    size_t min_frequency() const {
+        assert(!buckets_.empty());
+        return buckets_.front().freq;
     }
 };

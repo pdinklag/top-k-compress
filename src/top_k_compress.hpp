@@ -39,5 +39,5 @@ void top_k_compress(In begin, In const end, size_t const k, size_t const window_
     }
 
     // debug
-    // topk.print_debug_info();
+    topk.print_debug_info();
 }
