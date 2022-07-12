@@ -1,6 +1,8 @@
 #include <tdc/framework/application.hpp>
 #include <tdc/io/file_input_stream.hpp>
+#include <tdc/io/file_output_stream.hpp>
 #include <tdc/io/stream_input_iterator.hpp>
+#include <tdc/io/util.hpp>
 #include "top_k_compress.hpp"
 
 using namespace tdc::framework;
@@ -26,10 +28,12 @@ int main(int argc, char** argv) {
     if(app) {
         if(!app.args().empty()) {
             tdc::io::FileInputStream fis(app.args()[0]);
-            top_k_compress(fis.begin(), fis.end(), options.k, options.window, options.sketch_rows, options.sketch_columns);
+            tdc::io::FileOutputStream fos(app.args()[0] + ".topk");
+            top_k_compress(fis.begin(), fis.end(), tdc::io::bitwise_output_to(fos), options.k, options.window, options.sketch_rows, options.sketch_columns);
         } else {
             app.print_usage(options);
         }
     }
     return 0;
 }
+#include <tdc/io/file_input_stream.hpp>
