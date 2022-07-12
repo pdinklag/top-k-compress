@@ -38,7 +38,7 @@ public:
 
     void insert_child(size_t const node, size_t const parent, char const label, Frequency freq, uint64_t fingerprint) {
         size_t discard;
-        assert(!try_get_child(parent, label, discard));
+        assert(!try_get_child<false>(parent, label, discard));
 
         auto sibling = nodes_[parent].first_child;
         nodes_[parent].first_child = node;
@@ -88,27 +88,32 @@ public:
         return size_++;
     }
 
+    template<bool mtf = true>
     bool try_get_child(size_t const node, char const label, size_t& out_child) {
         auto const fc = nodes_[node].first_child;
         auto v = fc;
+        size_t ps = 0;
         while(v) {
             auto const ns = nodes_[v].next_sibling;
             if(nodes_[v].label == label) {
                 out_child = v;
 
-                // FIXME: There must be a bug in here, but what is it??
-                if(v != fc) {
+                if(mtf && v != fc) {
+                    assert(ps);
+
                     // MTF
-                    nodes_[fc].next_sibling = ns;
-                    nodes_[v].next_sibling = fc;
                     nodes_[node].first_child = v;
+                    nodes_[v].next_sibling = fc;
+                    nodes_[ps].next_sibling = ns;
 
                     assert(is_child_of(v, node));
                     assert(is_child_of(fc, node));
+                    assert(is_child_of(ps, node));
                     if(ns) assert(is_child_of(ns, node));  
                 }
                 return true;
             }
+            ps = v;
             v = ns;
         }
         return false;
