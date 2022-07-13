@@ -12,6 +12,7 @@
 #include "top_k_substrings.hpp"
 
 constexpr uint64_t MAGIC = 0x54'4F'50'4B'43'4F'4D'50ULL; // spells "TOPKCOMP" in hex
+constexpr bool DEBUG = true;
 
 template<tdc::InputIterator<char> In, tdc::io::BitSink Out>
 void top_k_compress(In begin, In const end, Out out, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns) {
@@ -40,26 +41,49 @@ void top_k_compress(In begin, In const end, Out out, size_t const k, size_t cons
 
     size_t i = 0;
     size_t next_phrase = 0;
-    auto handle = [&](char const c, size_t len){
-        buf.push_back(c);
+    auto handle = [&](char const c, size_t len) {
+        if constexpr(DEBUG) {
+            std::cout << "read next character: '" << c << "'" << std::endl;
+        }
 
-        // advance
-        ++i;
-        if(i >= window_size) {
+        buf.push_back(c);
+        if(buf.size() == buf.max_size()) {
+            //
+            if constexpr(DEBUG) {
+                std::cout << "- window: \"";
+                for(size_t j = 0; j < len; j++) {
+                    std::cout << buf[j];
+                }
+                std::cout << "\"" << std::endl;
+            }
+
             // count window_size prefixes starting from position (i-window_size)
-            auto longest = topk.count_prefixes(buf, len);
+            auto longest = topk.count_prefixes_and_match(buf, len);
 
             // encode phrase
             if(i >= next_phrase) {
                 if(longest.length > 1) {
+                    if constexpr(DEBUG) {
+                        std::cout << "- [ENCODE] frequent phrase: \"";
+                        for(size_t j = 0; j < longest.length; j++) {
+                            std::cout << buf[j];
+                        }
+                        std::cout << "\" (length=" << longest.length << ", index=" << longest.index << ")" << std::endl;
+                    }
                     Binary::encode(out, longest.index, u_freq);
 
                     ++num_frequent;
                     next_phrase = i + longest.length;
                     naive_enc_size += u_freq.entropy();
                 } else {
+                    if constexpr(DEBUG) {
+                        std::cout << "- [ENCODE] literal phrase: '" << buf[0] << "'";
+                        if(longest.length == 1) std::cout << " (frequent phrase of length=1, index=" << longest.index << ")";
+                        std::cout << std::endl;
+                    }
+                    
                     Binary::encode(out, 0, u_freq);
-                    Binary::encode(out, c, u_literal);
+                    Binary::encode(out, buf[0], u_literal);
 
                     ++num_literal;
                     next_phrase = i + 1;
@@ -70,6 +94,7 @@ void top_k_compress(In begin, In const end, Out out, size_t const k, size_t cons
             // advance
             buf.pop_front();
         }
+        ++i;
     };
     
     while(begin != end) {
@@ -77,7 +102,7 @@ void top_k_compress(In begin, In const end, Out out, size_t const k, size_t cons
         handle(*begin++, window_size);
     }
 
-    // pad trailing zeroes
+    // pad trailing zeroes (is this needed?)
     for(size_t x = 0; x < window_size - 1; x++) {
         handle(0, window_size - 1 - x);
     }
@@ -121,8 +146,20 @@ void top_k_decompress(In in, Out out) {
 
     size_t num_frequent = 0;
     size_t num_literal = 0;
+    size_t i = 0;
 
-    char frequent_string[window_size];
+    char frequent_string[window_size + 1]; // +1 for debugging
+
+    auto handle = [&](char const c){
+        *out++ = c;
+        buf.push_back(c);
+
+        ++i;
+
+        // TODO: count prefixes - how exactly ?
+
+        if(buf.size() == buf.max_size()) buf.pop_front();
+    };
 
     while(true) {
         auto const p = Binary::decode(in, u_freq);
@@ -134,17 +171,24 @@ void top_k_decompress(In in, Out out) {
             // decode frequent phrase
             ++num_frequent;
 
-            // auto const len = topk.get(p, frequent_string);
-            // for(size_t i = 0; i < len; i++) {
-                // *out++ = frequent_string[i];
-                // TODO: update top-k
-            // }
+            auto const len = topk.get(p, frequent_string);
+
+            if constexpr(DEBUG) {
+                frequent_string[len] = 0;
+                std::cout << "- [DECODE] frequent phrase: \"" << frequent_string << "\" (length=" << len << ", index=" << p << ")" << std::endl;
+            }
+            
+            for(size_t i = 0; i < len; i++) {
+                handle(frequent_string[i]);
+            }
         } else {
             // decode literal phrase
             ++num_literal;
             char const c = Binary::decode(in, u_literal);
-            // *out++ = c;
-            // TODO: update top-k
+            if constexpr(DEBUG) {
+                std::cout << "- [DECODE] literal phrase: '" << c << "'" << std::endl;
+            }
+            handle(c);
         }
     }
 

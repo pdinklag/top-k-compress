@@ -66,7 +66,7 @@ public:
     };
 
     template<typename Str>
-    LongestFrequentPrefix count_prefixes(Str const& s, size_t len) {
+    LongestFrequentPrefix count_prefixes_and_match(Str const& s, size_t len) {
         // init
         size_t i = 0;
         LongestFrequentPrefix match = { SIZE_MAX, 0 };
