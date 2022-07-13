@@ -66,7 +66,7 @@ public:
     };
 
     template<typename Str>
-    LongestFrequentPrefix count_prefixes_and_match(Str const& s, size_t len) {
+    LongestFrequentPrefix count_prefixes_and_match(Str const& s, size_t len, size_t max_match_len) {
         // init
         size_t i = 0;
         LongestFrequentPrefix match = { SIZE_MAX, 0 };
@@ -99,8 +99,10 @@ public:
             if(look_in_filter && filter_.try_get_child(previous, c, child)) {
                 // the current prefix is frequent
                 // update longest match
-                match.index = child;
-                match.length = i + 1;
+                if(i < max_match_len) {
+                    match.index = child;
+                    match.length = i + 1;
+                }
 
                 // increment frequency
                 if constexpr(gather_stats_) ++stats_.num_filter_inc;

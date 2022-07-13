@@ -15,15 +15,17 @@ constexpr uint64_t MAGIC = 0x54'4F'50'4B'43'4F'4D'50ULL; // spells "TOPKCOMP" in
 constexpr bool DEBUG = true;
 
 template<tdc::InputIterator<char> In, tdc::io::BitSink Out>
-void top_k_compress(In begin, In const end, Out out, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns) {
+void top_k_compress(In begin, In const end, Out out, bool const omit_header, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns) {
     using namespace tdc::code;
 
     // encode header
-    Binary::encode(out, MAGIC, Universe::of<uint64_t>());
-    Binary::encode(out, k, Universe::of<size_t>());
-    Binary::encode(out, window_size, Universe::of<size_t>());
-    Binary::encode(out, sketch_rows, Universe::of<size_t>());
-    Binary::encode(out, sketch_columns, Universe::of<size_t>());
+    if(!omit_header) {
+        Binary::encode(out, MAGIC, Universe::of<uint64_t>());
+        Binary::encode(out, k, Universe::of<size_t>());
+        Binary::encode(out, window_size, Universe::of<size_t>());
+        Binary::encode(out, sketch_rows, Universe::of<size_t>());
+        Binary::encode(out, sketch_columns, Universe::of<size_t>());
+    }
 
     // initialize compression
     // notes on top-k:
@@ -58,7 +60,7 @@ void top_k_compress(In begin, In const end, Out out, size_t const k, size_t cons
             }
 
             // count window_size prefixes starting from position (i-window_size)
-            auto longest = topk.count_prefixes_and_match(buf, len);
+            auto longest = topk.count_prefixes_and_match(buf, len, std::min(len, i + 1 - window_size));
 
             // encode phrase
             if(i >= next_phrase) {

@@ -10,6 +10,7 @@ using namespace tdc::framework;
 
 struct Options : public Entity {
     bool decompress = false;
+    bool raw = false;
     uint64_t k = 8;
     uint64_t window = 4;
     uint64_t sketch_rows = 2;
@@ -21,6 +22,7 @@ struct Options : public Entity {
         param('w', "window", window, "The window size.");
         param('r', "sketch-rows", sketch_rows, "The number of rows in the Count-Min sketch.");
         param('c', "sketch-columns", sketch_columns, "The number of columns in each Count-Min row.");
+        param("raw", raw, "Omit the header in the output file -- cannot be decompressed!");
     }
 };
 
@@ -37,7 +39,7 @@ int main(int argc, char** argv) {
             } else {
                 tdc::io::FileInputStream fis(app.args()[0]);
                 tdc::io::FileOutputStream fos(app.args()[0] + ".topk");
-                top_k_compress(fis.begin(), fis.end(), tdc::io::bitwise_output_to(fos), options.k, options.window, options.sketch_rows, options.sketch_columns);
+                top_k_compress(fis.begin(), fis.end(), tdc::io::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_rows, options.sketch_columns);
             }
         } else {
             app.print_usage(options);
