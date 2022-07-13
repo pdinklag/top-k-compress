@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -205,7 +206,7 @@ public:
                   << ", num_swaps=" << stats_.num_swaps
                   << ", num_overestimates=" << stats_.num_overestimates
                   << std::endl;
-
+        min_pq_.print_debug_info();
         /*
         char buffer[len_ + 1];
         for(size_t i = 1; i < k_; i++) {
