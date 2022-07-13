@@ -45,4 +45,3 @@ int main(int argc, char** argv) {
     }
     return 0;
 }
-#include <tdc/io/file_input_stream.hpp>
