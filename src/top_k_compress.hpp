@@ -12,7 +12,7 @@
 #include "top_k_substrings.hpp"
 
 constexpr uint64_t MAGIC = 0x54'4F'50'4B'43'4F'4D'50ULL; // spells "TOPKCOMP" in hex
-constexpr bool DEBUG = true;
+constexpr bool DEBUG = false;
 
 template<tdc::InputIterator<char> In, tdc::io::BitSink Out>
 void top_k_compress(In begin, In const end, Out out, bool const omit_header, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns) {
@@ -64,7 +64,7 @@ void top_k_compress(In begin, In const end, Out out, bool const omit_header, siz
 
             // encode phrase
             if(i >= next_phrase) {
-                if(longest.length > 1) {
+                if(longest.length >= 1) {
                     if constexpr(DEBUG) {
                         std::cout << "- [ENCODE] frequent phrase: \"";
                         for(size_t j = 0; j < longest.length; j++) {
