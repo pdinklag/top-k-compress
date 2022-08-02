@@ -274,6 +274,14 @@ private:
     }
 
 public:
+    Vitter87() {}
+
+    Vitter87(Vitter87&&) = default;
+    Vitter87& operator=(Vitter87&&) = default;
+
+    Vitter87(Vitter87 const&) = delete;
+    Vitter87& operator=(Vitter87 const&) = delete;
+
     Vitter87(size_t const alphabet_size) : n(alphabet_size) {
         // allocate
         // nb: this is transferred directly from the 1989 PASCAL implementation, which uses 1-based indexing
