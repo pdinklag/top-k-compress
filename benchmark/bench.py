@@ -13,7 +13,8 @@ def bench(cmd, brief, filename, ext):
 
     # run command
     t0 = time.time()
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    pout, perr = p.communicate()
     dt = time.time() - t0
 
     # get output stats
@@ -28,7 +29,7 @@ def bench(cmd, brief, filename, ext):
     logf.write("\n".join([
         "------------------------------------------",
         " ".join(cmd),
-        result.stdout.decode("utf-8"),
+        pout.decode("utf-8"),
         f"time:  {dt}s",
         f"in:    {n}",
         f"out:   {ncomp}",
