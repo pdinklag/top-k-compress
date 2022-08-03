@@ -12,7 +12,7 @@ def bench(cmd, brief, filename, ext):
 
     # run command
     t0 = time.time()
-    result = subprocess.run(cmd, capture_output=True)
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     dt = time.time() - t0
 
     # get output stats
