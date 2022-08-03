@@ -3,6 +3,7 @@
 import argparse
 import os
 import subprocess
+import sys
 import time
 
 import config
@@ -37,6 +38,7 @@ def bench(cmd, brief, filename, ext):
 
     # print brief result to stdout
     print(f"{brief}\t{n}\t{ncomp}\t{dt}")
+    sys.stdout.flush()
 
 def gzip9(filename):
     bench(
@@ -72,6 +74,7 @@ with open(args.log, "w") as logf:
         print(f"Benchmarking for {filename} ...")
         print()
         print("algo\tn\tn'\ttime")
+        sys.stdout.flush()
 
         gzip9(filename)
         for w in config.windows:
