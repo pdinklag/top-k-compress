@@ -4,6 +4,7 @@
 #include <iterator>
 #include <memory>
 
+#include <pm/stopwatch.hpp>
 #include <tdc/util/concepts.hpp>
 
 #include "trie_filter.hpp"
@@ -14,12 +15,19 @@
 class TopKSubstrings {
 private:
     static constexpr bool gather_stats_ = true;
+    static constexpr bool measure_time_ = false;
+    
     struct Stats {
         size_t num_strings_total;
         size_t num_filter_inc;
         size_t num_sketch_inc;
         size_t num_swaps;
         size_t num_overestimates;
+        
+        pm::Stopwatch t_filter_find;
+        pm::Stopwatch t_filter_inc;
+        pm::Stopwatch t_sketch_inc;
+        pm::Stopwatch t_swaps;
 
         inline Stats() : num_strings_total(0),
                          num_filter_inc(0),
@@ -96,8 +104,15 @@ public:
 
             // try and find prefix of length i+1 in filter
             size_t child;
+            
+            if constexpr(measure_time_) if(look_in_filter) stats_.t_filter_find.resume();
             if(look_in_filter && filter_.try_get_child(previous, c, child)) {
+                if constexpr(measure_time_) stats_.t_filter_find.pause();
+                
                 // the current prefix is frequent
+                if constexpr(gather_stats_) ++stats_.num_filter_inc;
+                if constexpr(measure_time_) stats_.t_filter_inc.resume();
+                
                 // update longest match
                 if(i < max_match_len) {
                     match.index = child;
@@ -105,18 +120,24 @@ public:
                 }
 
                 // increment frequency
-                if constexpr(gather_stats_) ++stats_.num_filter_inc;
                 auto const freq = filter_.increment(child);
                 min_pq_map_[child] = min_pq_.increase_key(min_pq_map_[child]);
 
                 // advance to next prefix
                 previous = child;
+                
+                if constexpr(measure_time_) stats_.t_filter_inc.pause();
             } else {
+                if constexpr(measure_time_) if(look_in_filter) stats_.t_filter_find.pause();
+                
                 // the current prefix is non-frequent
                 if(filter_.full()) {
                     // the filter is full, count current prefix in the sketch
                     if constexpr(gather_stats_) ++stats_.num_sketch_inc;
+                    
+                    if constexpr(measure_time_) stats_.t_sketch_inc.resume();
                     auto est = sketch_.increment_and_estimate(fp);
+                    if constexpr(measure_time_) stats_.t_sketch_inc.pause();
 
                     // test if it is now frequent
                     if(est > min_pq_.min_frequency()) {
@@ -126,6 +147,7 @@ public:
 
                             // the immediate prefix was frequent, so yes, we can!
                             if constexpr(gather_stats_) ++stats_.num_swaps;
+                            if constexpr(measure_time_) stats_.t_swaps.resume();
 
                             // extract maximal frequent substring with minimal frequency
                             size_t const swap = min_pq_.extract_min();
@@ -159,6 +181,8 @@ public:
 
                             // make new node the previous node
                             previous = swap;
+                            
+                            if constexpr(measure_time_) stats_.t_swaps.pause();
                         } else {
                             // the immediate prefix was non-frequent or its frequency was too low
                             // -> the current prefix is overestimated, abort swap
@@ -206,8 +230,16 @@ public:
                   << ", num_filter_inc=" << stats_.num_filter_inc
                   << ", num_sketch_inc=" << stats_.num_sketch_inc
                   << ", num_swaps=" << stats_.num_swaps
-                  << ", num_overestimates=" << stats_.num_overestimates
-                  << std::endl;
+                  << ", num_overestimates=" << stats_.num_overestimates;
+                  
+        if constexpr(measure_time_) {
+            std::cout << ", t_filter_find=" << (stats_.t_filter_find.elapsed_time_millis() / 1000.0)
+                      << ", t_filter_inc=" << (stats_.t_filter_inc.elapsed_time_millis() / 1000.0)
+                      << ", t_sketch_inc=" << (stats_.t_sketch_inc.elapsed_time_millis() / 1000.0)
+                      << ", t_swaps=" << (stats_.t_swaps.elapsed_time_millis() / 1000.0);
+        }
+
+        std::cout << std::endl;
         min_pq_.print_debug_info();
         sketch_.print_debug_info();
         /*
