@@ -50,7 +50,7 @@ def gzip9(filename):
 
 def topk(filename, k, w):
     bench(
-        [config.topk_bin, "-k", str(k), "-c", str(k), "-w", str(w), filename],
+        [config.topk_bin, "-k", str(k), "-c", config.sketch_columns, "-w", str(w), filename],
         f"topk-k{k}_w{w}",
         filename,
         ".topk")
