@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -42,7 +43,6 @@ public:
             hash_ = std::make_unique<uintmax_t[]>(num_rows_);
             for(size_t i = 0; i < num_rows_; i++) {
                 hash_[i] = gen();
-                // std::cout << "hash_[" << i << "] = 0x" << std::hex << hash_[i] << std::endl;
             }
         }
     }
@@ -68,12 +68,46 @@ public:
     }
 
     void print_debug_info() const {
-        std::cout << std::dec;
+        size_t num_zeros = 0;
+        Frequency min = std::numeric_limits<Frequency>::max();
+        Frequency max = 0;
+        Frequency sum = 0;
+        
         for(size_t i = 0; i < num_rows_; i++) {
             for(size_t j = 0; j < num_columns_; j++) {
-                std::cout << table_[i][j] << " ";
+                auto const f = table_[i][j];
+                
+                sum += f;
+                min = std::min(min, f);
+                max = std::max(max, f);
+                if(f == 0) ++num_zeros;
             }
-            std::cout << std::endl;
         }
+        
+        size_t const num_cells = num_rows_ * num_columns_;
+        double const avg = ((double)sum / double(num_cells));
+        double var = 0.0;
+        for(size_t i = 0; i < num_rows_; i++) {
+            for(size_t j = 0; j < num_columns_; j++) {
+                auto const f = table_[i][j];
+                double const d = (double)f - avg;
+                var += d * d;
+            }
+        }
+        var /= (double)(num_cells - 1);
+        
+        std::cout << "sketch info"
+                  << ": bytes=" << (sizeof(Frequency) * num_cells)
+                  << ", min=" << min
+                  << ", max=" << max
+                  << ", avg=" << ((double)sum / double(num_cells))
+                  << ", stddev=" << std::sqrt(var)
+                  << ", num_zeros=" << num_zeros;
+        
+        for(size_t i = 0; i < num_rows_; i++) {
+            std::cout << ", hash[" << (i+1) << "]=0x" << std::hex << hash_[i] << std::dec;
+        }
+        
+        std::cout << std::endl;
     }
 };

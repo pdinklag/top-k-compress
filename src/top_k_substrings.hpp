@@ -209,6 +209,7 @@ public:
                   << ", num_overestimates=" << stats_.num_overestimates
                   << std::endl;
         min_pq_.print_debug_info();
+        sketch_.print_debug_info();
         /*
         char buffer[len_ + 1];
         for(size_t i = 1; i < k_; i++) {
