@@ -64,14 +64,13 @@ def topkh(filename, k, w):
 
 # parse args
 parser = argparse.ArgumentParser(description='top-k compression benchmark')
-parser.add_argument("files", type=str, nargs="+", help="The input files to perform the benchmark on")
 parser.add_argument("--log", type=str, default="bench.log", help="Output file for detailed logs")
 args = parser.parse_args()
 
 # open logfile
 with open(args.log, "w") as logf:
     # run
-    for filename  in args.files:
+    for filename in config.files:
         print(f"Benchmarking for {filename} ...")
         print()
         print("algo\tn\tn'\ttime")
