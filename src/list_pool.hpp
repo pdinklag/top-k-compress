@@ -78,6 +78,7 @@ public:
         auto operator--(int) { auto cpy = *this; --(*this); return cpy; }
 
         Item& operator*() const { return pool->entry(entry).item; }
+        Item* operator->() const { return &pool->entry(entry).item; }
     };
     
     struct ConstIterator {
@@ -107,6 +108,7 @@ public:
         auto operator--(int) { auto cpy = *this; --(*this); return cpy; }
 
         Item const& operator*() const { return pool->entry(entry).item; }
+        Item const* operator->() const { return &pool->entry(entry).item; }
     };
 
     class List {
@@ -161,6 +163,9 @@ public:
         using reverse_iterator = std::reverse_iterator<Iterator>;
         using const_reverse_iterator = std::reverse_iterator<ConstIterator>;
 
+        List() : pool_(nullptr), head_(NIL), tail_(NIL), size_(0) {
+        }
+
         List(ListPool& pool) : pool_(&pool), head_(NIL), tail_(NIL), size_(0) {
         }
 
@@ -209,16 +214,11 @@ public:
             return Iterator(*pool_, i);
         }
 
-        template<typename It>
-        Iterator emplace(Iterator pos, Item&& item) {
-            auto [i,e] = insert(pos);
-            e->item = std::move(item);
-            return Iterator(*pool_, i);
-        }
-
         template<typename It, typename... Args>
-        Iterator emplace(Iterator pos, Args&&... args) {
-            emplace(pos, Item(std::forward<Args>(args)...));
+        Iterator emplace(It pos, Args&&... args) {
+            auto [i,e] = insert(pos);
+            e->item = Item(std::forward<Args>(args)...);
+            return Iterator(*pool_, i);
         }
 
         template<typename It>
