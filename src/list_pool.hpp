@@ -69,8 +69,8 @@ public:
         Iterator(Iterator&&) = default;
         Iterator& operator=(Iterator&&) = default;
 
-        bool operator!=(Iterator const& other) const { return other.entry == NIL || entry == NIL || entry != other.entry || pool != other.pool; }
-        bool operator==(Iterator const& other) const { return !(*this != other); }
+        bool operator==(Iterator const& other) const { return pool == other.pool && entry == other.entry; }
+        bool operator!=(Iterator const& other) const { return !(*this == other); }
 
         Iterator& operator++() { entry = pool->entry(entry).next; return *this; }
         auto operator++(int) { auto cpy = *this; ++(*this); return cpy; }
@@ -99,8 +99,8 @@ public:
         ConstIterator(ConstIterator&&) = default;
         ConstIterator& operator=(ConstIterator&&) = default;
 
-        bool operator!=(ConstIterator const& other) const { return other.entry == NIL || entry == NIL || entry != other.entry || pool != other.pool; }
-        bool operator==(ConstIterator const& other) const { return !(*this != other); }
+        bool operator==(ConstIterator const& other) const { return pool == other.pool && entry == other.entry; }
+        bool operator!=(ConstIterator const& other) const { return !(*this == other); }
 
         ConstIterator& operator++() { entry = pool->entry(entry).next; return *this; }
         auto operator++(int) { auto cpy = *this; ++(*this); return cpy; }
@@ -180,16 +180,16 @@ public:
         Item const& back() const { return pool_->entry(tail_).item; }
 
         auto begin() { return Iterator(*pool_, head_); }
-        auto end() { return Iterator(*pool_, head_); }
+        auto end() { return Iterator(*pool_, NIL); }
 
         auto cbegin() const { return ConstIterator(*pool_, head_); }
-        auto cend() const { return ConstIterator(*pool_, head_); }
+        auto cend() const { return ConstIterator(*pool_, NIL); }
 
         auto rbegin() { return std::reverse_iterator(Iterator(*pool_, tail_)); }
-        auto rend() { return std::reverse_iterator(Iterator(*pool_, tail_)); }
+        auto rend() { return std::reverse_iterator(Iterator(*pool_, NIL)); }
 
         auto crbegin() const { return std::reverse_iterator(ConstIterator(*pool_, tail_)); }
-        auto crend() const { return std::reverse_iterator(ConstIterator(*pool_, tail_)); }
+        auto crend() const { return std::reverse_iterator(ConstIterator(*pool_, NIL)); }
 
         bool empty() const { return size_ == 0; }
         size_t size() const { return size_; }

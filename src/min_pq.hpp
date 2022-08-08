@@ -33,6 +33,9 @@ private:
         Frequency freq;
         ListPool<size_t>::List items;
 
+        Bucket() : freq(0) {
+        }
+
         Bucket(Frequency _freq, ListPool<size_t>::List&& _items) : freq(_freq), items(std::move(_items)) {
         }
 
@@ -45,14 +48,15 @@ private:
         }
     };
 
+    ListPool<Bucket> bucket_pool_;
     ListPool<size_t> item_pool_;
     
-    std::list<Bucket> buckets_;
+    ListPool<Bucket>::List buckets_;
     Stats stats_;
 
 public:
     struct Location {
-        using BucketRef = std::list<Bucket>::iterator;
+        using BucketRef = ListPool<Bucket>::List::iterator;
         using ItemRef = ListPool<size_t>::List::iterator;
 
         BucketRef bucket;
@@ -70,7 +74,8 @@ public:
         }
     };
 
-    MinPQ(size_t const max_items) : item_pool_(max_items) {
+    MinPQ(size_t const max_items) : item_pool_(max_items), bucket_pool_(max_items) {
+        buckets_ = bucket_pool_.new_list();
     }
 
     Location increase_key(Location const& former) {
