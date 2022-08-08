@@ -57,7 +57,7 @@ def topk(filename, k, w):
 
 def topkh(filename, k, w):
     bench(
-        [config.topkh_bin, "-k", str(k), "-c", str(k), "-w", str(w), "--huff", filename],
+        [config.topkh_bin, "-k", str(k), "-c", config.sketch_columns, "-w", str(w), "--huff", filename],
         f"topk-k{k}_w{w}-huff",
         filename,
         ".topkh")
