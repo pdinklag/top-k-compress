@@ -11,6 +11,7 @@ private:
         size_t num_bucket_inserts;
         size_t num_bucket_deletes;
         size_t num_increase_key;
+        size_t num_slides;
         size_t num_inserts;
         size_t num_insert_search_steps;
         size_t num_deletes;
@@ -35,6 +36,10 @@ private:
 
         bool empty() const {
             return items.empty();
+        }
+
+        size_t size() const {
+            return items.size();
         }
     };
 
@@ -66,9 +71,18 @@ public:
             ++next;
 
             if(next == buckets_.end() || next->freq > cur_freq + 1) {
-                // frequency of next bucket too large or current bucket was last bucket, insert new bucket with proper frequency
-                if constexpr(gather_stats_) ++stats_.num_bucket_inserts;
-                next = buckets_.emplace(next, cur_freq + 1);
+                // frequency of next bucket too large or current bucket was last bucket
+                if(former.bucket->size() == 1) {
+                    // the item is the only item in its bucket, simply increase the bucket's frequency and we're done
+                    if constexpr(gather_stats_) ++stats_.num_slides;
+                    
+                    ++former.bucket->freq;
+                    return former;
+                } else {                
+                    // insert new bucket with proper frequency
+                    if constexpr(gather_stats_) ++stats_.num_bucket_inserts;
+                    next = buckets_.emplace(next, cur_freq + 1);
+                }
             }
             assert(next->freq == cur_freq + 1);
 
@@ -164,6 +178,7 @@ public:
                   << ", num_insert_search_steps=" << stats_.num_insert_search_steps
                   << ", num_deletes=" << stats_.num_deletes
                   << ", num_increase_key=" << stats_.num_increase_key
+                  << ", num_slides=" << stats_.num_slides
                   << ", num_extract_min=" << stats_.num_extract_min
                   << std::endl;
     }
