@@ -98,7 +98,7 @@ public:
 
             // debug print current prefix and fingerprint
             {
-                hash_window_[i + 1] = 0;
+                // hash_window_[i + 1] = 0;
                 // std::cout << "s=" << hash_window_.get() << ", fp=0x" << std::hex << fp << std::dec << std::endl;
             }
 
