@@ -148,9 +148,10 @@ public:
 
     template<bool mtf = true>
     bool try_get_child(size_t const node, char const label, size_t& out_child) {
-        for(size_t i = 0; i < nodes_[node].size; i++) {
-            if(nodes_[node].labels[i] == label) {
-                out_child = nodes_[node].children[i];
+        auto const& v = nodes_[node];
+        for(size_t i = 0; i < v.size; i++) {
+            if(v.labels[i] == label) {
+                out_child = v.children[i];
                 if constexpr(mtf) {
                     // no longer implemented since switching to label-string-representation
                 }
