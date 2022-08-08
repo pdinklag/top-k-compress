@@ -48,11 +48,21 @@ private:
 
 public:
     struct Location {
-        std::list<Bucket>::iterator bucket;
-        std::list<size_t>::iterator entry;
+        using BucketRef = std::list<Bucket>::iterator;
+        using ItemRef = std::list<size_t>::iterator;
+
+        BucketRef bucket;
+        ItemRef entry;
+        bool valid;
+
+        inline Location(BucketRef _bucket, ItemRef _entry) : bucket(_bucket), entry(_entry), valid(true) {
+        }
+
+        inline Location() : valid(false) {
+        }
 
         inline operator bool() const {
-            return bucket._M_node;
+            return valid;
         }
     };
 
@@ -93,7 +103,7 @@ public:
             next->items.emplace_front(item);
 
             // return new location
-            return { next, next->items.begin() };
+            return Location(next, next->items.begin());
         } else {
             return former;
         }
@@ -115,7 +125,7 @@ public:
         }
 
         // return invalid location
-        return {};
+        return Location();
     }
 
     Location insert(size_t const item, Frequency const freq) {
@@ -138,7 +148,7 @@ public:
         bucket->items.emplace_front(item);
 
         // return insert location
-        return { bucket, bucket->items.begin() };
+        return Location(bucket, bucket->items.begin());
     }
 
     size_t min_frequency() const {
