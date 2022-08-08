@@ -1,11 +1,12 @@
 #include <algorithm>
 #include <cassert>
 #include <concepts>
+#include <cstdint>
 #include <list>
 
 #include "list_pool.hpp"
 
-template<std::unsigned_integral Frequency>
+template<std::unsigned_integral Frequency, std::unsigned_integral EntryIndex = uint32_t>
 class MinPQ {
 private:
     static constexpr bool gather_stats_ = true;
@@ -31,12 +32,12 @@ private:
 
     struct Bucket {
         Frequency freq;
-        ListPool<size_t>::List items;
+        ListPool<EntryIndex>::List items;
 
         Bucket() : freq(0) {
         }
 
-        Bucket(Frequency _freq, ListPool<size_t>::List&& _items) : freq(_freq), items(std::move(_items)) {
+        Bucket(Frequency _freq, ListPool<EntryIndex>::List&& _items) : freq(_freq), items(std::move(_items)) {
         }
 
         bool empty() const {
@@ -49,7 +50,7 @@ private:
     };
 
     ListPool<Bucket> bucket_pool_;
-    ListPool<size_t> item_pool_;
+    ListPool<EntryIndex> item_pool_;
     
     ListPool<Bucket>::List buckets_;
     Stats stats_;
@@ -57,7 +58,7 @@ private:
 public:
     struct Location {
         using BucketRef = ListPool<Bucket>::List::iterator;
-        using ItemRef = ListPool<size_t>::List::iterator;
+        using ItemRef = ListPool<EntryIndex>::List::iterator;
 
         BucketRef bucket;
         ItemRef entry;
@@ -74,7 +75,7 @@ public:
         }
     } __attribute__((packed));
 
-    MinPQ(size_t const max_items) : item_pool_(max_items), bucket_pool_(max_items) {
+    MinPQ(EntryIndex const max_items) : item_pool_(max_items), bucket_pool_(max_items) {
         buckets_ = bucket_pool_.new_list();
     }
 
@@ -82,7 +83,7 @@ public:
         // 
         if(former) {
             if constexpr(gather_stats_) ++stats_.num_increase_key;
-            size_t const item = *former.entry;
+            EntryIndex const item = *former.entry;
 
             // find next bucket
             auto const cur_freq = former.bucket->freq;
@@ -166,14 +167,14 @@ public:
         return min_bucket.freq;
     }
 
-    size_t extract_min() {
+    EntryIndex extract_min() {
         if constexpr(gather_stats_) ++stats_.num_extract_min;
         assert(!buckets_.empty());
         
         auto& min_bucket = buckets_.front();
         assert(!min_bucket.empty());
 
-        size_t const item = min_bucket.items.front();
+        EntryIndex const item = min_bucket.items.front();
         min_bucket.items.pop_front();
 
         // delete bucket if empty

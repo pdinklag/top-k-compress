@@ -52,8 +52,9 @@ private:
     RollingKarpRabin hash_;
     std::unique_ptr<char[]> hash_window_;
 
-    Trie<FilterNodeData> filter_;
-    MinPQ<size_t> min_pq_;
+    using FilterIndex = uint32_t;
+    Trie<FilterNodeData, FilterIndex> filter_;
+    MinPQ<size_t, FilterIndex> min_pq_;
     CountMin<size_t> sketch_;
 
     size_t k_;
@@ -87,7 +88,7 @@ public:
         uint64_t fp = rolling_fp_offset_;
 
         bool look_in_filter = true;
-        size_t previous = filter_.root();
+        FilterIndex previous = filter_.root();
 
         for(size_t i = 0; i < len; i++) {
             // get next character
@@ -108,7 +109,7 @@ public:
             }
 
             // try and find prefix of length i+1 in filter
-            size_t child;
+            FilterIndex child;
             
             if constexpr(measure_time_) if(look_in_filter) stats_.t_filter_find.resume();
             if(look_in_filter && filter_.try_get_child(previous, c, child)) {

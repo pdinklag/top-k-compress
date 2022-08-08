@@ -6,7 +6,7 @@
 #include <memory>
 #include <string>
 
-template<typename NodeData>
+template<typename NodeData, std::unsigned_integral NodeIndex = uint32_t>
 class Trie {
 private:
     using NodeSize = uint16_t; // we may need to store the value 256 itself
@@ -15,14 +15,14 @@ private:
         NodeSize size;
         NodeSize capacity;
         char* labels;
-        size_t* children;
+        NodeIndex* children;
         
-        size_t parent;
+        NodeIndex parent;
         char label;
 
         NodeData data;
         
-        Node(size_t const _parent, char const _label)
+        Node(NodeIndex const _parent, char const _label)
             : size(0),
               capacity(0),
               labels(nullptr),
@@ -44,13 +44,13 @@ private:
         }
     } __attribute__((packed));
 
-    size_t capacity_;
-    size_t size_;
+    NodeIndex capacity_;
+    NodeIndex size_;
 
     std::unique_ptr<Node[]> nodes_;
 
-    bool is_child_of(size_t const node, size_t const parent) const {
-        for(size_t i = 0; i < nodes_[parent].size; i++) {
+    bool is_child_of(NodeIndex const node, NodeIndex const parent) const {
+        for(NodeIndex i = 0; i < nodes_[parent].size; i++) {
             if(nodes_[parent].children[i] == node) {
                 return true;
             }
@@ -59,15 +59,15 @@ private:
     }
 
 public:
-    Trie(size_t const capacity) : capacity_(capacity), size_(1) {
+    Trie(NodeIndex const capacity) : capacity_(capacity), size_(1) {
         nodes_ = std::make_unique<Node[]>(capacity_);
-        for(size_t i = 0; i < capacity_; i++) {
+        for(NodeIndex i = 0; i < capacity_; i++) {
             nodes_[i] = Node();
         }
     }
 
-    void insert_child(size_t const node, size_t const parent, char const label) {
-        size_t discard;
+    void insert_child(NodeIndex const node, NodeIndex const parent, char const label) {
+        NodeIndex discard;
         assert(!try_get_child<false>(parent, label, discard));
 
         //auto sibling = nodes_[parent].first_child;
@@ -76,9 +76,9 @@ public:
         // possibly allocate new child slots
         auto& p = nodes_[parent];
         if(p.size >= p.capacity) {
-            size_t const new_cap = std::max(size_t(1), 2 * (size_t)p.capacity);
+            NodeIndex const new_cap = std::max(NodeIndex(1), 2 * (NodeIndex)p.capacity);
             auto* new_labels = new char[new_cap];
-            auto* new_children = new size_t[new_cap];
+            auto* new_children = new NodeIndex[new_cap];
             
             std::copy(p.labels, p.labels + p.size, new_labels);
             std::copy(p.children, p.children + p.size, new_children);
@@ -104,7 +104,7 @@ public:
     }
 
     // extract node from trie and return parent
-    size_t extract(size_t const node) {
+    NodeIndex extract(NodeIndex const node) {
         assert(is_leaf(node)); // cannot extract an inner node
 
         auto const parent = nodes_[node].parent;
@@ -113,7 +113,7 @@ public:
         auto const label = nodes_[node].label;
         
         auto& p = nodes_[parent];
-        size_t i = 0;
+        NodeIndex i = 0;
         while(i < p.size && p.labels[i] != label) ++i; // nb: we could also search in the child array, but searching in the labels causes fewer cache misses
         
         if(i < p.size) {
@@ -121,7 +121,7 @@ public:
             
             // swap with last child if necessary and reduce size
             if(p.size > 1) {
-                size_t const last = p.size - 1;
+                NodeIndex const last = p.size - 1;
                 std::swap(p.labels[i], p.labels[last]);
                 std::swap(p.children[i], p.children[last]);
             }
@@ -136,14 +136,14 @@ public:
         return parent;
     }
 
-    size_t new_node() {
+    NodeIndex new_node() {
         return size_++;
     }
 
     template<bool mtf = true>
-    bool try_get_child(size_t const node, char const label, size_t& out_child) {
+    bool try_get_child(NodeIndex const node, char const label, NodeIndex& out_child) {
         auto const& v = nodes_[node];
-        for(size_t i = 0; i < v.size; i++) {
+        for(NodeIndex i = 0; i < v.size; i++) {
             if(v.labels[i] == label) {
                 out_child = v.children[i];
                 if constexpr(mtf) {
@@ -155,11 +155,11 @@ public:
         return false;
     }
 
-    bool is_leaf(size_t const node) const {
+    bool is_leaf(NodeIndex const node) const {
         return nodes_[node].is_leaf();
     }
 
-    size_t root() const {
+    NodeIndex root() const {
         return 0;
     }
 
@@ -167,15 +167,15 @@ public:
         return size_ == capacity_;
     }
 
-    NodeData& data(size_t const node) {
+    NodeData& data(NodeIndex const node) {
         return nodes_[node].data;
     }
 
-    NodeData const& data(size_t const node) const {
+    NodeData const& data(NodeIndex const node) const {
         return nodes_[node].data;
     }
 
-    size_t spell(size_t const node, char* buffer) const {
+    size_t spell(NodeIndex const node, char* buffer) const {
         // spell reverse
         size_t d = 0;
         auto v = node;
