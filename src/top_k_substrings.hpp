@@ -60,7 +60,7 @@ public:
     : hash_(hash_window_size_, rolling_fp_base_),
       hash_window_(std::make_unique<char[]>(len + 1)), // +1 is just for debugging purposes...
       filter_(k),
-      min_pq_(),
+      min_pq_(k),
       min_pq_map_(std::make_unique<MinPQ<size_t>::Location[]>(k)),
       sketch_(sketch_rows, sketch_columns),
       k_(k),

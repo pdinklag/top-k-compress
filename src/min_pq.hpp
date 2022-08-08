@@ -3,6 +3,8 @@
 #include <concepts>
 #include <list>
 
+#include "list_pool.hpp"
+
 template<std::unsigned_integral Frequency>
 class MinPQ {
 private:
@@ -29,9 +31,9 @@ private:
 
     struct Bucket {
         Frequency freq;
-        std::list<size_t> items;
+        ListPool<size_t>::List items;
 
-        Bucket(Frequency f) : freq(f) {
+        Bucket(Frequency _freq, ListPool<size_t>::List&& _items) : freq(_freq), items(std::move(_items)) {
         }
 
         bool empty() const {
@@ -43,13 +45,15 @@ private:
         }
     };
 
+    ListPool<size_t> item_pool_;
+    
     std::list<Bucket> buckets_;
     Stats stats_;
 
 public:
     struct Location {
         using BucketRef = std::list<Bucket>::iterator;
-        using ItemRef = std::list<size_t>::iterator;
+        using ItemRef = ListPool<size_t>::List::iterator;
 
         BucketRef bucket;
         ItemRef entry;
@@ -66,7 +70,7 @@ public:
         }
     };
 
-    MinPQ() {
+    MinPQ(size_t const max_items) : item_pool_(max_items) {
     }
 
     Location increase_key(Location const& former) {
@@ -91,7 +95,7 @@ public:
                 } else {                
                     // insert new bucket with proper frequency
                     if constexpr(gather_stats_) ++stats_.num_bucket_inserts;
-                    next = buckets_.emplace(next, cur_freq + 1);
+                    next = buckets_.emplace(next, cur_freq + 1, item_pool_.new_list());
                 }
             }
             assert(next->freq == cur_freq + 1);
@@ -140,7 +144,7 @@ public:
         // maybe insert bucket
         if(bucket == buckets_.end() || bucket->freq > freq) {
             if constexpr(gather_stats_) ++stats_.num_bucket_inserts;
-            bucket = buckets_.emplace(bucket, freq);
+            bucket = buckets_.emplace(bucket, freq, item_pool_.new_list());
         }
 
         // insert item
