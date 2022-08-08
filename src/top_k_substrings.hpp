@@ -120,8 +120,11 @@ public:
                 }
 
                 // increment frequency
-                auto const freq = filter_.increment(child);
-                min_pq_map_[child] = min_pq_.increase_key(min_pq_map_[child]);
+                if(filter_.increment(child)) { // nb: function returns whether node is a leaf
+                    // prefix is maximal frequent string, increase in min pq
+                    assert((bool)min_pq_map_[child]);
+                    min_pq_map_[child] = min_pq_.increase_key(min_pq_map_[child]);
+                }
 
                 // advance to next prefix
                 previous = child;

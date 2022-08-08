@@ -161,8 +161,11 @@ public:
         return false;
     }
 
-    Frequency increment(size_t const node) {
-        return ++nodes_[node].freq;
+    bool increment(size_t const node) {
+        auto& v = nodes_[node];
+        bool const is_leaf = (v.size == 0);
+        ++v.freq;
+        return is_leaf;
     }
 
     bool is_leaf(size_t const node) const {
