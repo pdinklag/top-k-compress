@@ -2,15 +2,18 @@
 #include <cassert>
 #include <concepts>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 
 template<typename NodeData>
 class Trie {
 private:
+    using NodeSize = uint16_t; // we may need to store the value 256 itself
+
     struct Node {
-        size_t size;
-        size_t capacity;
+        NodeSize size;
+        NodeSize capacity;
         char* labels;
         size_t* children;
         
@@ -34,6 +37,10 @@ private:
         ~Node() {
             if(labels) delete[] labels;
             if(children) delete[] children;
+        }
+
+        inline bool is_leaf() const {
+            return size == 0;
         }
     } __attribute__((packed));
 
@@ -69,7 +76,7 @@ public:
         // possibly allocate new child slots
         auto& p = nodes_[parent];
         if(p.size >= p.capacity) {
-            size_t const new_cap = std::max(size_t(1), 2 * p.capacity);
+            size_t const new_cap = std::max(size_t(1), 2 * (size_t)p.capacity);
             auto* new_labels = new char[new_cap];
             auto* new_children = new size_t[new_cap];
             
@@ -149,7 +156,7 @@ public:
     }
 
     bool is_leaf(size_t const node) const {
-        return nodes_[node].size == 0;
+        return nodes_[node].is_leaf();
     }
 
     size_t root() const {
