@@ -5,8 +5,8 @@
 #include <memory>
 #include <string>
 
-template<std::unsigned_integral Frequency>
-class TrieFilter {
+template<typename NodeData>
+class Trie {
 private:
     struct Node {
         size_t size;
@@ -14,25 +14,21 @@ private:
         char* labels;
         size_t* children;
         
-        Frequency freq;
-        Frequency insert_freq;
         size_t parent;
-        uint64_t fingerprint;
         char label;
+
+        NodeData data;
         
-        Node(char const _label, Frequency const _freq, size_t const _parent, uint64_t const _fingerprint)
+        Node(size_t const _parent, char const _label)
             : size(0),
               capacity(0),
               labels(nullptr),
               children(nullptr),
-              freq(_freq),
-              insert_freq(_freq),
               parent(_parent),
-              fingerprint(_fingerprint),
               label(_label) {
         }
         
-        Node() : Node(0, 0, 0, 0) {
+        Node() : Node(0, 0) {
         }
 
         ~Node() {
@@ -56,20 +52,14 @@ private:
     }
 
 public:
-    struct ExtractInfo {
-        size_t parent;
-        Frequency freq_delta;
-        uint64_t fingerprint;
-    };
-
-    TrieFilter(size_t const capacity) : capacity_(capacity), size_(1) {
+    Trie(size_t const capacity) : capacity_(capacity), size_(1) {
         nodes_ = std::make_unique<Node[]>(capacity_);
         for(size_t i = 0; i < capacity_; i++) {
             nodes_[i] = Node();
         }
     }
 
-    void insert_child(size_t const node, size_t const parent, char const label, Frequency freq, uint64_t fingerprint) {
+    void insert_child(size_t const node, size_t const parent, char const label) {
         size_t discard;
         assert(!try_get_child<false>(parent, label, discard));
 
@@ -100,13 +90,14 @@ public:
         p.children[p.size] = node;
         ++p.size;
         
-        nodes_[node] = Node(label, freq, parent, fingerprint);
+        nodes_[node] = Node(parent, label);
 
         assert(is_child_of(node, parent));
         assert(is_leaf(node));
     }
 
-    ExtractInfo extract(size_t const node) {
+    // extract node from trie and return parent
+    size_t extract(size_t const node) {
         assert(is_leaf(node)); // cannot extract an inner node
 
         auto const parent = nodes_[node].parent;
@@ -135,11 +126,7 @@ public:
         }
 
         assert(nodes_[node].freq >= nodes_[node].insert_freq);
-        return ExtractInfo {
-            parent,
-            nodes_[node].freq - nodes_[node].insert_freq,
-            nodes_[node].fingerprint
-        };
+        return parent;
     }
 
     size_t new_node() {
@@ -161,13 +148,6 @@ public:
         return false;
     }
 
-    bool increment(size_t const node) {
-        auto& v = nodes_[node];
-        bool const is_leaf = (v.size == 0);
-        ++v.freq;
-        return is_leaf;
-    }
-
     bool is_leaf(size_t const node) const {
         return nodes_[node].size == 0;
     }
@@ -180,8 +160,12 @@ public:
         return size_ == capacity_;
     }
 
-    Frequency freq(size_t const node) const {
-        return nodes_[node].freq;
+    NodeData& data(size_t const node) {
+        return nodes_[node].data;
+    }
+
+    NodeData const& data(size_t const node) const {
+        return nodes_[node].data;
     }
 
     size_t spell(size_t const node, char* buffer) const {
