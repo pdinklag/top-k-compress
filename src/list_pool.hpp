@@ -79,7 +79,7 @@ public:
 
         Item& operator*() const { return pool->entry(entry).item; }
         Item* operator->() const { return &pool->entry(entry).item; }
-    };
+    } __attribute__((packed));
     
     struct ConstIterator {
         using iterator_category = std::bidirectional_iterator_tag;
@@ -109,7 +109,7 @@ public:
 
         Item const& operator*() const { return pool->entry(entry).item; }
         Item const* operator->() const { return &pool->entry(entry).item; }
-    };
+    } __attribute__((packed));
 
     class List {
     private:
@@ -302,7 +302,7 @@ public:
         void pop_front() {
             erase(begin());
         }
-    };
+    } __attribute__((packed));
 
     List new_list() { return List(*this); }
 };

@@ -72,7 +72,7 @@ public:
         inline operator bool() const {
             return valid;
         }
-    };
+    } __attribute__((packed));
 
     MinPQ(size_t const max_items) : item_pool_(max_items), bucket_pool_(max_items) {
         buckets_ = bucket_pool_.new_list();

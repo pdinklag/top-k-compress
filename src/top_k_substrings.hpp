@@ -46,6 +46,7 @@ private:
         size_t freq;
         size_t insert_freq;
         uint64_t fingerprint;
+        MinPQ<size_t>::Location minpq;
     } __attribute__((packed));
 
     RollingKarpRabin hash_;
@@ -53,7 +54,6 @@ private:
 
     Trie<FilterNodeData> filter_;
     MinPQ<size_t> min_pq_;
-    std::unique_ptr<MinPQ<size_t>::Location[]> min_pq_map_;
     CountMin<size_t> sketch_;
 
     size_t k_;
@@ -67,7 +67,6 @@ public:
       hash_window_(std::make_unique<char[]>(len + 1)), // +1 is just for debugging purposes...
       filter_(k),
       min_pq_(k),
-      min_pq_map_(std::make_unique<MinPQ<size_t>::Location[]>(k)),
       sketch_(sketch_rows, sketch_columns),
       k_(k),
       len_(len),
@@ -127,11 +126,12 @@ public:
 
                 // increment frequency
                 bool const maximal = filter_.is_leaf(child);
-                ++filter_.data(child).freq;
+                auto& data = filter_.data(child);
+                ++data.freq;
                 if(maximal) {
                     // prefix is maximal frequent string, increase in min pq
                     assert((bool)min_pq_map_[child]);
-                    min_pq_map_[child] = min_pq_.increase_key(min_pq_map_[child]);
+                    data.minpq = min_pq_.increase_key(data.minpq);
                 }
 
                 // advance to next prefix
@@ -166,18 +166,19 @@ public:
                             // extract the substring from the filter and get the fingerprint and frequency delta
                             assert(filter_.is_leaf(swap));
                             auto const parent = filter_.extract(swap);
-                            auto const data = filter_.data(swap);
+                            auto& swap_data = filter_.data(swap);
 
                             // the parent may now be maximal
                             if(parent && filter_.is_leaf(parent)) {
                                 // insert into min PQ
-                                min_pq_map_[parent] = min_pq_.insert(parent, filter_.data(parent).freq);
-                                assert(min_pq_.freq(min_pq_map_[parent]) == filter_.data(parent).freq);
+                                auto& parent_data = filter_.data(parent);
+                                parent_data.minpq = min_pq_.insert(parent, parent_data.freq);
+                                assert(min_pq_.freq(parent_data.minpq) == parent_data.freq);
                             }
 
                             // count the extracted substring in the sketch as often as it had been counted in the filter
-                            assert(data.freq >= data.insert_freq);
-                            sketch_.increment(data.fingerprint, data.freq - data.insert_freq);
+                            assert(swap_data.freq >= swap_data.insert_freq);
+                            sketch_.increment(swap_data.fingerprint, swap_data.freq - swap_data.insert_freq);
 
                             // insert the current prefix into the filter, reusing the old entries' node ID
                             filter_.insert_child(swap, previous, c);
@@ -185,12 +186,13 @@ public:
                             assert(filter_.is_leaf(swap));
 
                             // also insert it into the min PQ
-                            min_pq_map_[swap] = min_pq_.insert(swap, est);
-                            assert(min_pq_.freq(min_pq_map_[swap]) == est);
+                            swap_data.minpq = min_pq_.insert(swap, est);
+                            assert(min_pq_.freq(swap_data.minpq) == est);
                             
                             // the previous prefix is no longer maximal, remove from min PQ
                             if(previous) {
-                                min_pq_map_[previous] = min_pq_.remove(min_pq_map_[previous]);
+                                auto& previous_data = filter_.data(previous);
+                                previous_data.minpq = min_pq_.remove(previous_data.minpq);
                             }
 
                             // make new node the previous node
@@ -215,14 +217,14 @@ public:
 
                     auto child = filter_.new_node();
                     filter_.insert_child(child, previous, c);
-                    filter_.data(child) = FilterNodeData { 1, 1, fp };
+                    filter_.data(child) = FilterNodeData { 1, 1, fp, min_pq_.insert(child, 1) };
 
                     // insert into min PQ as a maximal string
-                    min_pq_map_[child] = min_pq_.insert(child, 1);
-                    assert(min_pq_.freq(min_pq_map_[child]) == 1);
+                    assert(min_pq_.freq(filter_.data(child).minpq) == 1);
 
                     // mark the immediate prefix of this string no longer maximal
-                    min_pq_map_[previous] = min_pq_.remove(min_pq_map_[previous]);
+                    auto& previous_data = filter_.data(previous);
+                    previous_data.minpq = min_pq_.remove(previous_data.minpq);
 
                     // make new node the previous node
                     previous = child;
