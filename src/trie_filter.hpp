@@ -11,8 +11,8 @@ private:
     struct Node {
         size_t size;
         size_t capacity;
-        std::unique_ptr<char[]>   labels;
-        std::unique_ptr<size_t[]> children;
+        char* labels;
+        size_t* children;
         
         Frequency freq;
         Frequency insert_freq;
@@ -23,6 +23,8 @@ private:
         Node(char const _label, Frequency const _freq, size_t const _parent, uint64_t const _fingerprint)
             : size(0),
               capacity(0),
+              labels(nullptr),
+              children(nullptr),
               freq(_freq),
               insert_freq(_freq),
               parent(_parent),
@@ -32,7 +34,12 @@ private:
         
         Node() : Node(0, 0, 0, 0) {
         }
-    };
+
+        ~Node() {
+            if(labels) delete[] labels;
+            if(children) delete[] children;
+        }
+    } __attribute__((packed));
 
     size_t capacity_;
     size_t size_;
@@ -73,15 +80,19 @@ public:
         auto& p = nodes_[parent];
         if(p.size >= p.capacity) {
             size_t const new_cap = std::max(size_t(1), 2 * p.capacity);
-            auto new_labels = std::make_unique<char[]>(new_cap);
-            auto new_children = std::make_unique<size_t[]>(new_cap);
+            auto* new_labels = new char[new_cap];
+            auto* new_children = new size_t[new_cap];
             
-            std::copy(p.labels.get(), p.labels.get() + p.size, new_labels.get());
-            std::copy(p.children.get(), p.children.get() + p.size, new_children.get());
+            std::copy(p.labels, p.labels + p.size, new_labels);
+            std::copy(p.children, p.children + p.size, new_children);
             
             p.capacity = new_cap;
-            p.labels = std::move(new_labels);
-            p.children = std::move(new_children);
+
+            if(p.labels) delete[] p.labels;
+            if(p.children) delete[] p.children;
+
+            p.labels = new_labels;
+            p.children = new_children;
         }
         
         // append child
