@@ -133,8 +133,6 @@ public:
             // "this kid is not my son"
             assert(false);
         }
-
-        assert(nodes_[node].freq >= nodes_[node].insert_freq);
         return parent;
     }
 
