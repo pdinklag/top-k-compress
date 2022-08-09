@@ -6,6 +6,8 @@
 #include <memory>
 #include <string>
 
+#include "always_inline.hpp"
+
 template<typename NodeData, std::unsigned_integral NodeIndex = uint32_t>
 class Trie {
 private:
@@ -68,7 +70,7 @@ public:
 
     void insert_child(NodeIndex const node, NodeIndex const parent, char const label) {
         NodeIndex discard;
-        assert(!try_get_child<false>(parent, label, discard));
+        assert(!try_get_child(parent, label, discard));
 
         //auto sibling = nodes_[parent].first_child;
         //nodes_[parent].first_child = node;
@@ -140,15 +142,11 @@ public:
         return size_++;
     }
 
-    template<bool mtf = true>
-    bool try_get_child(NodeIndex const node, char const label, NodeIndex& out_child) {
+    bool try_get_child(NodeIndex const node, char const label, NodeIndex& out_child) ALWAYS_INLINE {
         auto const& v = nodes_[node];
         for(NodeIndex i = 0; i < v.size; i++) {
             if(v.labels[i] == label) {
                 out_child = v.children[i];
-                if constexpr(mtf) {
-                    // no longer implemented since switching to label-string-representation
-                }
                 return true;
             }
         }
