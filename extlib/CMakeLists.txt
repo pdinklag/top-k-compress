@@ -1,3 +1,4 @@
+add_subdirectory(ips4o)
 add_subdirectory(tudocomp2)
 
 add_library(unordered_dense INTERFACE)

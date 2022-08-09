@@ -19,9 +19,9 @@ class TopKSubstrings {
 private:
     static constexpr bool gather_stats_ = true;
     static constexpr bool measure_time_ = false;
-    static constexpr bool sketch_batching_ = true;
+    static constexpr bool sketch_batching_ = false;
 
-    static constexpr size_t sketch_batch_size_ = 100;
+    static constexpr size_t sketch_batch_size_ = 1'000;
     
     struct Stats {
         size_t num_strings_total;
