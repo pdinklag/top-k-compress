@@ -83,6 +83,50 @@ public:
         }
     }
 
+    struct BatchWorkItem {
+        uintmax_t item;
+        Frequency inc;
+        
+        Frequency est;
+        size_t    j;
+    } __attribute__((packed));
+
+    inline void batch_increment_and_estimate(BatchWorkItem* work, size_t const num) {
+        // nb: item and inc are expected to be pre-filled!
+        // initialize work items, computing first hash function on the fly
+        for(size_t k = 0; k < num; k++) {
+            auto& x = work[k];
+            x.j = hash(0, x.item);
+            x.est = std::numeric_limits<Frequency>::max();
+        }
+
+        for(size_t i = 0; i < num_rows_ - 1; i++) {
+            // sort work items by hashes
+            std::sort(work, work + num, [](BatchWorkItem const& a, BatchWorkItem const& b){ return a.j < b.j; });
+
+            // increment and update estimates
+            for(size_t k = 0; k < num; k++) {
+                auto& x = work[k];
+                table_[i][x.j] += x.inc;
+                x.est = std::min(x.est, table_[i][x.j]);
+                x.j = hash(i + 1, x.item);
+            }
+        }
+
+        // last iteration
+        {
+            size_t const i = num_rows_ - 1;
+            std::sort(work, work + num, [](BatchWorkItem const& a, BatchWorkItem const& b){ return a.j < b.j; });
+
+            // increment and update estimates
+            for(size_t k = 0; k < num; k++) {
+                auto& x = work[k];
+                table_[i][x.j] += x.inc;
+                x.est = std::min(x.est, table_[i][x.j]);
+            }
+        }
+    }
+
     void print_debug_info() const {
         size_t num_zeros = 0;
         Frequency min = std::numeric_limits<Frequency>::max();

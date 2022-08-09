@@ -19,25 +19,28 @@ class TopKSubstrings {
 private:
     static constexpr bool gather_stats_ = true;
     static constexpr bool measure_time_ = false;
-
     static constexpr bool sketch_batching_ = true;
-    static constexpr size_t sketch_batch_size_ = 32767;
+
+    static constexpr size_t sketch_batch_size_ = 100;
     
     struct Stats {
         size_t num_strings_total;
         size_t num_filter_inc;
         size_t num_sketch_inc;
+        size_t num_sketch_batches;
         size_t num_swaps;
         size_t num_overestimates;
         
         pm::Stopwatch t_filter_find;
         pm::Stopwatch t_filter_inc;
         pm::Stopwatch t_sketch_inc;
+        pm::Stopwatch t_sketch_batch;
         pm::Stopwatch t_swaps;
 
         inline Stats() : num_strings_total(0),
                          num_filter_inc(0),
                          num_sketch_inc(0),
+                         num_sketch_batches(0),
                          num_swaps(0),
                          num_overestimates(0) {
         }
@@ -64,14 +67,23 @@ private:
     CountMin<size_t> sketch_;
 
     struct SketchQueueEntry {
-        uint64_t fingerprint;
         FilterIndex parent;
+        size_t count;
         char label;
         bool single_letter;
+
+        inline SketchQueueEntry() {
+        }
+
+        inline SketchQueueEntry(FilterIndex const _parent, char const _label, bool _single_letter)
+            : parent(_parent), count(1), label(_label), single_letter(_single_letter) {
+        }
     };
-    std::vector<SketchQueueEntry> sketch_queue_;
-    std::vector<size_t> sketch_queue_est_;
+
+    ankerl::unordered_dense::map<uint64_t, SketchQueueEntry> sketch_queue_;
+    size_t sketch_count_;
     ankerl::unordered_dense::set<size_t> sketch_swapped_away_;
+    std::unique_ptr<decltype(sketch_)::BatchWorkItem[]> sketch_work_;
 
     size_t k_;
     size_t len_;
@@ -156,36 +168,44 @@ private:
     }
 
     void process_sketch_queue() {
-        sketch_queue_est_.clear();
+        if constexpr(gather_stats_) ++stats_.num_sketch_batches;
+        if constexpr(measure_time_) stats_.t_sketch_batch.resume();
+
         sketch_swapped_away_.clear();
 
         // batch sketch
-        for(auto const& e : sketch_queue_) {
-            if constexpr(measure_time_) stats_.t_sketch_inc.resume();
-            // TODO: provide dedicated batch increment and estimate functions
-            sketch_queue_est_.push_back(sketch_.increment_and_estimate(e.fingerprint));
-            if constexpr(measure_time_) stats_.t_sketch_inc.pause();
+        size_t const batch_num = sketch_queue_.size();
+        size_t i = 0;
+        for(auto const& it : sketch_queue_) {
+            sketch_work_[i].item = it.first;
+            sketch_work_[i].inc = it.second.count;
+            ++i;
         }
+
+        sketch_.batch_increment_and_estimate(sketch_work_.get(), batch_num);
 
         // test for swaps
         size_t min_freq = min_pq_.min_frequency();
-        for(size_t i = 0; i < sketch_queue_.size(); i++) {
-            auto const est = sketch_queue_est_[i];
+        for(size_t i = 0; i < batch_num; i++) {
+            auto const est = sketch_work_[i].est;
             if(est > min_freq) {
                 // this string may now be frequent, we must make sure of three things:
                 // (1) the parent was frequent at queue time
                 // (2) the parent is still frequent right now (we are processing a batch, so that info may be outdated)
                 // (3) the parent's frequency is higher than the estimate (otherwise we are clearly dealing with an overestimate)
-                auto const& e = sketch_queue_[i];
-
+                auto const fp = sketch_work_[i].item;
+                auto const& e = sketch_queue_.find(fp)->second; // nb: must exist
                 if(e.parent && !sketch_swapped_away_.contains(e.parent) && (filter_.data(e.parent).freq >= est || e.single_letter)) {
-                    auto const swapped = swap_into_filter(e.parent, e.label, e.fingerprint, est);
-                    sketch_swapped_away_.insert(swapped); // nb: memorize swapped-out node in a set in order to do checks of (2) via membership queries?
+                    auto const swapped = swap_into_filter(e.parent, e.label, fp, est);
+                    min_freq = min_pq_.min_frequency();
+                    sketch_swapped_away_.insert(swapped);
                 } else {
                     if constexpr(gather_stats_) ++stats_.num_overestimates;
                 }
             }
         }
+
+        if constexpr(measure_time_) stats_.t_sketch_batch.pause();
     }
 
 public:
@@ -195,13 +215,14 @@ public:
           filter_(k),
           min_pq_(k),
           sketch_(sketch_rows, sketch_columns),
+          sketch_count_(0),
           k_(k),
           len_(len),
           stats_() {
 
         if constexpr(sketch_batching_) {
             sketch_queue_.reserve(sketch_batch_size_);
-            sketch_queue_est_.reserve(sketch_batch_size_);
+            sketch_work_ = std::make_unique<decltype(sketch_)::BatchWorkItem[]>(sketch_batch_size_);
         }
     }
 
@@ -248,16 +269,23 @@ public:
             
             // the current prefix is non-frequent
             if(filter_.full()) {
-                    // the filter is full, count current prefix in the sketch
-                    if constexpr(gather_stats_) ++stats_.num_sketch_inc;
+                // the filter is full, count current prefix in the sketch
+                if constexpr(gather_stats_) ++stats_.num_sketch_inc;
+
                 if constexpr(sketch_batching_) {
                     // enter into skech queue
-                    sketch_queue_.emplace_back(ext_fp, s.node, c, i == 0);
+                    auto it = sketch_queue_.find(ext_fp);
+                    if(it != sketch_queue_.end()) {
+                        ++it->second.count;
+                    } else {
+                        sketch_queue_.emplace(ext_fp, SketchQueueEntry(s.node, c, i == 0));
+                    }
 
                     // if sketch queue is full, sketch as batch
-                    if(sketch_queue_.size() >= sketch_batch_size_) {
+                    if(++sketch_count_ >= sketch_batch_size_) {
                         process_sketch_queue();
                         sketch_queue_.clear();
+                        sketch_count_ = 0;
                     }
 
                     // invalidate node
@@ -310,12 +338,20 @@ public:
                   << ", num_sketch_inc=" << stats_.num_sketch_inc
                   << ", num_swaps=" << stats_.num_swaps
                   << ", num_overestimates=" << stats_.num_overestimates;
-                  
+
+        if constexpr(sketch_batching_) {
+            std::cout << ", num_sketch_batches=" << stats_.num_sketch_batches;
+        }
+
         if constexpr(measure_time_) {
             std::cout << ", t_filter_find=" << (stats_.t_filter_find.elapsed_time_millis() / 1000.0)
                       << ", t_filter_inc=" << (stats_.t_filter_inc.elapsed_time_millis() / 1000.0)
                       << ", t_sketch_inc=" << (stats_.t_sketch_inc.elapsed_time_millis() / 1000.0)
                       << ", t_swaps=" << (stats_.t_swaps.elapsed_time_millis() / 1000.0);
+
+            if constexpr(sketch_batching_) {
+                std::cout << ", t_sketch_batches=" << (stats_.t_sketch_batch.elapsed_time_millis() / 1000.0);
+            }
         }
 
         std::cout << std::endl;
