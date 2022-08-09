@@ -7,6 +7,7 @@
 #include <pm/stopwatch.hpp>
 #include <tdc/util/concepts.hpp>
 
+#include "always_inline.hpp"
 #include "trie.hpp"
 #include "min_pq.hpp"
 #include "count_min.hpp"
@@ -73,169 +74,154 @@ public:
       len_(len),
       stats_() {
     }
-    
-    struct LongestFrequentPrefix {
-        size_t index;
-        size_t length;
+
+    struct StringState {
+        FilterIndex len;         // length of the string
+        FilterIndex node;        // the string's node in the filter
+        uint64_t    fingerprint; // fingerprint
+        bool        frequent;    // whether or not the string is frequent
     };
 
-    template<typename Str>
-    LongestFrequentPrefix count_prefixes_and_match(Str const& s, size_t len, size_t max_match_len) {
-        // init
-        size_t i = 0;
-        LongestFrequentPrefix match = { SIZE_MAX, 0 };
+    // returns a string state for the empty string to start with
+    // also conceptually clears the fingerprint window
+    StringState empty_string() ALWAYS_INLINE {
+        return StringState { 0, filter_.root(), rolling_fp_offset_, true };
+    }
 
-        uint64_t fp = rolling_fp_offset_;
+    // extends a string to the right by a new character
+    // modifies the fingerprint window
+    StringState extend(StringState const& s, char const c) ALWAYS_INLINE {
+        if constexpr(gather_stats_) ++stats_.num_strings_total;
+        auto const i = s.len;
 
-        bool look_in_filter = true;
-        FilterIndex previous = filter_.root();
+        // update fingerprint
+        hash_window_[i] = c;
+        char const pop = (i >= hash_window_size_) ? hash_window_[i - hash_window_size_] : 0;
+        auto const ext_fp = hash_.roll(s.fingerprint, pop, c);
 
-        for(size_t i = 0; i < len; i++) {
-            // get next character
-            if constexpr(gather_stats_) ++stats_.num_strings_total;
-            char const c = s[i];
+        // try and find extension in filter
+        StringState ext;
+        ext.len = i + 1;
+        ext.fingerprint = ext_fp;
 
-            // update fingerprint
-            {
-                hash_window_[i] = c;
-                char pop = (i >= hash_window_size_ ? hash_window_[i - hash_window_size_] : 0);
-                fp = hash_.roll(fp, pop, c);
-            }
-
-            // debug print current prefix and fingerprint
-            {
-                // hash_window_[i + 1] = 0;
-                // std::cout << "s=" << hash_window_.get() << ", fp=0x" << std::hex << fp << std::dec << std::endl;
-            }
-
-            // try and find prefix of length i+1 in filter
-            FilterIndex child;
+        if constexpr(measure_time_) if(s.frequent) stats_.t_filter_find.resume();
+        if(s.frequent && filter_.try_get_child(s.node, c, ext.node)) {
+            auto const ext_node = ext.node;
+            if constexpr(measure_time_) stats_.t_filter_find.pause();
             
-            if constexpr(measure_time_) if(look_in_filter) stats_.t_filter_find.resume();
-            if(look_in_filter && filter_.try_get_child(previous, c, child)) {
-                if constexpr(measure_time_) stats_.t_filter_find.pause();
+            // the current prefix is frequent
+            if constexpr(gather_stats_) ++stats_.num_filter_inc;
+            if constexpr(measure_time_) stats_.t_filter_inc.resume();
+
+            // increment frequency
+            bool const maximal = filter_.is_leaf(ext_node);
+            auto& data = filter_.data(ext_node);
+            ++data.freq;
+            if(maximal) {
+                // prefix is maximal frequent string, increase in min pq
+                assert((bool)data.minpq);
+                data.minpq = min_pq_.increase_key(data.minpq);
+            }
+
+            if constexpr(measure_time_) stats_.t_filter_inc.pause();
+
+            // done
+            ext.frequent = true;
+        } else {
+            if constexpr(measure_time_) if(s.frequent) stats_.t_filter_find.pause();
+            
+            // the current prefix is non-frequent
+            if(filter_.full()) {
+                // the filter is full, count current prefix in the sketch
+                if constexpr(gather_stats_) ++stats_.num_sketch_inc;
                 
-                // the current prefix is frequent
-                if constexpr(gather_stats_) ++stats_.num_filter_inc;
-                if constexpr(measure_time_) stats_.t_filter_inc.resume();
-                
-                // update longest match
-                if(i < max_match_len) {
-                    match.index = child;
-                    match.length = i + 1;
-                }
+                if constexpr(measure_time_) stats_.t_sketch_inc.resume();
+                auto est = sketch_.increment_and_estimate(ext_fp);
+                if constexpr(measure_time_) stats_.t_sketch_inc.pause();
 
-                // increment frequency
-                bool const maximal = filter_.is_leaf(child);
-                auto& data = filter_.data(child);
-                ++data.freq;
-                if(maximal) {
-                    // prefix is maximal frequent string, increase in min pq
-                    assert((bool)min_pq_map_[child]);
-                    data.minpq = min_pq_.increase_key(data.minpq);
-                }
+                // test if it is now frequent
+                if(est > min_pq_.min_frequency()) {
+                    // it is now frequent according to just the numbers, test if we can swap
+                    if((s.node && filter_.data(s.node).freq >= est) || i == 0) {
+                        // std::cout << "swap! est=" << est << ", min=" << min_pq_.min_frequency() << std::endl;
 
-                // advance to next prefix
-                previous = child;
-                
-                if constexpr(measure_time_) stats_.t_filter_inc.pause();
-            } else {
-                if constexpr(measure_time_) if(look_in_filter) stats_.t_filter_find.pause();
-                
-                // the current prefix is non-frequent
-                if(filter_.full()) {
-                    // the filter is full, count current prefix in the sketch
-                    if constexpr(gather_stats_) ++stats_.num_sketch_inc;
-                    
-                    if constexpr(measure_time_) stats_.t_sketch_inc.resume();
-                    auto est = sketch_.increment_and_estimate(fp);
-                    if constexpr(measure_time_) stats_.t_sketch_inc.pause();
+                        // the immediate prefix was frequent, so yes, we can!
+                        if constexpr(gather_stats_) ++stats_.num_swaps;
+                        if constexpr(measure_time_) stats_.t_swaps.resume();
 
-                    // test if it is now frequent
-                    if(est > min_pq_.min_frequency()) {
-                        // it is now frequent, test if we can swap
-                        if((previous && filter_.data(previous).freq >= est) || i == 0) {
-                            // std::cout << "swap! est=" << est << ", min=" << min_pq_.min_frequency() << std::endl;
+                        // extract maximal frequent substring with minimal frequency
+                        size_t const swap = min_pq_.extract_min();
 
-                            // the immediate prefix was frequent, so yes, we can!
-                            if constexpr(gather_stats_) ++stats_.num_swaps;
-                            if constexpr(measure_time_) stats_.t_swaps.resume();
+                        // extract the substring from the filter and get the fingerprint and frequency delta
+                        assert(filter_.is_leaf(swap));
+                        auto const parent = filter_.extract(swap);
+                        auto& swap_data = filter_.data(swap);
 
-                            // extract maximal frequent substring with minimal frequency
-                            size_t const swap = min_pq_.extract_min();
-
-                            // extract the substring from the filter and get the fingerprint and frequency delta
-                            assert(filter_.is_leaf(swap));
-                            auto const parent = filter_.extract(swap);
-                            auto& swap_data = filter_.data(swap);
-
-                            // the parent may now be maximal
-                            if(parent && filter_.is_leaf(parent)) {
-                                // insert into min PQ
-                                auto& parent_data = filter_.data(parent);
-                                parent_data.minpq = min_pq_.insert(parent, parent_data.freq);
-                                assert(min_pq_.freq(parent_data.minpq) == parent_data.freq);
-                            }
-
-                            // count the extracted substring in the sketch as often as it had been counted in the filter
-                            assert(swap_data.freq >= swap_data.insert_freq);
-                            sketch_.increment(swap_data.fingerprint, swap_data.freq - swap_data.insert_freq);
-
-                            // insert the current prefix into the filter, reusing the old entries' node ID
-                            filter_.insert_child(swap, previous, c);
-                            filter_.data(swap) = FilterNodeData { est, est, fp };
-                            assert(filter_.is_leaf(swap));
-
-                            // also insert it into the min PQ
-                            swap_data.minpq = min_pq_.insert(swap, est);
-                            assert(min_pq_.freq(swap_data.minpq) == est);
-                            
-                            // the previous prefix is no longer maximal, remove from min PQ
-                            if(previous) {
-                                auto& previous_data = filter_.data(previous);
-                                previous_data.minpq = min_pq_.remove(previous_data.minpq);
-                            }
-
-                            // make new node the previous node
-                            previous = swap;
-                            
-                            if constexpr(measure_time_) stats_.t_swaps.pause();
-                        } else {
-                            // the immediate prefix was non-frequent or its frequency was too low
-                            // -> the current prefix is overestimated, abort swap
-                            if constexpr(gather_stats_) ++stats_.num_overestimates;
-
-                            // invalidate previous node
-                            previous = 0;
+                        // the parent may now be maximal
+                        if(parent && filter_.is_leaf(parent)) {
+                            // insert into min PQ
+                            auto& parent_data = filter_.data(parent);
+                            parent_data.minpq = min_pq_.insert(parent, parent_data.freq);
+                            assert(min_pq_.freq(parent_data.minpq) == parent_data.freq);
                         }
+
+                        // count the extracted string in the sketch as often as it had been counted in the filter
+                        assert(swap_data.freq >= swap_data.insert_freq);
+                        sketch_.increment(swap_data.fingerprint, swap_data.freq - swap_data.insert_freq);
+
+                        // insert the current string into the filter, reusing the old entries' node ID
+                        filter_.insert_child(swap, s.node, c);
+                        filter_.data(swap) = FilterNodeData { est, est, ext_fp };
+                        assert(filter_.is_leaf(swap));
+
+                        // also insert it into the min PQ
+                        swap_data.minpq = min_pq_.insert(swap, est);
+                        assert(min_pq_.freq(swap_data.minpq) == est);
+                        
+                        // the previous prefix is no longer maximal, remove from min PQ
+                        if(s.node) {
+                            auto& previous_data = filter_.data(s.node);
+                            previous_data.minpq = min_pq_.remove(previous_data.minpq);
+                        }
+
+                        // make new node the extensions' node
+                        ext.node = swap;
+                        
+                        if constexpr(measure_time_) stats_.t_swaps.pause();
                     } else {
-                        // nope, invalidate previous node
-                        previous = 0;
+                        // the immediate prefix was non-frequent or its frequency was too low
+                        // -> the current prefix is overestimated, abort swap
+                        if constexpr(gather_stats_) ++stats_.num_overestimates;
+
+                        // invalidate node
+                        ext.node = 0;
                     }
                 } else {
-                    // insert into filter, which is not yet full
-                    if constexpr(gather_stats_) ++stats_.num_filter_inc;
-
-                    auto child = filter_.new_node();
-                    filter_.insert_child(child, previous, c);
-                    filter_.data(child) = FilterNodeData { 1, 1, fp, min_pq_.insert(child, 1) };
-
-                    // insert into min PQ as a maximal string
-                    assert(min_pq_.freq(filter_.data(child).minpq) == 1);
-
-                    // mark the immediate prefix of this string no longer maximal
-                    auto& previous_data = filter_.data(previous);
-                    previous_data.minpq = min_pq_.remove(previous_data.minpq);
-
-                    // make new node the previous node
-                    previous = child;
+                    // nope, invalidate previous node
+                    ext.node = 0;
                 }
+            } else {
+                // insert into filter, which is not yet full
+                if constexpr(gather_stats_) ++stats_.num_filter_inc;
 
-                // we dropped out of the filter, so no extension can be in the filter (even if the current prefix was inserted or swapped in)
-                look_in_filter = false;
+                ext.node = filter_.new_node();
+                filter_.insert_child(ext.node, s.node, c);
+                filter_.data(ext.node) = FilterNodeData { 1, 1, ext.fingerprint, min_pq_.insert(ext.node, 1) };
+
+                // insert into min PQ as a maximal string
+                assert(min_pq_.freq(filter_.data(ext.node).minpq) == 1);
+
+                // mark the immediate prefix of this string no longer maximal
+                auto& previous_data = filter_.data(s.node);
+                previous_data.minpq = min_pq_.remove(previous_data.minpq);
             }
+
+            // we dropped out of the filter, so no extension can be frequent (not even if the current prefix was inserted or swapped in)
+            ext.frequent = false;
         }
-        return match;
+
+        // advance
+        return ext;
     }
 
     size_t get(size_t const index, char* buffer) const {

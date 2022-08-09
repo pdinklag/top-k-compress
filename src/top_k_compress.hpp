@@ -84,28 +84,40 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
             }
 
             // count window_size prefixes starting from position (i-window_size)
-            auto longest = topk.count_prefixes_and_match(buf, len, std::min(len, i + 1 - window_size));
+            auto longest = topk.empty_string();
+            {
+                auto s = longest;
+                size_t const max_match_len = std::min(len, i + 1 - window_size);
 
+                for(size_t j = 0; j < len; j++) {
+                    s = topk.extend(s, buf[j]);
+
+                    if(j < max_match_len && s.frequent) {
+                        longest = s;
+                    }
+                }
+            }
+            
             // encode phrase
             if(i >= next_phrase) {
-                if(longest.length >= 1) {
+                if(longest.len >= 1) {
                     if constexpr(DEBUG) {
                         std::cout << "- [ENCODE] frequent phrase: \"";
-                        for(size_t j = 0; j < longest.length; j++) {
+                        for(size_t j = 0; j < longest.len; j++) {
                             std::cout << buf[j];
                         }
-                        std::cout << "\" (length=" << longest.length << ", index=" << longest.index << ")" << std::endl;
+                        std::cout << "\" (length=" << longest.len << ", index=" << longest.node << ")" << std::endl;
                     }
 
-                    encode_phrase(longest.index);
+                    encode_phrase(longest.node);
 
                     ++num_frequent;
-                    next_phrase = i + longest.length;
+                    next_phrase = i + longest.len;
                     naive_enc_size += u_freq.entropy();
                 } else {
                     if constexpr(DEBUG) {
                         std::cout << "- [ENCODE] literal phrase: '" << buf[0] << "'";
-                        if(longest.length == 1) std::cout << " (frequent phrase of length=1, index=" << longest.index << ")";
+                        if(longest.len == 1) std::cout << " (frequent phrase of length=1, index=" << longest.node << ")";
                         std::cout << std::endl;
                     }
                     
