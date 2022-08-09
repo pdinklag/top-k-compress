@@ -40,10 +40,13 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
     tlx::RingBuffer<char> buf(window_size);
     TopKSubstrings topk(k-1, window_size, sketch_rows, sketch_columns);
 
-    Vitter87<size_t> dhuff;
+    Vitter87<size_t> huff_phrases;
+    Vitter87<uint16_t> huff_literals;
     
     if constexpr(huffman_coding) {
-        dhuff = Vitter87<size_t>(k + 1); // we cannot encode 0 as of now, so every phrase gets increased by one when encoding...
+        // we cannot encode 0 as of now, so every phrase or literal gets increased by one when encoding...
+        huff_phrases = Vitter87<size_t>(k + 1);
+        huff_literals = Vitter87<uint16_t>(256);
     }
 
     /*
@@ -56,14 +59,26 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
 
     auto encode_phrase = [&](size_t const x){
         if constexpr(huffman_coding) {
-            auto const code = dhuff.encode_and_transmit(x+1);
-            dhuff.update(x+1);
+            auto const code = huff_phrases.encode_and_transmit(x+1);
+            huff_phrases.update(x+1);
             out.write(code.word, code.length);
         } else {
             Binary::encode(out, x, u_freq);
         }
         // ++phrase_hist[x];
         // phrase_bits[x] += code.length;
+    };
+
+    auto encode_literal = [&](char const c){
+        encode_phrase(0);
+        if constexpr(huffman_coding) {
+            uint16_t const x = (uint16_t)((uint8_t)c);
+            auto const code = huff_literals.encode_and_transmit(x+1);
+            huff_literals.update(x+1);
+            out.write(code.word, code.length);
+        } else {
+            Binary::encode(out, c, u_literal);
+        }
     };
 
     size_t num_frequent = 0;
@@ -126,8 +141,7 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
                         std::cout << std::endl;
                     }
                     
-                    encode_phrase(0);
-                    Binary::encode(out, buf[0], u_literal);
+                    encode_literal(buf[0]);
 
                     ++num_literal;
                     next_phrase = i + 1;
