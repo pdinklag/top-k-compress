@@ -5,6 +5,8 @@
 
 #include <tlx/container/ring_buffer.hpp>
 
+#include <pm/malloc_counter.hpp>
+
 #include <tdc/code/universal/binary.hpp>
 #include <tdc/util/concepts.hpp>
 #include <tdc/util/math.hpp>
@@ -18,6 +20,9 @@ constexpr bool DEBUG = false;
 template<tdc::InputIterator<char> In, tdc::io::BitSink Out, bool huffman_coding>
 void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns) {
     using namespace tdc::code;
+
+    pm::MallocCounter malloc_counter;
+    malloc_counter.start();
 
     // encode header
     if(!omit_header) {
@@ -97,7 +102,7 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
                     }
                 }
             }
-            
+
             // encode phrase
             if(i >= next_phrase) {
                 if(longest.len >= 1) {
@@ -164,7 +169,10 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
     }
     */
 
+    malloc_counter.stop();
+
     topk.print_debug_info();
+    std::cout << "mem_peak=" << malloc_counter.peak() << std::endl;
     std::cout << "parse"
         << " n=" << (i - window_size + 1)
         << ": num_frequent=" << num_frequent
