@@ -30,14 +30,16 @@ private:
         }
     };
 
+    using ItemPool = ListPool<EntryIndex, EntryIndex>;
+
     struct Bucket {
         Frequency freq;
-        ListPool<EntryIndex>::List items;
+        ItemPool::List items;
 
         Bucket() : freq(0) {
         }
 
-        Bucket(Frequency _freq, ListPool<EntryIndex>::List&& _items) : freq(_freq), items(std::move(_items)) {
+        Bucket(Frequency _freq, ItemPool::List&& _items) : freq(_freq), items(std::move(_items)) {
         }
 
         bool empty() const {
@@ -47,18 +49,20 @@ private:
         size_t size() const {
             return items.size();
         }
-    };
+    } __attribute__((packed));
 
-    ListPool<Bucket> bucket_pool_;
-    ListPool<EntryIndex> item_pool_;
+    using BucketPool = ListPool<Bucket, EntryIndex>;
     
-    ListPool<Bucket>::List buckets_;
+    BucketPool bucket_pool_;
+    ItemPool item_pool_;
+    
+    BucketPool::List buckets_;
     Stats stats_;
 
 public:
     struct Location {
-        using BucketRef = ListPool<Bucket>::List::iterator;
-        using ItemRef = ListPool<EntryIndex>::List::iterator;
+        using BucketRef = BucketPool::List::iterator;
+        using ItemRef = ItemPool::List::iterator;
 
         BucketRef bucket;
         ItemRef entry;

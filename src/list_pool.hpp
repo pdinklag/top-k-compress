@@ -1,25 +1,27 @@
 #include <cassert>
+#include <concepts>
 #include <cstddef>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
 
 // a pool of linked lists sharing the same allocated memory area, in the hope to reduce cache misses in practice
-template<typename Item>
+template<typename Item, std::unsigned_integral EntryIndex = uint32_t>
 class ListPool {
 public:
-    static constexpr size_t NIL = SIZE_MAX;
+    static constexpr EntryIndex NIL = std::numeric_limits<EntryIndex>::max();
 
     struct Entry {
-        size_t prev;
-        size_t next;
+        EntryIndex prev;
+        EntryIndex next;
         Item item;
     };
 
 private:
     std::unique_ptr<Entry[]> data_;
-    std::vector<size_t> free_;
+    std::vector<EntryIndex> free_;
 
 public:
     ListPool(size_t const max_items) {
@@ -32,7 +34,7 @@ public:
     }
 
     // claim an entry from the pool
-    size_t claim() {
+    EntryIndex claim() {
         assert(!free_.empty());
 
         auto const i = free_.back();
@@ -41,13 +43,13 @@ public:
     }
 
     // release an entry back into the pool
-    void release(size_t const i) {
+    void release(EntryIndex const i) {
         free_.push_back(i);
     }
 
-    Entry& entry(size_t const e) { assert(e != NIL); return data_[e]; }
+    Entry& entry(EntryIndex const e) { assert(e != NIL); return data_[e]; }
     
-    Entry const& entry(size_t const e) const { assert(e != NIL); return data_[e]; }
+    Entry const& entry(EntryIndex const e) const { assert(e != NIL); return data_[e]; }
 
     size_t capacity() const { return free_.capacity(); }
 
@@ -59,10 +61,10 @@ public:
         using reference         = Item&;
 
         ListPool* pool;
-        size_t entry;
+        EntryIndex entry;
 
         Iterator() : pool(nullptr), entry(NIL) {}
-        Iterator(ListPool& _pool, size_t const _entry) : pool(&_pool), entry(_entry) {}
+        Iterator(ListPool& _pool, EntryIndex const _entry) : pool(&_pool), entry(_entry) {}
 
         Iterator(Iterator const&) = default;
         Iterator& operator=(Iterator const&) = default;
@@ -89,10 +91,10 @@ public:
         using reference         = Item const&;
 
         ListPool const* pool;
-        size_t entry;
+        EntryIndex entry;
 
         ConstIterator() : pool(nullptr), entry(NIL) {}
-        ConstIterator(ListPool const& _pool, size_t const _entry) : pool(&_pool), entry(_entry) {}
+        ConstIterator(ListPool const& _pool, EntryIndex const _entry) : pool(&_pool), entry(_entry) {}
 
         ConstIterator(ConstIterator const&) = default;
         ConstIterator& operator=(ConstIterator const&) = default;
@@ -114,12 +116,12 @@ public:
     class List {
     private:
         ListPool* pool_;
-        size_t head_;
-        size_t tail_;
-        size_t size_;
+        EntryIndex head_;
+        EntryIndex tail_;
+        EntryIndex size_;
 
         template<typename It>
-        std::pair<size_t, Entry*> insert(It pos) {
+        std::pair<EntryIndex, Entry*> insert(It pos) {
             auto const i = pool_->claim();
             auto& e = pool_->entry(i);
 
