@@ -1,5 +1,5 @@
 add_executable(comp comp.cpp)
-target_link_libraries(comp tdc tlx pm-malloc)
+target_link_libraries(comp tdc tlx unordered_dense pm-malloc)
 
 add_executable(vitter87 vitter87.cpp)
 target_link_libraries(vitter87 tdc)

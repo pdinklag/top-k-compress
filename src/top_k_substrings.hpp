@@ -3,7 +3,9 @@
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <vector>
 
+#include <ankerl/unordered_dense.h>
 #include <pm/stopwatch.hpp>
 #include <tdc/util/concepts.hpp>
 
@@ -17,6 +19,9 @@ class TopKSubstrings {
 private:
     static constexpr bool gather_stats_ = true;
     static constexpr bool measure_time_ = false;
+
+    static constexpr bool sketch_batching_ = true;
+    static constexpr size_t sketch_batch_size_ = 32767;
     
     struct Stats {
         size_t num_strings_total;
@@ -57,6 +62,16 @@ private:
     Trie<FilterNodeData, FilterIndex> filter_;
     MinPQ<size_t, FilterIndex> min_pq_;
     CountMin<size_t> sketch_;
+
+    struct SketchQueueEntry {
+        uint64_t fingerprint;
+        FilterIndex parent;
+        char label;
+        bool single_letter;
+    };
+    std::vector<SketchQueueEntry> sketch_queue_;
+    std::vector<size_t> sketch_queue_est_;
+    ankerl::unordered_dense::set<size_t> sketch_swapped_away_;
 
     size_t k_;
     size_t len_;
@@ -140,16 +155,54 @@ private:
         return swap;
     }
 
+    void process_sketch_queue() {
+        sketch_queue_est_.clear();
+        sketch_swapped_away_.clear();
+
+        // batch sketch
+        for(auto const& e : sketch_queue_) {
+            if constexpr(measure_time_) stats_.t_sketch_inc.resume();
+            // TODO: provide dedicated batch increment and estimate functions
+            sketch_queue_est_.push_back(sketch_.increment_and_estimate(e.fingerprint));
+            if constexpr(measure_time_) stats_.t_sketch_inc.pause();
+        }
+
+        // test for swaps
+        size_t min_freq = min_pq_.min_frequency();
+        for(size_t i = 0; i < sketch_queue_.size(); i++) {
+            auto const est = sketch_queue_est_[i];
+            if(est > min_freq) {
+                // this string may now be frequent, we must make sure of three things:
+                // (1) the parent was frequent at queue time
+                // (2) the parent is still frequent right now (we are processing a batch, so that info may be outdated)
+                // (3) the parent's frequency is higher than the estimate (otherwise we are clearly dealing with an overestimate)
+                auto const& e = sketch_queue_[i];
+
+                if(e.parent && !sketch_swapped_away_.contains(e.parent) && (filter_.data(e.parent).freq >= est || e.single_letter)) {
+                    auto const swapped = swap_into_filter(e.parent, e.label, e.fingerprint, est);
+                    sketch_swapped_away_.insert(swapped); // nb: memorize swapped-out node in a set in order to do checks of (2) via membership queries?
+                } else {
+                    if constexpr(gather_stats_) ++stats_.num_overestimates;
+                }
+            }
+        }
+    }
+
 public:
     inline TopKSubstrings(size_t const k, size_t const len, size_t sketch_rows, size_t sketch_columns)
-    : hash_(hash_window_size_, rolling_fp_base_),
-      hash_window_(std::make_unique<char[]>(len + 1)), // +1 is just for debugging purposes...
-      filter_(k),
-      min_pq_(k),
-      sketch_(sketch_rows, sketch_columns),
-      k_(k),
-      len_(len),
-      stats_() {
+        : hash_(hash_window_size_, rolling_fp_base_),
+          hash_window_(std::make_unique<char[]>(len + 1)), // +1 is just for debugging purposes...
+          filter_(k),
+          min_pq_(k),
+          sketch_(sketch_rows, sketch_columns),
+          k_(k),
+          len_(len),
+          stats_() {
+
+        if constexpr(sketch_batching_) {
+            sketch_queue_.reserve(sketch_batch_size_);
+            sketch_queue_est_.reserve(sketch_batch_size_);
+        }
     }
 
     struct StringState {
@@ -195,30 +248,43 @@ public:
             
             // the current prefix is non-frequent
             if(filter_.full()) {
-                // the filter is full, count current prefix in the sketch
-                if constexpr(gather_stats_) ++stats_.num_sketch_inc;
-                
-                if constexpr(measure_time_) stats_.t_sketch_inc.resume();
-                auto est = sketch_.increment_and_estimate(ext_fp);
-                if constexpr(measure_time_) stats_.t_sketch_inc.pause();
+                    // the filter is full, count current prefix in the sketch
+                    if constexpr(gather_stats_) ++stats_.num_sketch_inc;
+                if constexpr(sketch_batching_) {
+                    // enter into skech queue
+                    sketch_queue_.emplace_back(ext_fp, s.node, c, i == 0);
 
-                // test if it is now frequent
-                if(est > min_pq_.min_frequency()) {
-                    // it is now frequent according to just the numbers, test if we can swap
-                    if((s.node && filter_.data(s.node).freq >= est) || i == 0) {
-                        // the immediate prefix was frequent, so yes, we can!
-                        ext.node = swap_into_filter(s.node, c, ext_fp, est);
+                    // if sketch queue is full, sketch as batch
+                    if(sketch_queue_.size() >= sketch_batch_size_) {
+                        process_sketch_queue();
+                        sketch_queue_.clear();
+                    }
+
+                    // invalidate node
+                    ext.node = 0;
+                } else {
+                    if constexpr(measure_time_) stats_.t_sketch_inc.resume();
+                    auto est = sketch_.increment_and_estimate(ext_fp);
+                    if constexpr(measure_time_) stats_.t_sketch_inc.pause();
+
+                    // test if it is now frequent
+                    if(est > min_pq_.min_frequency()) {
+                        // it is now frequent according to just the numbers, test if we can swap
+                        if((s.node && filter_.data(s.node).freq >= est) || i == 0) {
+                            // the immediate prefix was frequent, so yes, we can!
+                            ext.node = swap_into_filter(s.node, c, ext_fp, est);
+                        } else {
+                            // the immediate prefix was non-frequent or its frequency was too low
+                            // -> the current prefix is overestimated, abort swap
+                            if constexpr(gather_stats_) ++stats_.num_overestimates;
+
+                            // invalidate node
+                            ext.node = 0;
+                        }
                     } else {
-                        // the immediate prefix was non-frequent or its frequency was too low
-                        // -> the current prefix is overestimated, abort swap
-                        if constexpr(gather_stats_) ++stats_.num_overestimates;
-
-                        // invalidate node
+                        // nope, invalidate previous node
                         ext.node = 0;
                     }
-                } else {
-                    // nope, invalidate previous node
-                    ext.node = 0;
                 }
             } else {
                 // insert into filter, which is not yet full
