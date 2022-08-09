@@ -12,8 +12,16 @@ template<std::unsigned_integral Frequency>
 class CountMin {
 private:
     static constexpr size_t random_seed_ = 147;
-    static constexpr uintmax_t fnv_prime_ = (1ULL << 50) - 27;
-    static constexpr uintmax_t fnv_bpp_ = 13;
+    static constexpr uintmax_t random_primes_[] = {
+        (1ULL << 45) - 229,
+        (1ULL << 45) - 193,
+        (1ULL << 45) - 159,
+        (1ULL << 45) - 139,
+        (1ULL << 45) - 133,
+        (1ULL << 45) - 121,
+        (1ULL << 45) - 93,
+        (1ULL << 45) - 81,
+    };
 
     using Row = std::unique_ptr<Frequency[]>;
 
@@ -21,13 +29,20 @@ private:
     std::unique_ptr<uintmax_t[]> hash_;
     size_t num_rows_;
     size_t num_columns_;
+    size_t cmask_;
 
     size_t hash(size_t const i, uintmax_t const item) const {
-        return (item ^ hash_[i]) % num_columns_;
+        return ((item ^ hash_[i]) % random_primes_[i & 0b111]) & cmask_;
     }
 
 public:
-    inline CountMin(size_t const rows, size_t const columns) : num_rows_(rows), num_columns_(columns) {
+    inline CountMin(size_t const rows, size_t const columns) {
+        num_rows_ = rows;
+
+        auto const cbits = std::bit_width(columns - 1);
+        num_columns_ = 1ULL << cbits;
+        cmask_ = num_columns_ - 1;
+
         // initialize frequency table
         table_ = std::make_unique<Row[]>(num_rows_);
         for(size_t i = 0; i < num_rows_; i++) {
