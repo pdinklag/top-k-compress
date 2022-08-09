@@ -21,7 +21,7 @@ private:
     static constexpr bool measure_time_ = false;
     static constexpr bool sketch_batching_ = false;
 
-    static constexpr size_t sketch_batch_size_ = 1'000;
+    static constexpr size_t sketch_batch_size_ = 600'000;
     
     struct Stats {
         size_t num_strings_total;
@@ -67,20 +67,22 @@ private:
     CountMin<size_t> sketch_;
 
     struct SketchQueueEntry {
+        uint64_t fingerprint;
         FilterIndex parent;
-        size_t count;
         char label;
+        size_t count;
         bool single_letter;
 
         inline SketchQueueEntry() {
         }
 
-        inline SketchQueueEntry(FilterIndex const _parent, char const _label, bool _single_letter)
-            : parent(_parent), count(1), label(_label), single_letter(_single_letter) {
+        inline SketchQueueEntry(uint64_t const _fingerprint, FilterIndex const _parent, char const _label, bool _single_letter)
+            : fingerprint(_fingerprint), parent(_parent), label(_label), count(1), single_letter(_single_letter) {
         }
     };
 
     ankerl::unordered_dense::map<uint64_t, SketchQueueEntry> sketch_queue_;
+    std::vector<SketchQueueEntry> sketch_process_;
     size_t sketch_count_;
     ankerl::unordered_dense::set<size_t> sketch_swapped_away_;
     std::unique_ptr<decltype(sketch_)::BatchWorkItem[]> sketch_work_;
@@ -172,6 +174,7 @@ private:
         if constexpr(measure_time_) stats_.t_sketch_batch.resume();
 
         sketch_swapped_away_.clear();
+        sketch_process_.clear();
 
         // batch sketch
         size_t const batch_num = sketch_queue_.size();
@@ -179,6 +182,7 @@ private:
         for(auto const& it : sketch_queue_) {
             sketch_work_[i].item = it.first;
             sketch_work_[i].inc = it.second.count;
+            sketch_process_.push_back(it.second);
             ++i;
         }
 
@@ -194,8 +198,8 @@ private:
                 // (2) the parent is still frequent right now (we are processing a batch, so that info may be outdated)
                 // (3) the parent's frequency is higher than the estimate (otherwise we are clearly dealing with an overestimate)
                 auto const fp = sketch_work_[i].item;
-                auto const& e = sketch_queue_.find(fp)->second; // nb: must exist
-                if(e.parent && !sketch_swapped_away_.contains(e.parent) && (filter_.data(e.parent).freq >= est || e.single_letter)) {
+                auto const& e = sketch_process_[i];
+                if(e.single_letter || (e.parent && filter_.data(e.parent).freq >= est && !sketch_swapped_away_.contains(e.parent))) {
                     auto const swapped = swap_into_filter(e.parent, e.label, fp, est);
                     min_freq = min_pq_.min_frequency();
                     sketch_swapped_away_.insert(swapped);
@@ -222,6 +226,7 @@ public:
 
         if constexpr(sketch_batching_) {
             sketch_queue_.reserve(sketch_batch_size_);
+            sketch_process_.reserve(sketch_batch_size_);
             sketch_work_ = std::make_unique<decltype(sketch_)::BatchWorkItem[]>(sketch_batch_size_);
         }
     }
@@ -273,12 +278,12 @@ public:
                 if constexpr(gather_stats_) ++stats_.num_sketch_inc;
 
                 if constexpr(sketch_batching_) {
-                    // enter into skech queue
+                    // enter into sketch queue
                     auto it = sketch_queue_.find(ext_fp);
                     if(it != sketch_queue_.end()) {
                         ++it->second.count;
                     } else {
-                        sketch_queue_.emplace(ext_fp, SketchQueueEntry(s.node, c, i == 0));
+                        sketch_queue_.emplace(ext_fp, SketchQueueEntry(ext_fp, s.node, c, i == 0));
                     }
 
                     // if sketch queue is full, sketch as batch
@@ -291,6 +296,7 @@ public:
                     // invalidate node
                     ext.node = 0;
                 } else {
+                    // increment in sketch
                     if constexpr(measure_time_) stats_.t_sketch_inc.resume();
                     auto est = sketch_.increment_and_estimate(ext_fp);
                     if constexpr(measure_time_) stats_.t_sketch_inc.pause();
@@ -298,7 +304,7 @@ public:
                     // test if it is now frequent
                     if(est > min_pq_.min_frequency()) {
                         // it is now frequent according to just the numbers, test if we can swap
-                        if((s.node && filter_.data(s.node).freq >= est) || i == 0) {
+                        if(i == 0 || (s.node && filter_.data(s.node).freq >= est)) {
                             // the immediate prefix was frequent, so yes, we can!
                             ext.node = swap_into_filter(s.node, c, ext_fp, est);
                         } else {

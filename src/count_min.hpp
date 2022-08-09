@@ -89,50 +89,38 @@ public:
     struct BatchWorkItem {
         uintmax_t item;
         Frequency inc;
-        
         Frequency est;
-        size_t    j;
     };
 
     inline void batch_increment_and_estimate(BatchWorkItem* work, size_t const num) {
-        omp_set_num_threads(6);
+        omp_set_num_threads(6); // FIXME: un-hardcode?
 
-        // nb: item and inc are expected to be pre-filled!
+        // nb: item and inc are expected to be pre-filled, est is the output
         // initialize work items, computing first hash function on the fly
-        #pragma omp parallel for
-        for(size_t k = 0; k < num; k++) {
-            auto& x = work[k];
-            x.j = hash(0, x.item);
-            x.est = std::numeric_limits<Frequency>::max();
-        }
-
-        for(size_t i = 0; i < num_rows_ - 1; i++) {
-            // sort work items by hashes
-            ips4o::sort(work, work + num, [](BatchWorkItem const& a, BatchWorkItem const& b){ return a.j < b.j; });
-            auto& row = table_[i];
-
-            // increment and update estimates
+        //
+        {
+            auto& row = table_[0];
             #pragma omp parallel for
             for(size_t k = 0; k < num; k++) {
                 auto& x = work[k];
-                row[x.j] += x.inc;
-                x.est = std::min(x.est, row[x.j]);
-                x.j = hash(i + 1, x.item);
+                size_t const j = hash(0, x.item);
+
+                row[j] += x.inc;
+                x.est = row[j];
             }
         }
 
-        // last iteration
-        {
-            size_t const i = num_rows_ - 1;
-            ips4o::sort(work, work + num, [](BatchWorkItem const& a, BatchWorkItem const& b){ return a.j < b.j; });
+        for(size_t i = 1; i < num_rows_; i++) {
+            // sort work items by hashes
             auto& row = table_[i];
 
             // increment and update estimates
             #pragma omp parallel for
             for(size_t k = 0; k < num; k++) {
                 auto& x = work[k];
-                row[x.j] += x.inc;
-                x.est = std::min(x.est, row[x.j]);
+                size_t const j = hash(i, x.item);
+                row[j] += x.inc;
+                x.est = std::min(x.est, row[j]);
             }
         }
     }
