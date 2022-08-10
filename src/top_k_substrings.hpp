@@ -1,8 +1,10 @@
 #include <algorithm>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <random>
 #include <vector>
 
 #include <ankerl/unordered_dense.h>
@@ -20,7 +22,7 @@ private:
     static constexpr bool gather_stats_ = true;
     static constexpr bool measure_time_ = false;
 
-    static constexpr size_t sketch_batch_size_ = 600'000;
+    static constexpr size_t sketch_seed_ = 777;
     
     struct Stats {
         size_t num_strings_total;
@@ -61,12 +63,24 @@ private:
     using FilterIndex = uint32_t;
     Trie<FilterNodeData, FilterIndex> filter_;
     MinPQ<size_t, FilterIndex> min_pq_;
-    CountMin<size_t> sketch_;
+
+    using Sketch = CountMin<size_t>;
+    std::unique_ptr<Sketch[]> sketches_;
+
+    std::mt19937 sketch_selector_;
+    size_t num_sketches_;
+    size_t sketch_distr_;
+    static constexpr size_t sketch_distr_divisor_ = 8;
 
     size_t k_;
     size_t len_;
 
     Stats stats_;
+
+    size_t select_sketch(char const c) {
+        uint8_t const x = c;
+        return ((x ^ 0b1011'1010) + (sketch_selector_() % sketch_distr_)) % num_sketches_;
+    }
 
     void increment_in_filter(FilterIndex const v) ALWAYS_INLINE {
         if constexpr(gather_stats_) ++stats_.num_filter_inc;
@@ -102,7 +116,7 @@ private:
         return v;
     }
 
-    FilterIndex swap_into_filter(FilterIndex const parent, char const label, uint64_t const fingerprint, size_t const frequency) ALWAYS_INLINE {
+    FilterIndex swap_into_filter(FilterIndex const parent, char const label, uint64_t const fingerprint, size_t const frequency, Sketch& sketch) ALWAYS_INLINE {
         if constexpr(gather_stats_) ++stats_.num_swaps;
         if constexpr(measure_time_) stats_.t_swaps.resume();
 
@@ -124,7 +138,7 @@ private:
 
         // count the extracted string in the sketch as often as it had been counted in the filter
         assert(swap_data.freq >= swap_data.insert_freq);
-        sketch_.increment(swap_data.fingerprint, swap_data.freq - swap_data.insert_freq);
+        sketch.increment(swap_data.fingerprint, swap_data.freq - swap_data.insert_freq);
 
         // insert the current string into the filter, reusing the old entries' node ID
         filter_.insert_child(swap, parent, label);
@@ -146,28 +160,38 @@ private:
     }
 
 public:
-    inline TopKSubstrings(size_t const k, size_t const len, size_t sketch_rows, size_t sketch_columns)
+    inline TopKSubstrings(size_t const k, size_t const len, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns)
         : hash_(hash_window_size_, rolling_fp_base_),
           hash_window_(std::make_unique<char[]>(len + 1)), // +1 is just for debugging purposes...
           filter_(k),
           min_pq_(k),
-          sketch_(sketch_rows, sketch_columns),
           k_(k),
           len_(len),
           stats_() {
+
+        auto const sbits = std::bit_width(num_sketches - 1);
+        num_sketches_ = num_sketches;
+        sketch_distr_ = std::max(size_t(1), num_sketches / sketch_distr_divisor_);
+
+        sketches_ = std::make_unique<Sketch[]>(num_sketches_);
+        sketch_selector_.seed(sketch_seed_);
+        for(size_t i = 0; i < num_sketches_; i++) {
+            sketches_[i] = Sketch(sketch_rows, sketch_columns / num_sketches_);
+        }
     }
 
     struct StringState {
         FilterIndex len;         // length of the string
         FilterIndex node;        // the string's node in the filter
         uint64_t    fingerprint; // fingerprint
+        uint8_t     sketch;      // which sketch is used for this string
         bool        frequent;    // whether or not the string is frequent
     };
 
     // returns a string state for the empty string to start with
     // also conceptually clears the fingerprint window
     StringState empty_string() ALWAYS_INLINE {
-        return StringState { 0, filter_.root(), rolling_fp_offset_, true };
+        return StringState { 0, filter_.root(), rolling_fp_offset_, 0, true };
     }
 
     // extends a string to the right by a new character
@@ -185,6 +209,7 @@ public:
         StringState ext;
         ext.len = i + 1;
         ext.fingerprint = ext_fp;
+        ext.sketch = (i == 0) ? select_sketch(c) : s.sketch;
 
         if constexpr(measure_time_) if(s.frequent) stats_.t_filter_find.resume();
         if(s.frequent && filter_.try_get_child(s.node, c, ext.node)) {
@@ -205,7 +230,9 @@ public:
 
                 // increment in sketch
                 if constexpr(measure_time_) stats_.t_sketch_inc.resume();
-                auto est = sketch_.increment_and_estimate(ext_fp);
+
+                auto& sketch = sketches_[ext.sketch];
+                auto est = sketch.increment_and_estimate(ext_fp);
                 if constexpr(measure_time_) stats_.t_sketch_inc.pause();
 
                 // test if it is now frequent
@@ -213,7 +240,7 @@ public:
                     // it is now frequent according to just the numbers, test if we can swap
                     if(i == 0 || (s.node && filter_.data(s.node).freq >= est)) {
                         // the immediate prefix was frequent, so yes, we can!
-                        ext.node = swap_into_filter(s.node, c, ext_fp, est);
+                        ext.node = swap_into_filter(s.node, c, ext_fp, est, sketch);
                     } else {
                         // the immediate prefix was non-frequent or its frequency was too low
                         // -> the current prefix is overestimated, abort swap
@@ -260,7 +287,13 @@ public:
 
         std::cout << std::endl;
         min_pq_.print_debug_info();
-        sketch_.print_debug_info();
+
+        /*
+        for(size_t i = 0; i < num_sketches_; i++) {
+            sketches_[i].print_debug_info();
+        }
+        */
+
         /*
         char buffer[len_ + 1];
         for(size_t i = 1; i < k_; i++) {

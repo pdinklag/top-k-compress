@@ -18,7 +18,7 @@ constexpr uint64_t MAGIC = 0x54'4F'50'4B'43'4F'4D'50ULL; // spells "TOPKCOMP" in
 constexpr bool DEBUG = false;
 
 template<tdc::InputIterator<char> In, tdc::io::BitSink Out, bool huffman_coding>
-void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns) {
+void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns) {
     using namespace tdc::code;
 
     pm::MallocCounter malloc_counter;
@@ -38,7 +38,7 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
     // - frequent substring 0 is reserved to indicate a literal character
     // - frequent substring k-1 is reserved to indicate the end of file
     tlx::RingBuffer<char> buf(window_size);
-    TopKSubstrings topk(k-1, window_size, sketch_rows, sketch_columns);
+    TopKSubstrings topk(k-1, window_size, num_sketches, sketch_rows, sketch_columns);
 
     Vitter87<size_t> huff_phrases;
     Vitter87<uint16_t> huff_literals;
@@ -197,17 +197,18 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
 }
 
 template<tdc::InputIterator<char> In, tdc::io::BitSink Out>
-void top_k_compress_binary(In begin, In const end, Out out, bool const omit_header, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns) {
-    top_k_compress<In, Out, false>(begin, end, out, omit_header, k, window_size, sketch_rows, sketch_columns);
+void top_k_compress_binary(In begin, In const end, Out out, bool const omit_header, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns) {
+    top_k_compress<In, Out, false>(begin, end, out, omit_header, k, window_size, num_sketches, sketch_rows, sketch_columns);
 }
 
 template<tdc::InputIterator<char> In, tdc::io::BitSink Out>
-void top_k_compress_huff(In begin, In const end, Out out, bool const omit_header, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns) {
-    top_k_compress<In, Out, true>(begin, end, out, omit_header, k, window_size, sketch_rows, sketch_columns);
+void top_k_compress_huff(In begin, In const end, Out out, bool const omit_header, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns) {
+    top_k_compress<In, Out, true>(begin, end, out, omit_header, k, window_size, num_sketches, sketch_rows, sketch_columns);
 }
 
 template<tdc::io::BitSource In, std::output_iterator<char> Out>
 void top_k_decompress_binary(In in, Out out) {
+    /*
     using namespace tdc::code;
 
     // decode header
@@ -287,4 +288,5 @@ void top_k_decompress_binary(In in, Out out) {
         << ", num_literal=" << num_literal
         << " -> total phrases: " << (num_frequent + num_literal)
         << std::endl;
+    */
 }

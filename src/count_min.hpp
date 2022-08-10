@@ -36,6 +36,9 @@ private:
     }
 
 public:
+    inline CountMin() : num_rows_(0), num_columns_(0) {
+    }
+
     inline CountMin(size_t const rows, size_t const columns) {
         num_rows_ = rows;
 
@@ -62,6 +65,11 @@ public:
             }
         }
     }
+
+    CountMin(CountMin&&) = default;
+    CountMin& operator=(CountMin&&) = default;
+    CountMin(CountMin const&) = delete;
+    CountMin& operator=(CountMin const&) = delete;
 
     inline Frequency increment_and_estimate(uintmax_t const item) {
         Frequency freq = std::numeric_limits<Frequency>::max();
