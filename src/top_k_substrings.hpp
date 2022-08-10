@@ -19,7 +19,6 @@ class TopKSubstrings {
 private:
     static constexpr bool gather_stats_ = true;
     static constexpr bool measure_time_ = false;
-    static constexpr bool sketch_batching_ = false;
 
     static constexpr size_t sketch_batch_size_ = 600'000;
     
@@ -27,7 +26,6 @@ private:
         size_t num_strings_total;
         size_t num_filter_inc;
         size_t num_sketch_inc;
-        size_t num_sketch_batches;
         size_t num_swaps;
         size_t num_overestimates;
         
@@ -40,7 +38,6 @@ private:
         inline Stats() : num_strings_total(0),
                          num_filter_inc(0),
                          num_sketch_inc(0),
-                         num_sketch_batches(0),
                          num_swaps(0),
                          num_overestimates(0) {
         }
@@ -65,27 +62,6 @@ private:
     Trie<FilterNodeData, FilterIndex> filter_;
     MinPQ<size_t, FilterIndex> min_pq_;
     CountMin<size_t> sketch_;
-
-    struct SketchQueueEntry {
-        uint64_t fingerprint;
-        FilterIndex parent;
-        char label;
-        size_t count;
-        bool single_letter;
-
-        inline SketchQueueEntry() {
-        }
-
-        inline SketchQueueEntry(uint64_t const _fingerprint, FilterIndex const _parent, char const _label, bool _single_letter)
-            : fingerprint(_fingerprint), parent(_parent), label(_label), count(1), single_letter(_single_letter) {
-        }
-    };
-
-    ankerl::unordered_dense::map<uint64_t, SketchQueueEntry> sketch_queue_;
-    std::vector<SketchQueueEntry> sketch_process_;
-    size_t sketch_count_;
-    ankerl::unordered_dense::set<size_t> sketch_swapped_away_;
-    std::unique_ptr<decltype(sketch_)::BatchWorkItem[]> sketch_work_;
 
     size_t k_;
     size_t len_;
@@ -169,49 +145,6 @@ private:
         return swap;
     }
 
-    void process_sketch_queue() {
-        if constexpr(gather_stats_) ++stats_.num_sketch_batches;
-        if constexpr(measure_time_) stats_.t_sketch_batch.resume();
-
-        sketch_swapped_away_.clear();
-        sketch_process_.clear();
-
-        // batch sketch
-        size_t const batch_num = sketch_queue_.size();
-        size_t i = 0;
-        for(auto const& it : sketch_queue_) {
-            sketch_work_[i].item = it.first;
-            sketch_work_[i].inc = it.second.count;
-            sketch_process_.push_back(it.second);
-            ++i;
-        }
-
-        sketch_.batch_increment_and_estimate(sketch_work_.get(), batch_num);
-
-        // test for swaps
-        size_t min_freq = min_pq_.min_frequency();
-        for(size_t i = 0; i < batch_num; i++) {
-            auto const est = sketch_work_[i].est;
-            if(est > min_freq) {
-                // this string may now be frequent, we must make sure of three things:
-                // (1) the parent was frequent at queue time
-                // (2) the parent is still frequent right now (we are processing a batch, so that info may be outdated)
-                // (3) the parent's frequency is higher than the estimate (otherwise we are clearly dealing with an overestimate)
-                auto const fp = sketch_work_[i].item;
-                auto const& e = sketch_process_[i];
-                if(e.single_letter || (e.parent && filter_.data(e.parent).freq >= est && !sketch_swapped_away_.contains(e.parent))) {
-                    auto const swapped = swap_into_filter(e.parent, e.label, fp, est);
-                    min_freq = min_pq_.min_frequency();
-                    sketch_swapped_away_.insert(swapped);
-                } else {
-                    if constexpr(gather_stats_) ++stats_.num_overestimates;
-                }
-            }
-        }
-
-        if constexpr(measure_time_) stats_.t_sketch_batch.pause();
-    }
-
 public:
     inline TopKSubstrings(size_t const k, size_t const len, size_t sketch_rows, size_t sketch_columns)
         : hash_(hash_window_size_, rolling_fp_base_),
@@ -219,16 +152,9 @@ public:
           filter_(k),
           min_pq_(k),
           sketch_(sketch_rows, sketch_columns),
-          sketch_count_(0),
           k_(k),
           len_(len),
           stats_() {
-
-        if constexpr(sketch_batching_) {
-            sketch_queue_.reserve(sketch_batch_size_);
-            sketch_process_.reserve(sketch_batch_size_);
-            sketch_work_ = std::make_unique<decltype(sketch_)::BatchWorkItem[]>(sketch_batch_size_);
-        }
     }
 
     struct StringState {
@@ -277,48 +203,28 @@ public:
                 // the filter is full, count current prefix in the sketch
                 if constexpr(gather_stats_) ++stats_.num_sketch_inc;
 
-                if constexpr(sketch_batching_) {
-                    // enter into sketch queue
-                    auto it = sketch_queue_.find(ext_fp);
-                    if(it != sketch_queue_.end()) {
-                        ++it->second.count;
+                // increment in sketch
+                if constexpr(measure_time_) stats_.t_sketch_inc.resume();
+                auto est = sketch_.increment_and_estimate(ext_fp);
+                if constexpr(measure_time_) stats_.t_sketch_inc.pause();
+
+                // test if it is now frequent
+                if(est > min_pq_.min_frequency()) {
+                    // it is now frequent according to just the numbers, test if we can swap
+                    if(i == 0 || (s.node && filter_.data(s.node).freq >= est)) {
+                        // the immediate prefix was frequent, so yes, we can!
+                        ext.node = swap_into_filter(s.node, c, ext_fp, est);
                     } else {
-                        sketch_queue_.emplace(ext_fp, SketchQueueEntry(ext_fp, s.node, c, i == 0));
-                    }
+                        // the immediate prefix was non-frequent or its frequency was too low
+                        // -> the current prefix is overestimated, abort swap
+                        if constexpr(gather_stats_) ++stats_.num_overestimates;
 
-                    // if sketch queue is full, sketch as batch
-                    if(++sketch_count_ >= sketch_batch_size_) {
-                        process_sketch_queue();
-                        sketch_queue_.clear();
-                        sketch_count_ = 0;
-                    }
-
-                    // invalidate node
-                    ext.node = 0;
-                } else {
-                    // increment in sketch
-                    if constexpr(measure_time_) stats_.t_sketch_inc.resume();
-                    auto est = sketch_.increment_and_estimate(ext_fp);
-                    if constexpr(measure_time_) stats_.t_sketch_inc.pause();
-
-                    // test if it is now frequent
-                    if(est > min_pq_.min_frequency()) {
-                        // it is now frequent according to just the numbers, test if we can swap
-                        if(i == 0 || (s.node && filter_.data(s.node).freq >= est)) {
-                            // the immediate prefix was frequent, so yes, we can!
-                            ext.node = swap_into_filter(s.node, c, ext_fp, est);
-                        } else {
-                            // the immediate prefix was non-frequent or its frequency was too low
-                            // -> the current prefix is overestimated, abort swap
-                            if constexpr(gather_stats_) ++stats_.num_overestimates;
-
-                            // invalidate node
-                            ext.node = 0;
-                        }
-                    } else {
-                        // nope, invalidate previous node
+                        // invalidate node
                         ext.node = 0;
                     }
+                } else {
+                    // nope, invalidate previous node
+                    ext.node = 0;
                 }
             } else {
                 // insert into filter, which is not yet full
@@ -345,19 +251,11 @@ public:
                   << ", num_swaps=" << stats_.num_swaps
                   << ", num_overestimates=" << stats_.num_overestimates;
 
-        if constexpr(sketch_batching_) {
-            std::cout << ", num_sketch_batches=" << stats_.num_sketch_batches;
-        }
-
         if constexpr(measure_time_) {
             std::cout << ", t_filter_find=" << (stats_.t_filter_find.elapsed_time_millis() / 1000.0)
                       << ", t_filter_inc=" << (stats_.t_filter_inc.elapsed_time_millis() / 1000.0)
                       << ", t_sketch_inc=" << (stats_.t_sketch_inc.elapsed_time_millis() / 1000.0)
                       << ", t_swaps=" << (stats_.t_swaps.elapsed_time_millis() / 1000.0);
-
-            if constexpr(sketch_batching_) {
-                std::cout << ", t_sketch_batches=" << (stats_.t_sketch_batch.elapsed_time_millis() / 1000.0);
-            }
         }
 
         std::cout << std::endl;

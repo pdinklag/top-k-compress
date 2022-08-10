@@ -8,9 +8,6 @@
 #include <memory>
 #include <random>
 
-#include <omp.h>
-#include <ips4o.hpp>
-
 template<std::unsigned_integral Frequency>
 class CountMin {
 private:
@@ -91,39 +88,6 @@ public:
         Frequency inc;
         Frequency est;
     };
-
-    inline void batch_increment_and_estimate(BatchWorkItem* work, size_t const num) {
-        omp_set_num_threads(6); // FIXME: un-hardcode?
-
-        // nb: item and inc are expected to be pre-filled, est is the output
-        // initialize work items, computing first hash function on the fly
-        //
-        {
-            auto& row = table_[0];
-            #pragma omp parallel for
-            for(size_t k = 0; k < num; k++) {
-                auto& x = work[k];
-                size_t const j = hash(0, x.item);
-
-                row[j] += x.inc;
-                x.est = row[j];
-            }
-        }
-
-        for(size_t i = 1; i < num_rows_; i++) {
-            // sort work items by hashes
-            auto& row = table_[i];
-
-            // increment and update estimates
-            #pragma omp parallel for
-            for(size_t k = 0; k < num; k++) {
-                auto& x = work[k];
-                size_t const j = hash(i, x.item);
-                row[j] += x.inc;
-                x.est = std::min(x.est, row[j]);
-            }
-        }
-    }
 
     void print_debug_info() const {
         size_t num_zeros = 0;
