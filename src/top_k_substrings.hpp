@@ -286,6 +286,7 @@ public:
         }
 
         std::cout << std::endl;
+        filter_.print_debug_info();
         min_pq_.print_debug_info();
 
         /*

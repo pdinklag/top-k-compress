@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <concepts>
 #include <cstddef>
@@ -14,38 +15,59 @@ private:
     using Character = char;
     using NodeSize = uint16_t; // we may need to store the value 256 itself
 
-    struct Node {
-        NodeSize size;
-        NodeSize capacity;
+    struct NodeChildrenLarge {
         Character* labels;
         NodeIndex* children;
-        
-        NodeIndex parent;
-        Character label;
+    };
 
+    static constexpr size_t small_node_size_ = sizeof(NodeChildrenLarge) / (sizeof(NodeIndex) + sizeof(Character));
+
+    struct NodeChildrenSmall {
+        Character labels[small_node_size_];
+        NodeIndex children[small_node_size_];
+    };
+
+    static_assert(sizeof(NodeChildrenSmall) == sizeof(NodeChildrenLarge));
+
+    struct Node {
+        static constexpr size_t capacity_for(size_t const n) {
+            return (n == 0) ? 0 : std::bit_ceil(n);
+        }
+
+        NodeSize size;
+        Character inlabel;
+        NodeIndex parent;
+
+        union {
+            NodeChildrenLarge large;
+            NodeChildrenSmall small;
+        } c;
+        
         NodeData data;
         
-        Node(NodeIndex const _parent, Character const _label)
-            : size(0),
-              capacity(0),
-              labels(nullptr),
-              children(nullptr),
-              parent(_parent),
-              label(_label) {
+        Node(NodeIndex const _parent, Character const _inlabel) : size(0), parent(_parent), inlabel(_inlabel) {
+            c.large.labels = nullptr;
+            c.large.children = nullptr;
         }
         
         Node() : Node(0, 0) {
         }
 
         ~Node() {
-            if(labels) delete[] labels;
-            if(children) delete[] children;
+            if(!is_small()) {
+                delete[] c.large.labels;
+                delete[] c.large.children;
+            }
         }
 
-        inline bool is_leaf() const {
+        bool is_small() const ALWAYS_INLINE {
+            return size <= small_node_size_;
+        }
+
+        bool is_leaf() const ALWAYS_INLINE {
             return size == 0;
         }
-    } __attribute__((packed));
+    };
 
     NodeIndex capacity_;
     NodeIndex size_;
@@ -53,8 +75,10 @@ private:
     std::unique_ptr<Node[]> nodes_;
 
     bool is_child_of(NodeIndex const node, NodeIndex const parent) const {
-        for(NodeIndex i = 0; i < nodes_[parent].size; i++) {
-            if(nodes_[parent].children[i] == node) {
+        auto& p = nodes_[parent];
+        auto const* const pchildren = p.is_small() ? p.c.small.children : p.c.large.children;
+        for(NodeIndex i = 0; i < p.size; i++) {
+            if(pchildren[i] == node) {
                 return true;
             }
         }
@@ -70,35 +94,46 @@ public:
     }
 
     void insert_child(NodeIndex const node, NodeIndex const parent, Character const label) {
+        assert(node < capacity_);
+
         NodeIndex discard;
         assert(!try_get_child(parent, label, discard));
 
-        //auto sibling = nodes_[parent].first_child;
-        //nodes_[parent].first_child = node;
-        
-        // possibly allocate new child slots
+        // possibly allocate child slots
         auto& p = nodes_[parent];
-        if(p.size >= p.capacity) {
-            NodeIndex const new_cap = std::max(NodeIndex(1), 2 * (NodeIndex)p.capacity);
+
+        auto const i = p.size;
+        if(i == small_node_size_ || (!p.is_small() && i >= Node::capacity_for(p.size))) {
+            auto const new_cap = Node::capacity_for(p.size + 1);
             auto* new_labels = new Character[new_cap];
             auto* new_children = new NodeIndex[new_cap];
-            
-            std::copy(p.labels, p.labels + p.size, new_labels);
-            std::copy(p.children, p.children + p.size, new_children);
-            
-            p.capacity = new_cap;
 
-            if(p.labels) delete[] p.labels;
-            if(p.children) delete[] p.children;
+            auto const* const old_labels = p.is_small() ? p.c.small.labels : p.c.large.labels;
+            auto const* const old_children = p.is_small() ? p.c.small.children : p.c.large.children;
 
-            p.labels = new_labels;
-            p.children = new_children;
+            for(size_t j = 0; j < p.size; j++) {
+                new_labels[j] = old_labels[j];
+                new_children[j] = old_children[j];
+            }
+            
+            if(!p.is_small()) {
+                delete[] p.c.large.labels;
+                delete[] p.c.large.children;
+            }
+
+            p.c.large.labels = new_labels;
+            p.c.large.children = new_children;
         }
         
         // append child
-        p.labels[p.size] = label;
-        p.children[p.size] = node;
         ++p.size;
+        if(p.is_small()) {
+            p.c.small.labels[i] = label;
+            p.c.small.children[i] = node;
+        } else {
+            p.c.large.labels[i] = label;
+            p.c.large.children[i] = node;
+        }
         
         nodes_[node] = Node(parent, label);
 
@@ -113,23 +148,37 @@ public:
         auto const parent = nodes_[node].parent;
         assert(is_child_of(node, parent));
         
-        auto const label = nodes_[node].label;
+        auto const label = nodes_[node].inlabel;
         
         auto& p = nodes_[parent];
         NodeIndex i = 0;
-        while(i < p.size && p.labels[i] != label) ++i; // nb: we could also search in the child array, but searching in the labels causes fewer cache misses
+
+        auto* plabels = p.is_small() ? p.c.small.labels : p.c.large.labels;
+        while(i < p.size && plabels[i] != label) ++i; // nb: we could also search in the child array, but searching in the labels causes fewer cache misses
         
         if(i < p.size) {
-            assert(p.children[i] == node);
+            auto* pchildren = p.is_small() ? p.c.small.children : p.c.large.children;
+            assert(pchildren[i] == node);
             
             // swap with last child if necessary and reduce size
             if(p.size > 1) {
                 NodeIndex const last = p.size - 1;
-                std::swap(p.labels[i], p.labels[last]);
-                std::swap(p.children[i], p.children[last]);
+                std::swap(plabels[i], plabels[last]);
+                std::swap(pchildren[i], pchildren[last]);
             }
-            --p.size;
-            // TODO: possibly re-allocate?
+
+            // possibly convert into small node
+            auto const was_small = p.is_small();
+            --p.size; // nb: must be done before moving data
+            if(!was_small && p.is_small()) {
+                for(size_t j = 0; j < p.size; j++) {
+                    p.c.small.labels[j] = plabels[j];
+                    p.c.small.children[j] = pchildren[j];
+                }
+
+                delete[] plabels;
+                delete[] pchildren;
+            }
         } else {
             // "this kid is not my son"
             assert(false);
@@ -143,9 +192,10 @@ public:
 
     bool try_get_child(NodeIndex const node, Character const label, NodeIndex& out_child) ALWAYS_INLINE {
         auto const& v = nodes_[node];
+        auto const* const vlabels = v.is_small() ? v.c.small.labels : v.c.large.labels;
         for(NodeIndex i = 0; i < v.size; i++) {
-            if(v.labels[i] == label) {
-                out_child = v.children[i];
+            if(vlabels[i] == label) {
+                out_child = v.is_small() ? v.c.small.children[i] : v.c.large.children[i];
                 return true;
             }
         }
@@ -177,12 +227,38 @@ public:
         size_t d = 0;
         auto v = node;
         while(v) {
-            buffer[d++] = nodes_[v].label;
+            buffer[d++] = nodes_[v].inlabel;
             v = nodes_[v].parent;
         }
 
         // reverse and return length
         std::reverse(buffer, buffer + d);
         return d;
+    }
+
+    void print_debug_info() const {
+        size_t num_leaves = 0;
+        size_t num_le4 = 0;
+        size_t num_le8 = 0;
+        size_t num_le16 = 0;
+        size_t num_small = 0;
+        
+        for(size_t i = 0; i < capacity_; i++) {
+            auto& v = nodes_[i];
+
+            if(v.size == 0) ++num_leaves;
+            if(v.size <= small_node_size_) ++num_small;
+            if(v.size <= 4) ++num_le4;
+            if(v.size <= 8) ++num_le8;
+            if(v.size <= 16) ++num_le16;
+        }
+
+        std::cout << "trie info: small_node_size_=" << small_node_size_
+                  << ", num_leaves=" << num_leaves
+                  << ", num_small=" << num_small
+                  << ", num_le4=" << num_le4
+                  << ", num_le8=" << num_le8
+                  << ", num_le16=" << num_le16
+                  << std::endl;
     }
 };
