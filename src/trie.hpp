@@ -11,20 +11,21 @@
 template<typename NodeData, std::unsigned_integral NodeIndex = uint32_t>
 class Trie {
 private:
+    using Character = char;
     using NodeSize = uint16_t; // we may need to store the value 256 itself
 
     struct Node {
         NodeSize size;
         NodeSize capacity;
-        char* labels;
+        Character* labels;
         NodeIndex* children;
         
         NodeIndex parent;
-        char label;
+        Character label;
 
         NodeData data;
         
-        Node(NodeIndex const _parent, char const _label)
+        Node(NodeIndex const _parent, Character const _label)
             : size(0),
               capacity(0),
               labels(nullptr),
@@ -68,7 +69,7 @@ public:
         }
     }
 
-    void insert_child(NodeIndex const node, NodeIndex const parent, char const label) {
+    void insert_child(NodeIndex const node, NodeIndex const parent, Character const label) {
         NodeIndex discard;
         assert(!try_get_child(parent, label, discard));
 
@@ -79,7 +80,7 @@ public:
         auto& p = nodes_[parent];
         if(p.size >= p.capacity) {
             NodeIndex const new_cap = std::max(NodeIndex(1), 2 * (NodeIndex)p.capacity);
-            auto* new_labels = new char[new_cap];
+            auto* new_labels = new Character[new_cap];
             auto* new_children = new NodeIndex[new_cap];
             
             std::copy(p.labels, p.labels + p.size, new_labels);
@@ -140,7 +141,7 @@ public:
         return size_++;
     }
 
-    bool try_get_child(NodeIndex const node, char const label, NodeIndex& out_child) ALWAYS_INLINE {
+    bool try_get_child(NodeIndex const node, Character const label, NodeIndex& out_child) ALWAYS_INLINE {
         auto const& v = nodes_[node];
         for(NodeIndex i = 0; i < v.size; i++) {
             if(v.labels[i] == label) {
@@ -171,7 +172,7 @@ public:
         return nodes_[node].data;
     }
 
-    size_t spell(NodeIndex const node, char* buffer) const {
+    size_t spell(NodeIndex const node, Character* buffer) const {
         // spell reverse
         size_t d = 0;
         auto v = node;
