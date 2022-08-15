@@ -21,13 +21,12 @@ private:
     };
 
     static constexpr size_t small_node_size_ = sizeof(NodeChildrenLarge) / (sizeof(NodeIndex) + sizeof(Character));
+    static constexpr size_t small_node_align_ = sizeof(NodeChildrenLarge) - small_node_size_ * (sizeof(NodeIndex) + sizeof(Character));
 
     struct NodeChildrenSmall {
         Character labels[small_node_size_];
         NodeIndex children[small_node_size_];
     };
-
-    static_assert(sizeof(NodeChildrenSmall) == sizeof(NodeChildrenLarge));
 
     struct Node {
         static constexpr size_t capacity_for(size_t const n) {
@@ -238,9 +237,6 @@ public:
 
     void print_debug_info() const {
         size_t num_leaves = 0;
-        size_t num_le4 = 0;
-        size_t num_le8 = 0;
-        size_t num_le16 = 0;
         size_t num_small = 0;
         
         for(size_t i = 0; i < capacity_; i++) {
@@ -248,17 +244,15 @@ public:
 
             if(v.size == 0) ++num_leaves;
             if(v.size <= small_node_size_) ++num_small;
-            if(v.size <= 4) ++num_le4;
-            if(v.size <= 8) ++num_le8;
-            if(v.size <= 16) ++num_le16;
         }
 
-        std::cout << "trie info: small_node_size_=" << small_node_size_
+        std::cout << "trie info"
+                  << ": sizeof(Node)=" << sizeof(Node)
+                  << ", sizeof(NodeData)=" << sizeof(NodeData)
+                  << ", small_node_size_=" << small_node_size_
+                  << ", small_node_align_=" << small_node_align_
                   << ", num_leaves=" << num_leaves
                   << ", num_small=" << num_small
-                  << ", num_le4=" << num_le4
-                  << ", num_le8=" << num_le8
-                  << ", num_le16=" << num_le16
                   << std::endl;
     }
 };
