@@ -36,28 +36,36 @@ def bench(cmd, brief, filename, ext):
         f"ratio: {ratio}"
     ]))
     logf.write("\n\n")
+    logf.flush()
 
     # print brief result to stdout
     print(f"{brief}\t{n}\t{ncomp}\t{dt}")
     sys.stdout.flush()
 
-def gzip9(filename):
+def gzip(filename):
     bench(
         [config.gzip_bin, "-9", "-k", filename],
-        "gzip-9",
+        "gzip",
         filename,
         ".gz")
 
+def bzip2(filename):
+    bench(
+        [config.bzip2_bin, "-9", "-k", filename],
+        "bzip2",
+        filename,
+        ".bz2")
+
 def topk(filename, k, w):
     bench(
-        [config.topk_bin, "-k", str(k), "-c", config.sketch_columns, "-w", str(w), filename],
+        [config.topk_bin, "-k", str(k), "-w", str(w), filename] + config.options + [filename],
         f"topk-k{k}_w{w}",
         filename,
         ".topk")
 
 def topkh(filename, k, w):
     bench(
-        [config.topkh_bin, "-k", str(k), "-c", config.sketch_columns, "-w", str(w), "--huff", filename],
+        [config.topkh_bin, "-k", str(k), "-w", str(w), "--huff"] + config.options + [filename],
         f"topk-k{k}_w{w}-huff",
         filename,
         ".topkh")
@@ -76,7 +84,8 @@ with open(args.log, "w") as logf:
         print("algo\tn\tn'\ttime")
         sys.stdout.flush()
 
-        gzip9(filename)
+        gzip(filename)
+        bzip2(filename)
         for w in config.windows:
             for k in config.ks:
                 topk(filename, k, w)

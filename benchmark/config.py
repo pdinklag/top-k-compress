@@ -1,11 +1,12 @@
 gzip_bin = "/usr/bin/gzip"
+bzip2_bin = "/usr/bin/bzip2"
 topk_bin = "/scratch/top-k-compress/build/src/comp"
 topkh_bin = "/scratch/top-k-compress/build/src/comp"
 
-ks      = ["1M", "2M", "4M", "8M", "16M"]
-windows = [8, 12, 16, 20, 24, 32]
+ks      = ["256K", "512K", "1M", "2M", "4M"]
+windows = [8, 12, 16, 24, 32]
 
-sketch_columns = "10M"
+options = ["-c", "8M", "-s", "2K"]
 
 files = [
     "/scratch/data/cere.200Mi",
