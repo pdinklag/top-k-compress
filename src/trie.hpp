@@ -129,16 +129,25 @@ private:
 
     std::unique_ptr<Node[]> nodes_;
 
+    #ifndef NDEBUG
     bool is_child_of(NodeIndex const node, NodeIndex const parent) const {
         auto& p = nodes_[parent];
-        auto const* const pchildren = p.is_small() ? p.c.small.children : p.c.large.children;
-        for(NodeIndex i = 0; i < p.size; i++) {
-            if(pchildren[i] == node) {
-                return true;
+        if(p.is_small()) {
+            for(NodeIndex i = 0; i < p.size; i++) {
+                if(p.c.small.children[i] == node) {
+                    return true;
+                }
+            }
+        } else {
+            for(NodeIndex i = 0; i < p.size; i++) {
+                if(p.c.large.children[i] == node) {
+                    return true;
+                }
             }
         }
         return false;
     }
+    #endif
 
 public:
     Trie(NodeIndex const capacity) : capacity_(capacity), size_(1) {
