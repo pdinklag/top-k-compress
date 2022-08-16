@@ -46,14 +46,7 @@ int main(int argc, char** argv) {
 
                 tdc::io::FileInputStream fis(input);
                 tdc::io::FileOutputStream fos(options.output);
-                if(options.huffman) {
-                    std::cerr << "not yet implemented" << std::endl;
-                    return -1;
-                } else {
-                    std::cerr << "not yet implemented" << std::endl;
-                    return -1;
-                    //top_k_decompress_binary(tdc::io::bitwise_input_from(fis), tdc::io::StreamOutputIterator(fos));
-                }
+                top_k_decompress(tdc::io::bitwise_input_from(fis), tdc::io::StreamOutputIterator(fos));
             } else {
                 if(options.output.empty()) {
                     if(options.huffman) {

@@ -11,11 +11,12 @@
 #include <tdc/util/concepts.hpp>
 #include <tdc/util/math.hpp>
 
+#include "display.hpp"
 #include "top_k_substrings.hpp"
 #include "vitter87.hpp"
 
 constexpr uint64_t MAGIC = 0x54'4F'50'4B'43'4F'4D'50ULL; // spells "TOPKCOMP" in hex
-constexpr bool DEBUG = false;
+constexpr bool DEBUG = true;
 
 template<tdc::InputIterator<char> In, tdc::io::BitSink Out, bool huffman_coding>
 void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns) {
@@ -29,8 +30,10 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
         Binary::encode(out, MAGIC, Universe::of<uint64_t>());
         Binary::encode(out, k, Universe::of<size_t>());
         Binary::encode(out, window_size, Universe::of<size_t>());
+        Binary::encode(out, num_sketches, Universe::of<size_t>());
         Binary::encode(out, sketch_rows, Universe::of<size_t>());
         Binary::encode(out, sketch_columns, Universe::of<size_t>());
+        out.write(huffman_coding);
     }
 
     // initialize compression
@@ -49,11 +52,6 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
         huff_literals = Vitter87<uint16_t>(256);
     }
 
-    /*
-    size_t phrase_hist[k] = { 0 };
-    size_t phrase_bits[k] = { 0 };
-    */
-
     Universe const u_literal(0, 255);
     Universe const u_freq(0, k-1);
 
@@ -65,12 +63,9 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
         } else {
             Binary::encode(out, x, u_freq);
         }
-        // ++phrase_hist[x];
-        // phrase_bits[x] += code.length;
     };
 
     auto encode_literal = [&](char const c){
-        encode_phrase(0);
         if constexpr(huffman_coding) {
             uint16_t const x = (uint16_t)((uint8_t)c);
             auto const code = huff_literals.encode_and_transmit(x+1);
@@ -94,6 +89,8 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
 
         buf.push_back(c);
         if(buf.size() == buf.max_size()) {
+            assert(i + 1 >= window_size);
+
             //
             if constexpr(DEBUG) {
                 std::cout << "- window: \"";
@@ -106,13 +103,13 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
             // count window_size prefixes starting from position (i-window_size)
             auto longest = topk.empty_string();
             {
-                auto s = longest;
+                auto s = topk.empty_string();
                 size_t const max_match_len = std::min(len, i + 1 - window_size);
 
                 for(size_t j = 0; j < len; j++) {
                     s = topk.extend(s, buf[j]);
 
-                    if(j < max_match_len && s.frequent) {
+                    if(j + 1 < max_match_len && s.frequent) {
                         longest = s;
                     }
                 }
@@ -136,11 +133,12 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
                     naive_enc_size += u_freq.entropy();
                 } else {
                     if constexpr(DEBUG) {
-                        std::cout << "- [ENCODE] literal phrase: '" << buf[0] << "'";
+                        std::cout << "- [ENCODE] literal phrase: " << display(buf[0]);
                         if(longest.len == 1) std::cout << " (frequent phrase of length=1, index=" << longest.node << ")";
                         std::cout << std::endl;
                     }
                     
+                    encode_phrase(0);
                     encode_literal(buf[0]);
 
                     ++num_literal;
@@ -168,21 +166,6 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
     // encode EOF
     encode_phrase(k-1);
 
-    // debug
-    /*
-    std::cout << "phrase distribution:" << std::endl;
-    std::cout << "phrase\tfreq\tbits\tavg\tbalance" << std::endl;
-    for(size_t i = 0; i < k; i++) {
-        std::cout
-            << i
-            << "\t" << phrase_hist[i]
-            << "\t" << phrase_bits[i]
-            << "\t" << ((double)phrase_bits[i] / (double)phrase_hist[i])
-            << "\t" << (((double)phrase_bits[i] / (double)phrase_hist[i]) - u_freq.entropy())
-            << std::endl;
-    }
-    */
-
     malloc_counter.stop();
 
     topk.print_debug_info();
@@ -207,8 +190,7 @@ void top_k_compress_huff(In begin, In const end, Out out, bool const omit_header
 }
 
 template<tdc::io::BitSource In, std::output_iterator<char> Out>
-void top_k_decompress_binary(In in, Out out) {
-    /*
+void top_k_decompress(In in, Out out) {
     using namespace tdc::code;
 
     // decode header
@@ -220,39 +202,83 @@ void top_k_decompress_binary(In in, Out out) {
 
     size_t const k = Binary::decode(in, Universe::of<size_t>());
     size_t const window_size = Binary::decode(in, Universe::of<size_t>());
+    size_t const num_sketches = Binary::decode(in, Universe::of<size_t>());
     size_t const sketch_rows = Binary::decode(in, Universe::of<size_t>());
     size_t const sketch_columns = Binary::decode(in, Universe::of<size_t>());
+    bool const huffman_coding = in.read_bit();
 
     // initialize
     tlx::RingBuffer<char> buf(window_size);
-    TopKSubstrings topk(k-1, window_size, sketch_rows, sketch_columns);
+    TopKSubstrings topk(k-1, window_size, num_sketches, sketch_rows, sketch_columns);
+
+    Vitter87<size_t> huff_phrases;
+    Vitter87<uint16_t> huff_literals;
+    
+    if(huffman_coding) {
+        // we cannot encode 0 as of now, so every phrase or literal gets increased by one when encoding...
+        huff_phrases = Vitter87<size_t>(k + 1);
+        huff_literals = Vitter87<uint16_t>(256);
+    }
 
     Universe const u_literal(0, 255);
     Universe const u_freq(0, k-1);
 
-    size_t num_frequent = 0;
-    size_t num_literal = 0;
-    size_t i = 0;
+    auto recv = [&](){ return in.read_bit(); };
 
-    char frequent_string[window_size + 1]; // +1 for debugging
+    auto decode_phrase = [&](){
+        if(huffman_coding) {
+            auto const x = huff_phrases.receive_and_decode(recv) - 1;
+            huff_phrases.update(x+1);
+            return x;
+        } else {
+            return Binary::decode(in, u_freq);
+        }
+    };
+
+    auto decode_literal = [&](){
+        if(huffman_coding) {
+            auto const x = huff_literals.receive_and_decode(recv) - 1;
+            huff_literals.update(x+1);
+            return (char)x;
+        } else {
+            return (char)Binary::decode(in, u_literal);
+        }
+    };
+
+    auto s = topk.empty_string();
+    size_t n = 0;
 
     auto handle = [&](char const c){
         *out++ = c;
         buf.push_back(c);
 
-        ++i;
+        ++n;
 
-        // TODO: count prefixes - how exactly ?
+        s = topk.extend(s, c);
+        if(buf.size() == buf.max_size()) {
+            // our buffer is full, pop the first character, then count all prefixes of the suffix
+            buf.pop_front();
 
-        if(buf.size() == buf.max_size()) buf.pop_front();
+            assert(s.len == window_size);
+            s = topk.empty_string();
+            assert(buf.size() == window_size - 1);
+            for(size_t j = 0; j < window_size - 1; j++) {
+                s = topk.extend(s, buf[j]);
+            }
+        }
     };
 
+    char frequent_string[window_size];
+    size_t num_frequent = 0;
+    size_t num_literal = 0;
+
     while(true) {
-        auto const p = Binary::decode(in, u_freq);
+        auto const p = decode_phrase();
         if(p == k-1) {
             // EOF
             break;
         }
+
         if(p) {
             // decode frequent phrase
             ++num_frequent;
@@ -261,7 +287,7 @@ void top_k_decompress_binary(In in, Out out) {
 
             if constexpr(DEBUG) {
                 frequent_string[len] = 0;
-                std::cout << "- [DECODE] frequent phrase: \"" << frequent_string << "\" (length=" << len << ", index=" << p << ")" << std::endl;
+                std::cout << "- [DECODE] frequent phrase: \"" << frequent_string << "\" (index=" << p << ", length=" << len << ")" << std::endl;
             }
             
             for(size_t i = 0; i < len; i++) {
@@ -270,9 +296,9 @@ void top_k_decompress_binary(In in, Out out) {
         } else {
             // decode literal phrase
             ++num_literal;
-            char const c = Binary::decode(in, u_literal);
+            char const c = decode_literal();
             if constexpr(DEBUG) {
-                std::cout << "- [DECODE] literal phrase: '" << c << "'" << std::endl;
+                std::cout << "- [DECODE] literal phrase: " << display(c) << std::endl;
             }
             handle(c);
         }
@@ -282,11 +308,13 @@ void top_k_decompress_binary(In in, Out out) {
     std::cout << "decompress"
         << " k=" << k
         << " w=" << window_size
+        << " s=" << num_sketches
         << " c=" << sketch_columns
         << " r=" << sketch_rows
-        << ": num_frequent=" << num_frequent
+        << " huffman=" << huffman_coding
+        << ": n=" << n
+        << ", num_frequent=" << num_frequent
         << ", num_literal=" << num_literal
         << " -> total phrases: " << (num_frequent + num_literal)
         << std::endl;
-    */
 }

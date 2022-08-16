@@ -16,11 +16,13 @@
 #include "min_pq.hpp"
 #include "count_min.hpp"
 #include "rolling_karp_rabin.hpp"
+#include "display.hpp"
 
 class TopKSubstrings {
 private:
     static constexpr bool gather_stats_ = true;
     static constexpr bool measure_time_ = false;
+    static constexpr bool DEBUG = true;
 
     static constexpr size_t sketch_seed_ = 777;
     
@@ -263,6 +265,10 @@ public:
         }
 
         // advance
+        if constexpr(DEBUG) {
+            std::cout << "top-k: extend string of length " << s.len << " by " << display(c) << " -> node=" << ext.node << ", fp=" << ext.fingerprint << ", frequent=" << ext.frequent << std::endl;
+        }
+
         return ext;
     }
 
