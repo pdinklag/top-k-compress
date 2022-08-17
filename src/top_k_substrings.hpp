@@ -22,7 +22,7 @@ class TopKSubstrings {
 private:
     static constexpr bool gather_stats_ = true;
     static constexpr bool measure_time_ = false;
-    static constexpr bool DEBUG = true;
+    static constexpr bool DEBUG = false;
 
     static constexpr size_t sketch_seed_ = 777;
     
@@ -186,14 +186,16 @@ public:
         FilterIndex len;         // length of the string
         FilterIndex node;        // the string's node in the filter
         uint64_t    fingerprint; // fingerprint
+        char        first;       // the first character of this string
         uint8_t     sketch;      // which sketch is used for this string
         bool        frequent;    // whether or not the string is frequent
+        bool        new_node;    // did the last extension cause a new filter entry to be created?
     };
 
     // returns a string state for the empty string to start with
     // also conceptually clears the fingerprint window
     StringState empty_string() ALWAYS_INLINE {
-        return StringState { 0, filter_.root(), rolling_fp_offset_, 0, true };
+        return StringState { 0, filter_.root(), rolling_fp_offset_, 0, 0, true, false };
     }
 
     // extends a string to the right by a new character
@@ -211,7 +213,9 @@ public:
         StringState ext;
         ext.len = i + 1;
         ext.fingerprint = ext_fp;
+        ext.first = (i == 0) ? c : s.first;
         ext.sketch = (i == 0) ? select_sketch(c) : s.sketch;
+        ext.new_node = false;
 
         if constexpr(measure_time_) if(s.frequent) stats_.t_filter_find.resume();
         if(s.frequent && filter_.try_get_child(s.node, c, ext.node)) {
@@ -243,6 +247,9 @@ public:
                     if(i == 0 || (s.node && filter_.data(s.node).freq >= est)) {
                         // the immediate prefix was frequent, so yes, we can!
                         ext.node = swap_into_filter(s.node, c, ext_fp, est, sketch);
+
+                        // swapped in, so it's new
+                        ext.new_node = true;
                     } else {
                         // the immediate prefix was non-frequent or its frequency was too low
                         // -> the current prefix is overestimated, abort swap
@@ -258,6 +265,7 @@ public:
             } else {
                 // insert into filter, which is not yet full
                 ext.node = insert_into_filter(s.node, c, ext_fp);
+                ext.new_node = true;
             }
 
             // we dropped out of the filter, so no extension can be frequent (not even if the current prefix was inserted or swapped in)
@@ -266,10 +274,20 @@ public:
 
         // advance
         if constexpr(DEBUG) {
-            std::cout << "top-k: extend string of length " << s.len << " by " << display(c) << " -> node=" << ext.node << ", fp=" << ext.fingerprint << ", frequent=" << ext.frequent << std::endl;
+            std::cout << "top-k: extend string of length " << s.len << " (node " << s.node << ") by " << display(c) << " -> node=" << ext.node << ", fp=" << ext.fingerprint << ", frequent=" << ext.frequent << std::endl;
         }
 
         return ext;
+    }
+
+    size_t limit(StringState const& s, size_t const max_len) const {
+        auto len = s.len;
+        auto v = s.node;
+        while(len > max_len) {
+            v = filter_.parent(v);
+            --len;
+        }
+        return v;
     }
 
     size_t get(size_t const index, char* buffer) const {

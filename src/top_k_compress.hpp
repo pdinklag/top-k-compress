@@ -2,8 +2,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
-
-#include <tlx/container/ring_buffer.hpp>
+#include <list>
 
 #include <pm/malloc_counter.hpp>
 
@@ -16,7 +15,8 @@
 #include "vitter87.hpp"
 
 constexpr uint64_t MAGIC = 0x54'4F'50'4B'43'4F'4D'50ULL; // spells "TOPKCOMP" in hex
-constexpr bool DEBUG = true;
+constexpr bool DEBUG = false;
+constexpr bool PROTOCOL = false;
 
 template<tdc::InputIterator<char> In, tdc::io::BitSink Out, bool huffman_coding>
 void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns) {
@@ -35,13 +35,6 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
         Binary::encode(out, sketch_columns, Universe::of<size_t>());
         out.write(huffman_coding);
     }
-
-    // initialize compression
-    // notes on top-k:
-    // - frequent substring 0 is reserved to indicate a literal character
-    // - frequent substring k-1 is reserved to indicate the end of file
-    tlx::RingBuffer<char> buf(window_size);
-    TopKSubstrings topk(k-1, window_size, num_sketches, sketch_rows, sketch_columns);
 
     Vitter87<size_t> huff_phrases;
     Vitter87<uint16_t> huff_literals;
@@ -76,80 +69,127 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
         }
     };
 
+    // initialize compression
+    // - frequent substring 0 is reserved to indicate a literal character
+    // - frequent substring k-1 is reserved to indicate the end of file
+    TopKSubstrings topk(k-1, window_size, num_sketches, sketch_rows, sketch_columns);
+
+    struct NewNode {
+        size_t index;
+        size_t pos;
+    };
+    std::list<NewNode> new_nodes;
+
+    TopKSubstrings::StringState s[window_size];
+    TopKSubstrings::StringState match[window_size];
+    for(size_t j = 0; j < window_size; j++) {
+        s[j] = topk.empty_string();
+        match[j] = topk.empty_string();
+    }
+    size_t longest = 0;
+
     size_t num_frequent = 0;
     size_t num_literal = 0;
     size_t naive_enc_size = 0;
 
     size_t i = 0;
     size_t next_phrase = 0;
+
     auto handle = [&](char const c, size_t len) {
         if constexpr(DEBUG) {
-            std::cout << "read next character: '" << c << "'" << std::endl;
+            std::cout << "read next character: " << display(c) << ", i=" << i << ", next_phrase=" << next_phrase << ", longest=" << longest << std::endl;
         }
 
-        buf.push_back(c);
-        if(buf.size() == buf.max_size()) {
-            assert(i + 1 >= window_size);
-
-            //
-            if constexpr(DEBUG) {
-                std::cout << "- window: \"";
-                for(size_t j = 0; j < len; j++) {
-                    std::cout << buf[j];
-                }
-                std::cout << "\"" << std::endl;
+        // update the w cursors and find the maximum current match
+        size_t const num_active_windows = std::min(window_size, i + 1);
+        for(size_t j = 0; j < num_active_windows; j++) {
+            s[j] = topk.extend(s[j], c);
+            if(s[j].frequent) {
+                match[j] = s[j];
             }
-
-            // count window_size prefixes starting from position (i-window_size)
-            auto longest = topk.empty_string();
-            {
-                auto s = topk.empty_string();
-                size_t const max_match_len = std::min(len, i + 1 - window_size);
-
-                for(size_t j = 0; j < len; j++) {
-                    s = topk.extend(s, buf[j]);
-
-                    if(j + 1 < max_match_len && s.frequent) {
-                        longest = s;
-                    }
-                }
+            if(s[j].new_node) {
+                new_nodes.push_back({ s[j].node, i + 1 - s[j].len });
             }
+        }
 
-            // encode phrase
-            if(i >= next_phrase) {
-                if(longest.len >= 1) {
-                    if constexpr(DEBUG) {
-                        std::cout << "- [ENCODE] frequent phrase: \"";
-                        for(size_t j = 0; j < longest.len; j++) {
-                            std::cout << buf[j];
+        // test if our buffers are full
+        if(i + 1 >= window_size) {
+            assert(s[longest].len == window_size);
+
+            // decide whether something must be encoded now
+            assert(i + 1 - window_size <= next_phrase); // if this doesn't hold, we missed something
+            if(i + 1 - window_size == next_phrase) {
+                if constexpr(DEBUG) std::cout << "- [ENCODE] ";
+
+                // our longest phrase is now exactly w long; encode whatever is possible
+                auto phrase_index = match[longest].node;
+                auto phrase_len = match[longest].len;
+
+                if(phrase_len >= 1) {
+                    // check if the phrase node was only recently created
+                    for(auto& recent : new_nodes) {
+                        if(recent.index == phrase_index) {
+                            // it has - determine the maximum possible length for the phrase
+                            size_t const max_len = next_phrase - recent.pos;
+                            if(phrase_len > max_len) {
+                                // phrase is too long, limit
+                                phrase_index = topk.limit(match[longest], max_len);
+                                phrase_len = max_len;
+
+                                if constexpr(DEBUG) {
+                                    std::cout << "(LIMITED from index=" << phrase_index << ", length=" << phrase_len << ") ";
+                                }
+                            }
+                            break;
                         }
-                        std::cout << "\" (length=" << longest.len << ", index=" << longest.node << ")" << std::endl;
                     }
 
-                    encode_phrase(longest.node);
+                    if constexpr(DEBUG) {
+                        std::cout << "frequent phrase: index=" << phrase_index << ", length=" << phrase_len << std::endl;
+                    }
+                    if constexpr(PROTOCOL) {
+                        std::cout << "(" << phrase_index << ") / " << phrase_len << std::endl;
+                    }
+
+                    assert(phrase_index > 0);
+                    encode_phrase(phrase_index);
 
                     ++num_frequent;
-                    next_phrase = i + longest.len;
+                    next_phrase += phrase_len;
                     naive_enc_size += u_freq.entropy();
                 } else {
+                    auto const x = s[longest].first;
+
                     if constexpr(DEBUG) {
-                        std::cout << "- [ENCODE] literal phrase: " << display(buf[0]);
-                        if(longest.len == 1) std::cout << " (frequent phrase of length=1, index=" << longest.node << ")";
-                        std::cout << std::endl;
+                        std::cout << "literal phrase: " << display(x) << std::endl;
+                    }
+                    if constexpr(PROTOCOL) {
+                        std::cout << "0x" << std::hex << size_t(x) << std::dec << std::endl;
                     }
                     
                     encode_phrase(0);
-                    encode_literal(buf[0]);
+                    encode_literal(x);
 
                     ++num_literal;
-                    next_phrase = i + 1;
+                    ++next_phrase;
                     naive_enc_size += u_freq.entropy() + u_literal.entropy();
                 }
             }
 
-            // advance
-            buf.pop_front();
+            // advance longest
+            s[longest] = topk.empty_string();
+            match[longest] = topk.empty_string();
+            longest = (longest + 1) % window_size;
         }
+
+        // discard outdated entries in new_nodes
+        if(i + 1 >= 2 * window_size) {
+            while(!new_nodes.empty() && new_nodes.front().pos < i + 1 - 2 * window_size) {
+                new_nodes.pop_front();
+            }
+        }
+
+        // advance position
         ++i;
     };
     
@@ -208,9 +248,6 @@ void top_k_decompress(In in, Out out) {
     bool const huffman_coding = in.read_bit();
 
     // initialize
-    tlx::RingBuffer<char> buf(window_size);
-    TopKSubstrings topk(k-1, window_size, num_sketches, sketch_rows, sketch_columns);
-
     Vitter87<size_t> huff_phrases;
     Vitter87<uint16_t> huff_literals;
     
@@ -245,27 +282,39 @@ void top_k_decompress(In in, Out out) {
         }
     };
 
-    auto s = topk.empty_string();
+    // initialize compression
+    // - frequent substring 0 is reserved to indicate a literal character
+    // - frequent substring k-1 is reserved to indicate the end of file
+    TopKSubstrings topk(k-1, window_size, num_sketches, sketch_rows, sketch_columns);
+
+    TopKSubstrings::StringState s[window_size];
+    TopKSubstrings::StringState match[window_size];
+    for(size_t j = 0; j < window_size; j++) {
+        s[j] = topk.empty_string();
+    }
+    size_t longest = 0;
     size_t n = 0;
 
     auto handle = [&](char const c){
+        // emit character
         *out++ = c;
-        buf.push_back(c);
 
-        ++n;
-
-        s = topk.extend(s, c);
-        if(buf.size() == buf.max_size()) {
-            // our buffer is full, pop the first character, then count all prefixes of the suffix
-            buf.pop_front();
-
-            assert(s.len == window_size);
-            s = topk.empty_string();
-            assert(buf.size() == window_size - 1);
-            for(size_t j = 0; j < window_size - 1; j++) {
-                s = topk.extend(s, buf[j]);
-            }
+        // update the w cursors and find the maximum current match
+        size_t const num_active_windows = std::min(window_size, n + 1);
+        for(size_t j = 0; j < num_active_windows; j++) {
+            s[j] = topk.extend(s[j], c);
         }
+
+        if(n + 1 >= window_size) {
+            // advance longest
+            assert(s[longest].len == window_size);
+
+            s[longest] = topk.empty_string();
+            longest = (longest + 1) % window_size;
+        }
+
+        // advance position
+        ++n;
     };
 
     char frequent_string[window_size];
@@ -289,6 +338,9 @@ void top_k_decompress(In in, Out out) {
                 frequent_string[len] = 0;
                 std::cout << "- [DECODE] frequent phrase: \"" << frequent_string << "\" (index=" << p << ", length=" << len << ")" << std::endl;
             }
+            if constexpr(PROTOCOL) {
+                std::cout << "(" << p << ") / " << len << std::endl;
+            }
             
             for(size_t i = 0; i < len; i++) {
                 handle(frequent_string[i]);
@@ -299,6 +351,9 @@ void top_k_decompress(In in, Out out) {
             char const c = decode_literal();
             if constexpr(DEBUG) {
                 std::cout << "- [DECODE] literal phrase: " << display(c) << std::endl;
+            }
+            if constexpr(PROTOCOL) {
+                std::cout << "0x" << std::hex << size_t(c) << std::dec << std::endl;
             }
             handle(c);
         }

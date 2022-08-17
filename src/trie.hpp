@@ -337,6 +337,10 @@ public:
         return 0;
     }
 
+    NodeIndex parent(NodeIndex const node) const {
+        return nodes_[node].parent;
+    }
+
     bool full() const { 
         return size_ == capacity_;
     }
