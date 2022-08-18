@@ -2,11 +2,12 @@
 #include <filesystem>
 
 #include <tdc/framework/application.hpp>
-#include <tdc/io/file_input_stream.hpp>
-#include <tdc/io/file_output_stream.hpp>
-#include <tdc/io/stream_input_iterator.hpp>
-#include <tdc/io/stream_output_iterator.hpp>
-#include <tdc/io/util.hpp>
+
+#include <iopp/bitwise_io.hpp>
+#include <iopp/file_input_stream.hpp>
+#include <iopp/file_output_stream.hpp>
+#include <iopp/stream_input_iterator.hpp>
+#include <iopp/stream_output_iterator.hpp>
 
 #include <tlx/container/ring_buffer.hpp>
 
@@ -31,7 +32,7 @@ int main(int argc, char** argv) {
     if(app) {
         if(!app.args().empty()) {
             auto const& input = app.args()[0];
-            tdc::io::FileInputStream fis(input);
+            iopp::FileInputStream fis(input);
 
             size_t num_sync = 0;
             uint64_t fp;

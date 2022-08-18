@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include <tdc/io/file_input_stream.hpp>
+#include <iopp/file_input_stream.hpp>
 
 int main(int argc, char** argv) {
     if(argc < 2) {
@@ -10,7 +10,7 @@ int main(int argc, char** argv) {
 
     size_t hist[256] = { 0 };
 
-    tdc::io::FileInputStream fis(argv[1]);
+    iopp::FileInputStream fis(argv[1]);
     for(char const c : fis) {
         ++hist[(unsigned char)c];
     }

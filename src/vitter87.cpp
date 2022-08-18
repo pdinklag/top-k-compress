@@ -2,11 +2,12 @@
 #include <filesystem>
 
 #include <tdc/framework/application.hpp>
-#include <tdc/io/file_input_stream.hpp>
-#include <tdc/io/file_output_stream.hpp>
-#include <tdc/io/stream_input_iterator.hpp>
-#include <tdc/io/stream_output_iterator.hpp>
-#include <tdc/io/util.hpp>
+
+#include <iopp/bitwise_io.hpp>
+#include <iopp/file_input_stream.hpp>
+#include <iopp/file_output_stream.hpp>
+#include <iopp/stream_input_iterator.hpp>
+#include <iopp/stream_output_iterator.hpp>
 
 #include "vitter87.hpp"
 
@@ -27,17 +28,17 @@ int main(int argc, char** argv) {
     if(app) {
         if(!app.args().empty()) {
             if(options.decode) {
-                tdc::io::FileInputStream fis(app.args()[0]);
-                tdc::io::FileOutputStream fos(app.args()[0] + ".dec");
-                auto in = tdc::io::bitwise_input_from(fis);
-                auto out = tdc::io::StreamOutputIterator(fos);
+                iopp::FileInputStream fis(app.args()[0]);
+                iopp::FileOutputStream fos(app.args()[0] + ".dec");
+                auto in = iopp::bitwise_input_from(fis);
+                auto out = iopp::StreamOutputIterator(fos);
 
                 Vitter87<unsigned char> huff(256);
 
                 size_t const n = in.read(64);
                 std::cout << "decoding n=" << n << " bytes" << std::endl;
 
-                auto receive = [&](){ return in.read_bit(); };
+                auto receive = [&](){ return in.read(); };
 
                 for(size_t i = 0; i < n; i++) {
                     auto const c = huff.receive_and_decode(receive);
@@ -50,9 +51,9 @@ int main(int argc, char** argv) {
                 std::cout << "encoding n=" << n << " bytes" << std::endl;
                 std::cout.flush();
 
-                tdc::io::FileInputStream fis(app.args()[0]);
-                tdc::io::FileOutputStream fos(app.args()[0] + ".dhuff");
-                auto out = tdc::io::bitwise_output_to(fos);
+                iopp::FileInputStream fis(app.args()[0]);
+                iopp::FileOutputStream fos(app.args()[0] + ".dhuff");
+                auto out = iopp::bitwise_output_to(fos);
                 out.write(n, 64);
 
                 Vitter87<unsigned char> huff(256);

@@ -1,9 +1,11 @@
 #include <tdc/framework/application.hpp>
-#include <tdc/io/file_input_stream.hpp>
-#include <tdc/io/file_output_stream.hpp>
-#include <tdc/io/stream_input_iterator.hpp>
-#include <tdc/io/stream_output_iterator.hpp>
-#include <tdc/io/util.hpp>
+
+#include <iopp/bitwise_io.hpp>
+#include <iopp/file_input_stream.hpp>
+#include <iopp/file_output_stream.hpp>
+#include <iopp/stream_input_iterator.hpp>
+#include <iopp/stream_output_iterator.hpp>
+
 #include "top_k_compress.hpp"
 
 using namespace tdc::framework;
@@ -44,9 +46,9 @@ int main(int argc, char** argv) {
                     options.output = input + ".dec";
                 }
 
-                tdc::io::FileInputStream fis(input);
-                tdc::io::FileOutputStream fos(options.output);
-                top_k_decompress(tdc::io::bitwise_input_from(fis), tdc::io::StreamOutputIterator(fos));
+                iopp::FileInputStream fis(input);
+                iopp::FileOutputStream fos(options.output);
+                top_k_decompress(iopp::bitwise_input_from(fis), iopp::StreamOutputIterator(fos));
             } else {
                 if(options.output.empty()) {
                     if(options.huffman) {
@@ -56,12 +58,12 @@ int main(int argc, char** argv) {
                     }
                 }
 
-                tdc::io::FileInputStream fis(input);
-                tdc::io::FileOutputStream fos(options.output);
+                iopp::FileInputStream fis(input);
+                iopp::FileOutputStream fos(options.output);
                 if(options.huffman) {
-                    top_k_compress_huff(fis.begin(), fis.end(), tdc::io::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns);
+                    top_k_compress_huff(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns);
                 } else {
-                    top_k_compress_binary(fis.begin(), fis.end(), tdc::io::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns);
+                    top_k_compress_binary(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns);
                 }
             }
         } else {

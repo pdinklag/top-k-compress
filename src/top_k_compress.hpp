@@ -18,7 +18,7 @@ constexpr uint64_t MAGIC = 0x54'4F'50'4B'43'4F'4D'50ULL; // spells "TOPKCOMP" in
 constexpr bool DEBUG = false;
 constexpr bool PROTOCOL = false;
 
-template<tdc::InputIterator<char> In, tdc::io::BitSink Out, bool huffman_coding>
+template<tdc::InputIterator<char> In, tdc::code::BitSink Out, bool huffman_coding>
 void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns) {
     using namespace tdc::code;
 
@@ -219,17 +219,17 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
         << std::endl;
 }
 
-template<tdc::InputIterator<char> In, tdc::io::BitSink Out>
+template<tdc::InputIterator<char> In, tdc::code::BitSink Out>
 void top_k_compress_binary(In begin, In const end, Out out, bool const omit_header, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns) {
     top_k_compress<In, Out, false>(begin, end, out, omit_header, k, window_size, num_sketches, sketch_rows, sketch_columns);
 }
 
-template<tdc::InputIterator<char> In, tdc::io::BitSink Out>
+template<tdc::InputIterator<char> In, tdc::code::BitSink Out>
 void top_k_compress_huff(In begin, In const end, Out out, bool const omit_header, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns) {
     top_k_compress<In, Out, true>(begin, end, out, omit_header, k, window_size, num_sketches, sketch_rows, sketch_columns);
 }
 
-template<tdc::io::BitSource In, std::output_iterator<char> Out>
+template<tdc::code::BitSource In, std::output_iterator<char> Out>
 void top_k_decompress(In in, Out out) {
     using namespace tdc::code;
 
@@ -245,7 +245,7 @@ void top_k_decompress(In in, Out out) {
     size_t const num_sketches = Binary::decode(in, Universe::of<size_t>());
     size_t const sketch_rows = Binary::decode(in, Universe::of<size_t>());
     size_t const sketch_columns = Binary::decode(in, Universe::of<size_t>());
-    bool const huffman_coding = in.read_bit();
+    bool const huffman_coding = in.read();
 
     // initialize
     Vitter87<size_t> huff_phrases;
@@ -260,7 +260,7 @@ void top_k_decompress(In in, Out out) {
     Universe const u_literal(0, 255);
     Universe const u_freq(0, k-1);
 
-    auto recv = [&](){ return in.read_bit(); };
+    auto recv = [&](){ return in.read(); };
 
     auto decode_phrase = [&](){
         if(huffman_coding) {
