@@ -18,6 +18,7 @@
 #include "rolling_karp_rabin.hpp"
 #include "display.hpp"
 
+template<size_t fp_window_size_ = 8>
 class TopKSubstrings {
 private:
     static constexpr bool gather_stats_ = true;
@@ -47,8 +48,6 @@ private:
         }
     };
 
-    static constexpr size_t hash_window_size_ = 8;
-
     static constexpr uint64_t rolling_fp_offset_ = (1ULL << 63) - 25;
     static constexpr uint64_t rolling_fp_base_ = (1ULL << 14) - 15;
 
@@ -60,7 +59,6 @@ private:
     } __attribute__((packed));
 
     RollingKarpRabin hash_;
-    std::unique_ptr<char[]> hash_window_;
 
     using FilterIndex = uint32_t;
     Trie<FilterNodeData, FilterIndex> filter_;
@@ -162,9 +160,12 @@ private:
     }
 
 public:
+    static constexpr size_t fp_window_size() {
+        return fp_window_size_;
+    }
+
     inline TopKSubstrings(size_t const k, size_t const len, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns)
-        : hash_(hash_window_size_, rolling_fp_base_),
-          hash_window_(std::make_unique<char[]>(len + 1)), // +1 is just for debugging purposes...
+        : hash_(fp_window_size_, rolling_fp_base_),
           filter_(k),
           min_pq_(k),
           k_(k),
@@ -186,16 +187,17 @@ public:
         FilterIndex len;         // length of the string
         FilterIndex node;        // the string's node in the filter
         uint64_t    fingerprint; // fingerprint
-        char        first;       // the first character of this string
+        char        first;       // the first ever character of this string
         uint8_t     sketch;      // which sketch is used for this string
         bool        frequent;    // whether or not the string is frequent
         bool        new_node;    // did the last extension cause a new filter entry to be created?
+        char        fp_window[fp_window_size_]; // the current fingerprinting window (ring buffer)
     };
 
     // returns a string state for the empty string to start with
     // also conceptually clears the fingerprint window
     StringState empty_string() ALWAYS_INLINE {
-        return StringState { 0, filter_.root(), rolling_fp_offset_, 0, 0, true, false };
+        return StringState { 0, filter_.root(), rolling_fp_offset_, 0, 0, true, false, "\0" };
     }
 
     // extends a string to the right by a new character
@@ -205,8 +207,8 @@ public:
         auto const i = s.len;
 
         // update fingerprint
-        hash_window_[i] = c;
-        char const pop = (i >= hash_window_size_) ? hash_window_[i - hash_window_size_] : 0;
+        auto const fp_window_begin = (i >= fp_window_size_) ? (i % fp_window_size_) : 0;
+        char const pop = (i >= fp_window_size_) ? s.fp_window[fp_window_begin] : 0;
         auto const ext_fp = hash_.roll(s.fingerprint, pop, c);
 
         // try and find extension in filter
@@ -216,6 +218,9 @@ public:
         ext.first = (i == 0) ? c : s.first;
         ext.sketch = (i == 0) ? select_sketch(c) : s.sketch;
         ext.new_node = false;
+
+        // slide fingerprint window (ring buffer)
+        ext.fp_window[fp_window_begin] = c;
 
         if constexpr(measure_time_) if(s.frequent) stats_.t_filter_find.resume();
         if(s.frequent && filter_.try_get_child(s.node, c, ext.node)) {

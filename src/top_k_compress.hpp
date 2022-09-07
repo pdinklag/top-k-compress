@@ -72,7 +72,7 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
     // - frequent substring k-1 is reserved to indicate the end of file
-    TopKSubstrings topk(k-1, window_size, num_sketches, sketch_rows, sketch_columns);
+    TopKSubstrings<> topk(k-1, window_size, num_sketches, sketch_rows, sketch_columns);
 
     struct NewNode {
         size_t index;
@@ -80,8 +80,8 @@ void top_k_compress(In& begin, In const& end, Out& out, bool const omit_header, 
     };
     std::list<NewNode> new_nodes;
 
-    TopKSubstrings::StringState s[window_size];
-    TopKSubstrings::StringState match[window_size];
+    TopKSubstrings<>::StringState s[window_size];
+    TopKSubstrings<>::StringState match[window_size];
     for(size_t j = 0; j < window_size; j++) {
         s[j] = topk.empty_string();
         match[j] = topk.empty_string();
@@ -285,10 +285,10 @@ void top_k_decompress(In in, Out out) {
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
     // - frequent substring k-1 is reserved to indicate the end of file
-    TopKSubstrings topk(k-1, window_size, num_sketches, sketch_rows, sketch_columns);
+    TopKSubstrings<> topk(k-1, window_size, num_sketches, sketch_rows, sketch_columns);
 
-    TopKSubstrings::StringState s[window_size];
-    TopKSubstrings::StringState match[window_size];
+    TopKSubstrings<>::StringState s[window_size];
+    TopKSubstrings<>::StringState match[window_size];
     for(size_t j = 0; j < window_size; j++) {
         s[j] = topk.empty_string();
     }
