@@ -32,8 +32,6 @@ private:
     }
 
 public:
-    static constexpr uint64_t MAGIC = 0x54'4F'50'4B'43'4F'4D'50ULL; // spells "TOPKCOMP" in hex
-
     uint64_t k;
     uint64_t window_size;
     uint64_t num_sketches;
@@ -48,10 +46,10 @@ public:
     }
 
     template<tdc::code::BitSource In>
-    TopkFormat(In& in) {
+    TopkFormat(In& in, uint64_t const expected_magic) {
         uint64_t const magic = Binary::decode(in, Universe::of<uint64_t>());
-        if(magic != MAGIC) {
-            std::cerr << "wrong magic: 0x" << std::hex << magic << " (should be 0x" << MAGIC << ")" << std::endl;
+        if(magic != expected_magic) {
+            std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << expected_magic << ")" << std::endl;
             std::abort();
         }
 
@@ -66,8 +64,8 @@ public:
     }
 
     template<tdc::code::BitSink Out>
-    void encode_header(Out& out) {
-        Binary::encode(out, MAGIC, Universe::of<uint64_t>());
+    void encode_header(Out& out, uint64_t const magic) {
+        Binary::encode(out, magic, Universe::of<uint64_t>());
         Binary::encode(out, k, Universe::of<uint64_t>());
         Binary::encode(out, window_size, Universe::of<uint64_t>());
         Binary::encode(out, num_sketches, Universe::of<uint64_t>());

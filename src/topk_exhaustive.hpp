@@ -11,22 +11,31 @@
 #include <tdc/util/math.hpp>
 
 #include "display.hpp"
-#include "top_k_format.hpp"
-#include "top_k_substrings.hpp"
+#include "topk_format.hpp"
+#include "topk_substrings.hpp"
 
-constexpr uint64_t MAGIC = 0x54'4F'50'4B'43'4F'4D'50ULL; // spells "TOPKCOMP" in hex
+constexpr uint64_t MAGIC =
+    ((uint64_t)'T') << 56 |
+    ((uint64_t)'O') << 48 |
+    ((uint64_t)'P') << 40 |
+    ((uint64_t)'K') << 32 |
+    ((uint64_t)'E') << 24 |
+    ((uint64_t)'X') << 16 |
+    ((uint64_t)'H') << 8 |
+    ((uint64_t)'#');
+
 constexpr bool DEBUG = false;
 constexpr bool PROTOCOL = false;
 
 template<tdc::InputIterator<char> In, tdc::code::BitSink Out>
-void top_k_compress(In begin, In const& end, Out out, bool const omit_header, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, bool const huffman_coding) {
+void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, bool const huffman_coding) {
     using namespace tdc::code;
 
     pm::MallocCounter malloc_counter;
     malloc_counter.start();
 
     TopkFormat f(k, window_size, num_sketches, sketch_rows, sketch_columns, huffman_coding);
-    if(!omit_header) f.encode_header(out);
+    if(!omit_header) f.encode_header(out, MAGIC);
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
@@ -175,11 +184,11 @@ void top_k_compress(In begin, In const& end, Out out, bool const omit_header, si
 }
 
 template<tdc::code::BitSource In, std::output_iterator<char> Out>
-void top_k_decompress(In in, Out out) {
+void topk_decompress_exh(In in, Out out) {
     using namespace tdc::code;
 
     // decode header
-    TopkFormat f(in);
+    TopkFormat f(in, MAGIC);
     auto const k = f.k;
     auto const window_size = f.window_size;
     auto const num_sketches = f.num_sketches;

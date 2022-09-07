@@ -6,7 +6,7 @@
 #include <iopp/stream_input_iterator.hpp>
 #include <iopp/stream_output_iterator.hpp>
 
-#include "top_k_compress.hpp"
+#include "topk_exhaustive.hpp"
 
 using namespace tdc::framework;
 
@@ -48,7 +48,7 @@ int main(int argc, char** argv) {
 
                 iopp::FileInputStream fis(input);
                 iopp::FileOutputStream fos(options.output);
-                top_k_decompress(iopp::bitwise_input_from(fis), iopp::StreamOutputIterator(fos));
+                topk_decompress_exh(iopp::bitwise_input_from(fis), iopp::StreamOutputIterator(fos));
             } else {
                 if(options.output.empty()) {
                     if(options.huffman) {
@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
 
                 iopp::FileInputStream fis(input);
                 iopp::FileOutputStream fos(options.output);
-                top_k_compress(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns, options.huffman);
+                topk_compress_exh(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns, options.huffman);
             }
         } else {
             app.print_usage(options);
