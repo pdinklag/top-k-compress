@@ -1,3 +1,5 @@
+#pragma once
+
 #include <algorithm>
 #include <bit>
 #include <cstddef>
@@ -73,7 +75,6 @@ private:
     static constexpr size_t sketch_distr_divisor_ = 8;
 
     size_t k_;
-    size_t len_;
 
     Stats stats_;
 
@@ -164,12 +165,11 @@ public:
         return fp_window_size_;
     }
 
-    inline TopKSubstrings(size_t const k, size_t const len, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns)
+    inline TopKSubstrings(size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns)
         : hash_(fp_window_size_, rolling_fp_base_),
           filter_(k),
           min_pq_(k),
           k_(k),
-          len_(len),
           stats_() {
 
         auto const sbits = std::bit_width(num_sketches - 1);
@@ -317,21 +317,5 @@ public:
         std::cout << std::endl;
         filter_.print_debug_info();
         min_pq_.print_debug_info();
-
-        /*
-        for(size_t i = 0; i < num_sketches_; i++) {
-            sketches_[i].print_debug_info();
-        }
-        */
-
-        /*
-        char buffer[len_ + 1];
-        for(size_t i = 1; i < k_; i++) {
-            auto const l = get(i, buffer);
-            buffer[l] = 0;
-            std::cout << i << " -> \"" << buffer << "\" (" << filter_.freq(i) << ")" << std::endl;
-        }
-        */
-        // sketch_.print_debug_info();
     }
 };
