@@ -60,11 +60,7 @@ int main(int argc, char** argv) {
 
                 iopp::FileInputStream fis(input);
                 iopp::FileOutputStream fos(options.output);
-                if(options.huffman) {
-                    top_k_compress_huff(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns);
-                } else {
-                    top_k_compress_binary(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns);
-                }
+                top_k_compress(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns, options.huffman);
             }
         } else {
             app.print_usage(options);
