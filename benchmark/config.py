@@ -1,7 +1,6 @@
 gzip_bin = "/usr/bin/gzip"
 bzip2_bin = "/usr/bin/bzip2"
 topk_bin = "/scratch/top-k-compress/build/src/comp"
-topkh_bin = "/scratch/top-k-compress/build/src/comp"
 
 ks      = ["256K", "512K", "1M", "2M", "4M"]
 windows = [8, 12, 16, 24, 32]

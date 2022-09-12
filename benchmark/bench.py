@@ -56,19 +56,33 @@ def bzip2(filename):
         filename,
         ".bz2")
 
-def topk(filename, k, w):
+def topk_exh(filename, k, w):
     bench(
         [config.topk_bin, "-k", str(k), "-w", str(w), filename] + config.options + [filename],
-        f"topk-k{k}_w{w}",
+        f"topk-exh-k{k}_w{w}",
         filename,
-        ".topk")
+        ".exh")
 
-def topkh(filename, k, w):
+def topk_exh_huff(filename, k, w):
     bench(
-        [config.topkh_bin, "-k", str(k), "-w", str(w), "--huff"] + config.options + [filename],
-        f"topk-k{k}_w{w}-huff",
+        [config.topk_bin, "-k", str(k), "-w", str(w), "--huff"] + config.options + [filename],
+        f"topk-exh-huff-k{k}_w{w}",
         filename,
-        ".topkh")
+        ".exhh")
+
+def topk_lz78(filename, k, w):
+    bench(
+        [config.topk_bin, "-z", "-k", str(k), "-w", str(w), filename] + config.options + [filename],
+        f"topk-lz78-k{k}_w{w}",
+        filename,
+        ".lz78")
+
+def topk_lz78_huff(filename, k, w):
+    bench(
+        [config.topk_bin, "-z", "-k", str(k), "-w", str(w), "--huff"] + config.options + [filename],
+        f"topk-lz78-huff-k{k}_w{w}",
+        filename,
+        ".lz78h")
 
 # parse args
 parser = argparse.ArgumentParser(description='top-k compression benchmark')
@@ -88,6 +102,8 @@ with open(args.log, "w") as logf:
         bzip2(filename)
         for w in config.windows:
             for k in config.ks:
-                topk(filename, k, w)
-                topkh(filename, k, w)
+                topk_exh(filename, k, w)
+                topk_exh_huff(filename, k, w)
+                topk_lz78(filename, k, w)
+                topk_lz78_huff(filename, k, w)
         print()
