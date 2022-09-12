@@ -25,7 +25,7 @@ constexpr uint64_t MAGIC_LZ78 =
     ((uint64_t)'7') << 8 |
     ((uint64_t)'8');
 
-template<tdc::InputIterator<char> In, tdc::code::BitSink Out>
+template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_lz78(In begin, In const& end, Out out, bool const omit_header, size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, bool const huffman_coding) {
     using namespace tdc::code;
 

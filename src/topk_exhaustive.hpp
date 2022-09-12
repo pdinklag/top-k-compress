@@ -29,7 +29,7 @@ constexpr uint64_t MAGIC_EXH =
 constexpr bool DEBUG = false;
 constexpr bool PROTOCOL = false;
 
-template<tdc::InputIterator<char> In, tdc::code::BitSink Out>
+template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, bool const huffman_coding) {
     using namespace tdc::code;
 
@@ -185,7 +185,7 @@ void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header,
         << std::endl;
 }
 
-template<tdc::code::BitSource In, std::output_iterator<char> Out>
+template<iopp::BitSource In, std::output_iterator<char> Out>
 void topk_decompress_exh(In in, Out out) {
     using namespace tdc::code;
 
