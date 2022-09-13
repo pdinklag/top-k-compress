@@ -8,6 +8,7 @@
 
 #include "topk_exhaustive.hpp"
 #include "topk_lz78.hpp"
+#include "topk_selective.hpp"
 
 using namespace tdc::framework;
 
@@ -17,6 +18,7 @@ struct Options : public Entity {
     bool raw = false;
     bool huffman = false;
     bool lz78 = false;
+    bool selective = false;
     uint64_t k = 1'000'000;
     uint64_t window = 8;
     uint64_t sketch_count = 1;
@@ -31,6 +33,7 @@ struct Options : public Entity {
         param('s', "sketch-count", sketch_count, "The number of Count-Min sketches to distribute to..");
         param('r', "sketch-rows", sketch_rows, "The number of rows in the Count-Min sketch.");
         param('c', "sketch-columns", sketch_columns, "The total number of columns in each Count-Min row.");
+        param('x', "sel", selective, "Do a more selective parsing.");
         param('z', "lz78", lz78, "Produce an LZ78 parsing.");
         param("huff", huffman, "Use dynamic Huffman coding for phrases.");
         param("raw", raw, "Omit the header in the output file -- cannot be decompressed!");
@@ -54,14 +57,23 @@ int main(int argc, char** argv) {
                 if(options.lz78) {
                     topk_decompress_lz78(iopp::bitwise_input_from(fis.begin(), fis.end()), iopp::StreamOutputIterator(fos));
                 } else {
-                    topk_decompress_exh(iopp::bitwise_input_from(fis.begin(), fis.end()), iopp::StreamOutputIterator(fos));
+                    if(options.selective) {
+                        std::cerr << "not implemented" << std::endl;
+                        std::abort();
+                    } else {
+                        topk_decompress_exh(iopp::bitwise_input_from(fis.begin(), fis.end()), iopp::StreamOutputIterator(fos));
+                    }
                 }
             } else {
                 if(options.output.empty()) {
                     if(options.lz78) {
                         options.output = input + ".lz78";
                     } else {
-                        options.output = input + ".exh";
+                        if(options.selective) {
+                            options.output = input + ".sel";
+                        } else {
+                            options.output = input + ".exh";
+                        }
                     }
                     
                     if(options.huffman) {
@@ -74,7 +86,11 @@ int main(int argc, char** argv) {
                 if(options.lz78) {
                     topk_compress_lz78(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.sketch_count, options.sketch_rows, options.sketch_columns, options.huffman);
                 } else {
-                    topk_compress_exh(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns, options.huffman);
+                    if(options.selective) {
+                        topk_compress_sel(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns, options.huffman);
+                    } else {
+                        topk_compress_exh(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns, options.huffman);
+                    }
                 }
             }
         } else {

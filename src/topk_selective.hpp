@@ -1,0 +1,156 @@
+#pragma once
+
+#include <bit>
+#include <cstdint>
+#include <cstdlib>
+#include <iostream>
+#include <list>
+
+#include <pm/malloc_counter.hpp>
+
+#include <tdc/code/universal/binary.hpp>
+#include <tdc/util/concepts.hpp>
+#include <tdc/util/math.hpp>
+
+#include "display.hpp"
+#include "topk_format.hpp"
+#include "topk_substrings.hpp"
+
+constexpr uint64_t MAGIC_SEL =
+    ((uint64_t)'T') << 56 |
+    ((uint64_t)'O') << 48 |
+    ((uint64_t)'P') << 40 |
+    ((uint64_t)'K') << 32 |
+    ((uint64_t)'S') << 24 |
+    ((uint64_t)'E') << 16 |
+    ((uint64_t)'L') << 8 |
+    ((uint64_t)'#');
+
+template<tdc::InputIterator<char> In, iopp::BitSink Out>
+void topk_compress_sel(In begin, In const& end, Out out, bool const omit_header, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, bool const huffman_coding) {
+    using namespace tdc::code;
+
+    pm::MallocCounter malloc_counter;
+    malloc_counter.start();
+
+    TopkFormat f(k, window_size, num_sketches, sketch_rows, sketch_columns, huffman_coding);
+    if(!omit_header) f.encode_header(out, MAGIC_SEL);
+
+    // initialize compression
+    // - frequent substring 0 is reserved to indicate a literal character
+    TopKSubstrings<> topk(k, num_sketches, sketch_rows, sketch_columns);
+
+    struct NewNode {
+        size_t index;
+        size_t pos;
+    };
+    std::list<NewNode> new_nodes;
+
+    TopKSubstrings<>::StringState s[window_size];
+    TopKSubstrings<>::StringState match[window_size];
+    for(size_t j = 0; j < window_size; j++) {
+        s[j] = topk.empty_string();
+        match[j] = topk.empty_string();
+    }
+    size_t longest = 0;
+
+    size_t num_frequent = 0;
+    size_t num_literal = 0;
+
+    size_t i = 0;
+    size_t next_phrase = 0;
+
+    auto handle = [&](char const c, size_t len) {
+        // update the w cursors and find the maximum current match
+        size_t const num_active_windows = std::min(window_size, i + 1);
+        for(size_t j = 0; j < num_active_windows; j++) {
+            if(s[j].frequent) {
+                s[j] = topk.extend(s[j], c);
+                if(s[j].frequent) {
+                    match[j] = s[j];
+                }
+                if(s[j].new_node) {
+                    new_nodes.push_back({ s[j].node, i + 1 - s[j].len });
+                }
+            }
+        }
+
+        // test if our buffers are full
+        if(i + 1 >= window_size) {
+            assert(s[longest].len == window_size);
+
+            // decide whether something must be encoded now
+            assert(i + 1 - window_size <= next_phrase); // if this doesn't hold, we missed something
+            if(i + 1 - window_size == next_phrase) {
+                // our longest phrase is now exactly w long; encode whatever is possible
+                auto phrase_index = match[longest].node;
+                auto phrase_len = match[longest].len;
+
+                if(phrase_len >= 1) {
+                    // check if the phrase node was only recently created
+                    for(auto& recent : new_nodes) {
+                        if(recent.index == phrase_index) {
+                            // it has - determine the maximum possible length for the phrase
+                            size_t const max_len = next_phrase - recent.pos;
+                            if(phrase_len > max_len) {
+                                // phrase is too long, limit
+                                phrase_index = topk.limit(match[longest], max_len);
+                                phrase_len = max_len;
+                            }
+                            break;
+                        }
+                    }
+
+                    assert(phrase_index > 0);
+                    f.encode_phrase(out, phrase_index);
+
+                    ++num_frequent;
+                    next_phrase += phrase_len;
+                } else {
+                    auto const x = s[longest].first;
+                    f.encode_phrase(out, 0);
+                    f.encode_literal(out, x);
+
+                    ++num_literal;
+                    ++next_phrase;
+                }
+            }
+
+            // advance longest
+            s[longest] = topk.empty_string();
+            match[longest] = topk.empty_string();
+            longest = (longest + 1) % window_size;
+        }
+
+        // discard outdated entries in new_nodes
+        if(i + 1 >= 2 * window_size) {
+            while(!new_nodes.empty() && new_nodes.front().pos < i + 1 - 2 * window_size) {
+                new_nodes.pop_front();
+            }
+        }
+
+        // advance position
+        ++i;
+    };
+    
+    while(begin != end) {
+        // read next character
+        handle(*begin++, window_size);
+    }
+
+    // pad trailing zeroes (is this needed?)
+    for(size_t x = 0; x < window_size - 1; x++) {
+        handle(0, window_size - 1 - x);
+    }
+
+    malloc_counter.stop();
+
+    topk.print_debug_info();
+    std::cout << "mem_peak=" << malloc_counter.peak() << std::endl;
+    std::cout << "parse"
+        << " n=" << (i - window_size + 1)
+        << ": num_frequent=" << num_frequent
+        << ", num_literal=" << num_literal
+        << " -> total phrases: " << (num_frequent + num_literal)
+        << std::endl;
+}
