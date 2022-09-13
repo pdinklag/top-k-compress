@@ -26,7 +26,7 @@ private:
 
         if(huffman_coding) {
             // we cannot encode 0 as of now, so every phrase or literal gets increased by one when encoding...
-            huff_phrases = Vitter87<size_t>(k + 1);
+            huff_phrases = Vitter87<size_t>(k);
             huff_literals = Vitter87<uint16_t>(256);
         }
     }

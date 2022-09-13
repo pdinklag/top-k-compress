@@ -41,8 +41,7 @@ void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header,
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
-    // - frequent substring k-1 is reserved to indicate the end of file
-    TopKSubstrings<> topk(k-1, num_sketches, sketch_rows, sketch_columns);
+    TopKSubstrings<> topk(k, num_sketches, sketch_rows, sketch_columns);
 
     struct NewNode {
         size_t index;
@@ -170,9 +169,6 @@ void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header,
         handle(0, window_size - 1 - x);
     }
 
-    // encode EOF
-    f.encode_phrase(out, k-1);
-
     malloc_counter.stop();
 
     topk.print_debug_info();
@@ -200,8 +196,7 @@ void topk_decompress_exh(In in, Out out) {
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
-    // - frequent substring k-1 is reserved to indicate the end of file
-    TopKSubstrings<> topk(k-1, num_sketches, sketch_rows, sketch_columns);
+    TopKSubstrings<> topk(k, num_sketches, sketch_rows, sketch_columns);
 
     TopKSubstrings<>::StringState s[window_size];
     TopKSubstrings<>::StringState match[window_size];
@@ -237,13 +232,8 @@ void topk_decompress_exh(In in, Out out) {
     size_t num_frequent = 0;
     size_t num_literal = 0;
 
-    while(true) {
+    while(in) {
         auto const p = f.decode_phrase(in);
-        if(p == k-1) {
-            // EOF
-            break;
-        }
-
         if(p) {
             // decode frequent phrase
             ++num_frequent;

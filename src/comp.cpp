@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
                 if(options.lz78) {
                     std::cerr << "not implemented" << std::endl;
                 } else {
-                    topk_decompress_exh(iopp::bitwise_input_from(fis), iopp::StreamOutputIterator(fos));
+                    topk_decompress_exh(iopp::bitwise_input_from(fis.begin(), fis.end()), iopp::StreamOutputIterator(fos));
                 }
             } else {
                 if(options.output.empty()) {
