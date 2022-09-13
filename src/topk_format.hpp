@@ -87,8 +87,8 @@ public:
 
     template<tdc::code::BitSource In>
     uint64_t decode_phrase(In& in) {
-        auto recv = [&](){ return in.read(); };
         if(huffman_coding) {
+            auto recv = [&](){ return in.read(); };
             auto const x = huff_phrases.receive_and_decode(recv) - 1;
             huff_phrases.update(x+1);
             return x;
@@ -111,8 +111,8 @@ public:
 
     template<tdc::code::BitSource In>
     char decode_literal(In& in) {
-        auto recv = [&](){ return in.read(); };
         if(huffman_coding) {
+            auto recv = [&](){ return in.read(); };
             auto const x = huff_literals.receive_and_decode(recv) - 1;
             huff_literals.update(x+1);
             return (char)x;
