@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
                 iopp::FileInputStream fis(input);
                 iopp::FileOutputStream fos(options.output);
                 if(options.lz78) {
-                    std::cerr << "not implemented" << std::endl;
+                    topk_decompress_lz78(iopp::bitwise_input_from(fis.begin(), fis.end()), iopp::StreamOutputIterator(fos));
                 } else {
                     topk_decompress_exh(iopp::bitwise_input_from(fis.begin(), fis.end()), iopp::StreamOutputIterator(fos));
                 }

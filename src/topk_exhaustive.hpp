@@ -194,7 +194,7 @@ void topk_decompress_exh(In in, Out out) {
     auto const sketch_columns = f.sketch_columns;
     auto const huffman_coding = f.huffman_coding;
 
-    // initialize compression
+    // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character
     TopKSubstrings<> topk(k, num_sketches, sketch_rows, sketch_columns);
 

@@ -37,8 +37,7 @@ void topk_compress_lz78(In begin, In const& end, Out out, bool const omit_header
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
-    // - frequent substring k-1 is reserved to indicate the end of file
-    TopKSubstrings<> topk(k-1, num_sketches, sketch_rows, sketch_columns);
+    TopKSubstrings<> topk(k, num_sketches, sketch_rows, sketch_columns);
     size_t n = 0;
     size_t num_phrases = 0;
     size_t longest = 0;
@@ -63,9 +62,6 @@ void topk_compress_lz78(In begin, In const& end, Out out, bool const omit_header
         handle(*begin++);
     }
 
-    // encode EOF marker
-    f.encode_phrase(out, k-1);
-
     // encode final phrase, if any
     if(s.len > 0) {
         f.encode_phrase(out, s.node);
@@ -81,4 +77,44 @@ void topk_compress_lz78(In begin, In const& end, Out out, bool const omit_header
         << " -> num_phrases=" << num_phrases
         << ", longest=" << longest
         << std::endl;
+}
+
+template<iopp::BitSource In, std::output_iterator<char> Out>
+void topk_decompress_lz78(In in, Out out) {
+    using namespace tdc::code;
+
+    // decode header
+    TopkFormat f(in, MAGIC_LZ78);
+    auto const k = f.k;
+    auto const window_size = f.window_size;
+    auto const num_sketches = f.num_sketches;
+    auto const sketch_rows = f.sketch_rows;
+    auto const sketch_columns = f.sketch_columns;
+    auto const huffman_coding = f.huffman_coding;
+
+    // initialize decompression
+    // - frequent substring 0 is reserved to indicate a literal character
+    TopKSubstrings<> topk(k, num_sketches, sketch_rows, sketch_columns);
+
+    char* phrase = new char[k]; // phrases can be of length up to k...
+    while(in) {
+        // decode and handle phrase
+        auto const x = f.decode_phrase(in);
+        auto const phrase_len = topk.get(x, phrase);
+
+        auto s = topk.empty_string();
+        for(size_t i = 0; i < phrase_len; i++) {
+            auto const c = phrase[i];
+            s = topk.extend(s, c);
+            *out++ = c;
+        }
+
+        // decode and handle literal
+        if(in)
+        {
+            auto const literal = f.decode_literal(in);
+            topk.extend(s, literal);
+            *out++ = literal;
+        }
+    }
 }
