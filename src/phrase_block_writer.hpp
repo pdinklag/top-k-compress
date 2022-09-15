@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <vector>
 
+#include <iostream>
+#include <unordered_set>
+
 #include <iopp/concepts.hpp>
 
 #include <tdc/code/universal/binary.hpp>
@@ -10,6 +13,8 @@
 template<iopp::BitSink Out>
 class PhraseBlockWriter {
 private:
+    static constexpr bool DEBUG = false;
+
     Out* out_;
     
     size_t block_size_;
@@ -29,6 +34,23 @@ private:
 
         tdc::code::Universe u_refs(ref_min_, ref_max_);
         tdc::code::Universe u_lits(lit_min_, lit_max_);
+
+        if constexpr(DEBUG) {
+            std::unordered_set<char> unique_literals;
+            for(auto const c : cur_literals_) unique_literals.emplace(c);
+
+            std::unordered_set<uint64_t> unique_refs;
+            for(auto const x : cur_refs_) unique_refs.emplace(x);
+
+            std::cout << "block: size=" << cur_block_.size()
+                << ", num_literals=" << cur_literals_.size()
+                << ", unique_literals=" << unique_literals.size()
+                << ", literal_entropy=" << u_lits.entropy()
+                << ", num_refs=" << cur_refs_.size()
+                << ", unique_refs=" << unique_refs.size()
+                << ", ref_entropy=" << u_refs.entropy()
+                << std::endl;
+        }
 
         // encode current block
         size_t next_lit = 0;
