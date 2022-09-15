@@ -70,6 +70,20 @@ def topk_exh_huff(filename, k, w):
         filename,
         ".exhh")
 
+def topk_sel(filename, k, w):
+    bench(
+        [config.topk_bin, "-x", "-k", str(k), "-w", str(w), filename] + config.options + [filename],
+        f"topk-sel-k{k}_w{w}",
+        filename,
+        ".sel")
+
+def topk_sel_huff(filename, k, w):
+    bench(
+        [config.topk_bin, "-x", "-k", str(k), "-w", str(w), "--huff"] + config.options + [filename],
+        f"topk-sel-huff-k{k}_w{w}",
+        filename,
+        ".selh")
+
 def topk_lz78(filename, k, w):
     bench(
         [config.topk_bin, "-z", "-k", str(k), "-w", str(w), filename] + config.options + [filename],
@@ -98,12 +112,23 @@ with open(args.log, "w") as logf:
         print("algo\tn\tn'\ttime")
         sys.stdout.flush()
 
-        gzip(filename)
-        bzip2(filename)
+        #gzip(filename)
+        #bzip2(filename)
         for w in config.windows:
             for k in config.ks:
-                topk_exh(filename, k, w)
-                topk_exh_huff(filename, k, w)
-                topk_lz78(filename, k, w)
-                topk_lz78_huff(filename, k, w)
+                pass
+                #topk_exh(filename, k, w)
+                #topk_exh_huff(filename, k, w)
+                
+        for w in config.windows:
+            for k in config.ks:
+                pass
+                #topk_lz78(filename, k, w)
+                #topk_lz78_huff(filename, k, w)
+                
+        for w in config.windows + config.sel_add_windows:
+            for k in config.ks:
+                topk_sel(filename, k, w)
+                topk_sel_huff(filename, k, w)
+        
         print()
