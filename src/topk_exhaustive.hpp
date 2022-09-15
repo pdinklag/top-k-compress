@@ -13,6 +13,8 @@
 #include <tdc/util/math.hpp>
 
 #include "display.hpp"
+#include "phrase_block_reader.hpp"
+#include "phrase_block_writer.hpp"
 #include "topk_format.hpp"
 #include "topk_substrings.hpp"
 
@@ -30,18 +32,21 @@ constexpr bool DEBUG = false;
 constexpr bool PROTOCOL = false;
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, bool const huffman_coding) {
+void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size) {
     using namespace tdc::code;
 
     pm::MallocCounter malloc_counter;
     malloc_counter.start();
 
-    TopkFormat f(k, window_size, num_sketches, sketch_rows, sketch_columns, huffman_coding);
+    TopkFormat f(k, window_size, num_sketches, sketch_rows, sketch_columns, false);
     if(!omit_header) f.encode_header(out, MAGIC_EXH);
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
     TopKSubstrings<> topk(k, num_sketches, sketch_rows, sketch_columns);
+
+    // initialize encoding
+    PhraseBlockWriter writer(out, block_size);
 
     struct NewNode {
         size_t index;
@@ -120,7 +125,7 @@ void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header,
                     }
 
                     assert(phrase_index > 0);
-                    f.encode_phrase(out, phrase_index);
+                    writer.write_ref(phrase_index);
 
                     ++num_frequent;
                     next_phrase += phrase_len;
@@ -134,8 +139,8 @@ void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header,
                         std::cout << "0x" << std::hex << size_t(x) << std::dec << std::endl;
                     }
                     
-                    f.encode_phrase(out, 0);
-                    f.encode_literal(out, x);
+                    writer.write_ref(0);
+                    writer.write_literal(x);
 
                     ++num_literal;
                     ++next_phrase;
@@ -169,6 +174,7 @@ void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header,
         handle(0, window_size - 1 - x);
     }
 
+    writer.flush();
     malloc_counter.stop();
 
     topk.print_debug_info();
@@ -197,6 +203,9 @@ void topk_decompress_exh(In in, Out out) {
     // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character
     TopKSubstrings<> topk(k, num_sketches, sketch_rows, sketch_columns);
+
+    // initialize decoding
+    PhraseBlockReader reader(in);
 
     TopKSubstrings<>::StringState s[window_size];
     TopKSubstrings<>::StringState match[window_size];
@@ -233,7 +242,7 @@ void topk_decompress_exh(In in, Out out) {
     size_t num_literal = 0;
 
     while(in) {
-        auto const p = f.decode_phrase(in);
+        auto const p = reader.read_ref();
         if(p) {
             // decode frequent phrase
             ++num_frequent;
@@ -254,7 +263,7 @@ void topk_decompress_exh(In in, Out out) {
         } else {
             // decode literal phrase
             ++num_literal;
-            char const c = f.decode_literal(in);
+            char const c = reader.read_literal();
             if constexpr(DEBUG) {
                 std::cout << "- [DECODE] literal phrase: " << display(c) << std::endl;
             }

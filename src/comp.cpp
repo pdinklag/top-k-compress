@@ -24,6 +24,7 @@ struct Options : public Entity {
     uint64_t sketch_count = 1;
     uint64_t sketch_rows = 2;
     uint64_t sketch_columns = 1'000'000;
+    uint64_t block_size = 65'536;
 
     Options() : Entity("top-k-compress", "Compression using top-k substrings") {
         param('o', "out", output, "The output filename.");
@@ -34,9 +35,8 @@ struct Options : public Entity {
         param('r', "sketch-rows", sketch_rows, "The number of rows in the Count-Min sketch.");
         param('c', "sketch-columns", sketch_columns, "The total number of columns in each Count-Min row.");
         param('x', "sel", selective, "Do a more selective parsing.");
+        param('b', "block-size", block_size, "The block size for encoding.");
         param('z', "lz78", lz78, "Produce an LZ78 parsing.");
-        param("huff", huffman, "Use dynamic Huffman coding for phrases.");
-        param("raw", raw, "Omit the header in the output file -- cannot be decompressed!");
     }
 };
 
@@ -75,22 +75,18 @@ int main(int argc, char** argv) {
                             options.output = input + ".exh";
                         }
                     }
-                    
-                    if(options.huffman) {
-                        options.output += "h";
-                    }
                 }
 
                 {
                     iopp::FileInputStream fis(input);
                     iopp::FileOutputStream fos(options.output);
                     if(options.lz78) {
-                        topk_compress_lz78(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.sketch_count, options.sketch_rows, options.sketch_columns, options.huffman);
+                        topk_compress_lz78(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.sketch_count, options.sketch_rows, options.sketch_columns, options.block_size);
                     } else {
                         if(options.selective) {
-                            topk_compress_sel(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns, options.huffman);
+                            topk_compress_sel(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns, options.block_size);
                         } else {
-                            topk_compress_exh(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns, options.huffman);
+                            topk_compress_exh(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns, options.block_size);
                         }
                     }
                 }

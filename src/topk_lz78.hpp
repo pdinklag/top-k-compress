@@ -12,6 +12,8 @@
 #include <tdc/util/math.hpp>
 
 #include "display.hpp"
+#include "phrase_block_reader.hpp"
+#include "phrase_block_writer.hpp"
 #include "topk_format.hpp"
 #include "topk_substrings.hpp"
 
@@ -26,13 +28,13 @@ constexpr uint64_t MAGIC_LZ78 =
     ((uint64_t)'8');
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_lz78(In begin, In const& end, Out out, bool const omit_header, size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, bool const huffman_coding) {
+void topk_compress_lz78(In begin, In const& end, Out out, bool const omit_header, size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size) {
     using namespace tdc::code;
 
     pm::MallocCounter malloc_counter;
     malloc_counter.start();
 
-    TopkFormat f(k, 0 /* indicator for LZ78 compression :-) */, num_sketches, sketch_rows, sketch_columns, huffman_coding);
+    TopkFormat f(k, 0 /* indicator for LZ78 compression :-) */, num_sketches, sketch_rows, sketch_columns, false);
     if(!omit_header) f.encode_header(out, MAGIC_LZ78);
 
     // initialize compression
@@ -42,13 +44,16 @@ void topk_compress_lz78(In begin, In const& end, Out out, bool const omit_header
     size_t num_phrases = 0;
     size_t longest = 0;
 
+    // initialize encoding
+    PhraseBlockWriter writer(out, block_size);
+
     TopKSubstrings<>::StringState s = topk.empty_string();
     auto handle = [&](char const c) {
         auto next = topk.extend(s, c);
         if(!next.frequent) {
             longest = std::max(longest, size_t(next.len));
-            f.encode_phrase(out, s.node);
-            f.encode_literal(out, c);
+            writer.write_ref(s.node);
+            writer.write_literal(c);
             s = topk.empty_string();
             ++num_phrases;
         } else {
@@ -64,10 +69,11 @@ void topk_compress_lz78(In begin, In const& end, Out out, bool const omit_header
 
     // encode final phrase, if any
     if(s.len > 0) {
-        f.encode_phrase(out, s.node);
+        writer.write_ref(s.node);
         ++num_phrases;
     }
 
+    writer.flush();
     malloc_counter.stop();
 
     topk.print_debug_info();
@@ -96,10 +102,13 @@ void topk_decompress_lz78(In in, Out out) {
     // - frequent substring 0 is reserved to indicate a literal character
     TopKSubstrings<> topk(k, num_sketches, sketch_rows, sketch_columns);
 
+    // initialize decoding
+    PhraseBlockReader reader(in);
+
     char* phrase = new char[k]; // phrases can be of length up to k...
     while(in) {
         // decode and handle phrase
-        auto const x = f.decode_phrase(in);
+        auto const x = reader.read_ref();
         auto const phrase_len = topk.get(x, phrase);
 
         auto s = topk.empty_string();
@@ -112,7 +121,7 @@ void topk_decompress_lz78(In in, Out out) {
         // decode and handle literal
         if(in)
         {
-            auto const literal = f.decode_literal(in);
+            auto const literal = reader.read_literal();
             topk.extend(s, literal);
             *out++ = literal;
         }
