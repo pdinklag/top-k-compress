@@ -159,3 +159,89 @@ void topk_compress_sel(In begin, In const& end, Out out, bool const omit_header,
         << " -> total phrases: " << (num_frequent + num_literal)
         << std::endl;
 }
+
+template<iopp::BitSource In, std::output_iterator<char> Out>
+void topk_decompress_sel(In in, Out out) {
+    using namespace tdc::code;
+
+    // decode header
+    TopkFormat f(in, MAGIC_SEL);
+    auto const k = f.k;
+    auto const window_size = f.window_size;
+    auto const num_sketches = f.num_sketches;
+    auto const sketch_rows = f.sketch_rows;
+    auto const sketch_columns = f.sketch_columns;
+    auto const huffman_coding = f.huffman_coding;
+
+    // initialize decompression
+    // - frequent substring 0 is reserved to indicate a literal character
+    TopKSubstrings<> topk(k, num_sketches, sketch_rows, sketch_columns);
+
+    // initialize decoding
+    PhraseBlockReader reader(in);
+
+    TopKSubstrings<>::StringState s[window_size];
+    for(size_t j = 0; j < window_size; j++) {
+        s[j] = topk.empty_string();
+    }
+    size_t longest = 0;
+    size_t n = 0;
+
+    auto handle = [&](char const c){
+        // emit character
+        *out++ = c;
+
+        // update the w cursors and find the maximum current match
+        size_t const num_active_windows = std::min(window_size, n + 1);
+        for(size_t j = 0; j < num_active_windows; j++) {
+            if(s[j].frequent) s[j] = topk.extend(s[j], c);
+        }
+
+        if(n + 1 >= window_size) {
+            // advance longest
+            assert(s[longest].len == window_size);
+
+            s[longest] = topk.empty_string();
+            longest = (longest + 1) % window_size;
+        }
+
+        // advance position
+        ++n;
+    };
+
+    char frequent_string[window_size];
+    size_t num_frequent = 0;
+    size_t num_literal = 0;
+
+    while(in) {
+        auto const p = reader.read_ref();
+        if(p) {
+            // decode frequent phrase
+            ++num_frequent;
+
+            auto const len = topk.get(p, frequent_string);
+            for(size_t i = 0; i < len; i++) {
+                handle(frequent_string[i]);
+            }
+        } else {
+            // decode literal phrase
+            ++num_literal;
+            char const c = reader.read_literal();
+            handle(c);
+        }
+    }
+
+    // debug
+    std::cout << "decompress"
+        << " k=" << k
+        << " w=" << window_size
+        << " s=" << num_sketches
+        << " c=" << sketch_columns
+        << " r=" << sketch_rows
+        << " huffman=" << huffman_coding
+        << ": n=" << n
+        << ", num_frequent=" << num_frequent
+        << ", num_literal=" << num_literal
+        << " -> total phrases: " << (num_frequent + num_literal)
+        << std::endl;
+}

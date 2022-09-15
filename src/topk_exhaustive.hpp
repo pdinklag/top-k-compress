@@ -28,8 +28,8 @@ constexpr uint64_t MAGIC_EXH =
     ((uint64_t)'H') << 8 |
     ((uint64_t)'#');
 
-constexpr bool DEBUG = false;
-constexpr bool PROTOCOL = false;
+constexpr bool EXH_DEBUG = false;
+constexpr bool EXH_PROTOCOL = false;
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size) {
@@ -69,7 +69,7 @@ void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header,
     size_t next_phrase = 0;
 
     auto handle = [&](char const c, size_t len) {
-        if constexpr(DEBUG) {
+        if constexpr(EXH_DEBUG) {
             std::cout << "read next character: " << display(c) << ", i=" << i << ", next_phrase=" << next_phrase << ", longest=" << longest << std::endl;
         }
 
@@ -92,7 +92,7 @@ void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header,
             // decide whether something must be encoded now
             assert(i + 1 - window_size <= next_phrase); // if this doesn't hold, we missed something
             if(i + 1 - window_size == next_phrase) {
-                if constexpr(DEBUG) std::cout << "- [ENCODE] ";
+                if constexpr(EXH_DEBUG) std::cout << "- [ENCODE] ";
 
                 // our longest phrase is now exactly w long; encode whatever is possible
                 auto phrase_index = match[longest].node;
@@ -109,7 +109,7 @@ void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header,
                                 phrase_index = topk.limit(match[longest], max_len);
                                 phrase_len = max_len;
 
-                                if constexpr(DEBUG) {
+                                if constexpr(EXH_DEBUG) {
                                     std::cout << "(LIMITED from index=" << phrase_index << ", length=" << phrase_len << ") ";
                                 }
                             }
@@ -117,10 +117,10 @@ void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header,
                         }
                     }
 
-                    if constexpr(DEBUG) {
+                    if constexpr(EXH_DEBUG) {
                         std::cout << "frequent phrase: index=" << phrase_index << ", length=" << phrase_len << std::endl;
                     }
-                    if constexpr(PROTOCOL) {
+                    if constexpr(EXH_PROTOCOL) {
                         std::cout << "(" << phrase_index << ") / " << phrase_len << std::endl;
                     }
 
@@ -132,10 +132,10 @@ void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header,
                 } else {
                     auto const x = s[longest].first;
 
-                    if constexpr(DEBUG) {
+                    if constexpr(EXH_DEBUG) {
                         std::cout << "literal phrase: " << display(x) << std::endl;
                     }
-                    if constexpr(PROTOCOL) {
+                    if constexpr(EXH_PROTOCOL) {
                         std::cout << "0x" << std::hex << size_t(x) << std::dec << std::endl;
                     }
                     
@@ -208,7 +208,6 @@ void topk_decompress_exh(In in, Out out) {
     PhraseBlockReader reader(in);
 
     TopKSubstrings<>::StringState s[window_size];
-    TopKSubstrings<>::StringState match[window_size];
     for(size_t j = 0; j < window_size; j++) {
         s[j] = topk.empty_string();
     }
@@ -249,11 +248,11 @@ void topk_decompress_exh(In in, Out out) {
 
             auto const len = topk.get(p, frequent_string);
 
-            if constexpr(DEBUG) {
+            if constexpr(EXH_DEBUG) {
                 frequent_string[len] = 0;
                 std::cout << "- [DECODE] frequent phrase: \"" << frequent_string << "\" (index=" << p << ", length=" << len << ")" << std::endl;
             }
-            if constexpr(PROTOCOL) {
+            if constexpr(EXH_PROTOCOL) {
                 std::cout << "(" << p << ") / " << len << std::endl;
             }
             
@@ -264,10 +263,10 @@ void topk_decompress_exh(In in, Out out) {
             // decode literal phrase
             ++num_literal;
             char const c = reader.read_literal();
-            if constexpr(DEBUG) {
+            if constexpr(EXH_DEBUG) {
                 std::cout << "- [DECODE] literal phrase: " << display(c) << std::endl;
             }
-            if constexpr(PROTOCOL) {
+            if constexpr(EXH_PROTOCOL) {
                 std::cout << "0x" << std::hex << size_t(c) << std::dec << std::endl;
             }
             handle(c);

@@ -58,8 +58,7 @@ int main(int argc, char** argv) {
                     topk_decompress_lz78(iopp::bitwise_input_from(fis.begin(), fis.end()), iopp::StreamOutputIterator(fos));
                 } else {
                     if(options.selective) {
-                        std::cerr << "not implemented" << std::endl;
-                        std::abort();
+                        topk_decompress_sel(iopp::bitwise_input_from(fis.begin(), fis.end()), iopp::StreamOutputIterator(fos));
                     } else {
                         topk_decompress_exh(iopp::bitwise_input_from(fis.begin(), fis.end()), iopp::StreamOutputIterator(fos));
                     }

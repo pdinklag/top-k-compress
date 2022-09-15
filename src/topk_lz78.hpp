@@ -27,6 +27,8 @@ constexpr uint64_t MAGIC_LZ78 =
     ((uint64_t)'7') << 8 |
     ((uint64_t)'8');
 
+constexpr bool LZ78_PROTOCOL = false;
+
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_lz78(In begin, In const& end, Out out, bool const omit_header, size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size) {
     using namespace tdc::code;
@@ -54,6 +56,9 @@ void topk_compress_lz78(In begin, In const& end, Out out, bool const omit_header
             longest = std::max(longest, size_t(next.len));
             writer.write_ref(s.node);
             writer.write_literal(c);
+
+            if constexpr(LZ78_PROTOCOL) std::cout << "(" << s.node << ") 0x" << std::hex << (size_t)c << std::dec << std::endl;
+
             s = topk.empty_string();
             ++num_phrases;
         } else {
@@ -71,6 +76,8 @@ void topk_compress_lz78(In begin, In const& end, Out out, bool const omit_header
     if(s.len > 0) {
         writer.write_ref(s.node);
         ++num_phrases;
+
+        if constexpr(LZ78_PROTOCOL) std::cout << "(" << s.node << ")" << std::endl;
     }
 
     writer.flush();
@@ -102,6 +109,9 @@ void topk_decompress_lz78(In in, Out out) {
     // - frequent substring 0 is reserved to indicate a literal character
     TopKSubstrings<> topk(k, num_sketches, sketch_rows, sketch_columns);
 
+    size_t n = 0;
+    size_t num_phrases = 0;
+
     // initialize decoding
     PhraseBlockReader reader(in);
 
@@ -109,7 +119,12 @@ void topk_decompress_lz78(In in, Out out) {
     while(in) {
         // decode and handle phrase
         auto const x = reader.read_ref();
+        if constexpr(LZ78_PROTOCOL) std::cout << "(" << x << ")";
+
         auto const phrase_len = topk.get(x, phrase);
+        
+        ++num_phrases;
+        n += phrase_len;
 
         auto s = topk.empty_string();
         for(size_t i = 0; i < phrase_len; i++) {
@@ -124,6 +139,13 @@ void topk_decompress_lz78(In in, Out out) {
             auto const literal = reader.read_literal();
             topk.extend(s, literal);
             *out++ = literal;
+            ++n;
+
+            if constexpr(LZ78_PROTOCOL) std::cout << " 0x" << std::hex << (size_t)literal << std::dec;
         }
+
+        if constexpr(LZ78_PROTOCOL) std::cout << std::endl;
     }
+
+    std::cout << "num_phrases=" << num_phrases << " -> n=" << n << std::endl;
 }
