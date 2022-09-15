@@ -77,8 +77,6 @@ void topk_compress_sel(In begin, In const& end, Out out, bool const omit_header,
 
         // test if our buffers are full
         if(i + 1 >= window_size) {
-            assert(s[longest].len == window_size);
-
             // decide whether something must be encoded now
             assert(i + 1 - window_size <= next_phrase); // if this doesn't hold, we missed something
             if(i + 1 - window_size == next_phrase) {
