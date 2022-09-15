@@ -81,17 +81,20 @@ int main(int argc, char** argv) {
                     }
                 }
 
-                iopp::FileInputStream fis(input);
-                iopp::FileOutputStream fos(options.output);
-                if(options.lz78) {
-                    topk_compress_lz78(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.sketch_count, options.sketch_rows, options.sketch_columns, options.huffman);
-                } else {
-                    if(options.selective) {
-                        topk_compress_sel(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns, options.huffman);
+                {
+                    iopp::FileInputStream fis(input);
+                    iopp::FileOutputStream fos(options.output);
+                    if(options.lz78) {
+                        topk_compress_lz78(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.sketch_count, options.sketch_rows, options.sketch_columns, options.huffman);
                     } else {
-                        topk_compress_exh(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns, options.huffman);
+                        if(options.selective) {
+                            topk_compress_sel(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns, options.huffman);
+                        } else {
+                            topk_compress_exh(fis.begin(), fis.end(), iopp::bitwise_output_to(fos), options.raw, options.k, options.window, options.sketch_count, options.sketch_rows, options.sketch_columns, options.huffman);
+                        }
                     }
                 }
+                std::cout << "n'=" << std::filesystem::file_size(options.output) << std::endl;
             }
         } else {
             app.print_usage(options);
