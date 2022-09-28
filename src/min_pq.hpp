@@ -192,6 +192,37 @@ public:
         return item;
     }
 
+    // inspect all minimal items
+    template<std::invocable<EntryIndex> Lambda>
+    EntryIndex inspect_minima(Lambda inspect) {
+        assert(!buckets_.empty());
+
+        auto& min_bucket = buckets_.front();
+        assert(!min_bucket.empty());
+
+        for(auto item : min_bucket.items) {
+            inspect(item);
+        }
+    }
+
+    // extract a specific minimum
+    void extract_min_specific(EntryIndex const item) {
+        auto& min_bucket = buckets_.front();
+        assert(!min_bucket.empty());
+
+        size_t const old_size = min_bucket.items.size();
+        min_bucket.items.pop_front();
+
+        // make sure the extracted item was indeed minimal
+        assert(min_bucket.items.size() == old_size - 1);
+
+        // delete bucket if empty
+        if(min_bucket.empty()) {
+            if constexpr(gather_stats_) ++stats_.num_bucket_deletes;
+            buckets_.pop_front();
+        }
+    }
+
     Frequency freq(Location const& what) {
         return what.bucket->freq;
     }
