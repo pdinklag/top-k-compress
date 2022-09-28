@@ -15,6 +15,7 @@
 
 #include "always_inline.hpp"
 #include "trie.hpp"
+#include "trie_node.hpp"
 #include "min_pq.hpp"
 #include "count_min.hpp"
 #include "rolling_karp_rabin.hpp"
@@ -63,7 +64,7 @@ private:
     RollingKarpRabin hash_;
 
     using FilterIndex = uint32_t;
-    Trie<FilterNodeData, FilterIndex> filter_;
+    Trie<TrieNode<FilterNodeData, FilterIndex>> filter_;
     MinPQ<size_t, FilterIndex> min_pq_;
 
     using Sketch = CountMin<size_t>;

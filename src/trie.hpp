@@ -10,38 +10,12 @@
 #include <string>
 
 #include "always_inline.hpp"
-#include "trie_edge_array.hpp"
 
-template<typename NodeData, std::unsigned_integral NodeIndex = uint32_t>
+template<typename Node>
 class Trie {
 private:
     using Character = char;
-    using UCharacter = uint8_t;
-    using NodeSize = uint16_t; // we may need to store the value 256 itself
-    using BitPack = uintmax_t;
-
-    struct Node {
-        using ChildArray = TrieEdgeArray<Character, NodeIndex, NodeSize>;
-
-        ChildArray children;
-        Character inlabel;
-        NodeIndex parent;
-        NodeData data;
-        
-        Node(NodeIndex const _parent, Character const _inlabel) : parent(_parent), inlabel(_inlabel) {
-        }
-        
-        Node() : Node(0, 0) {
-        }
-
-        size_t size() const ALWAYS_INLINE {
-            return children.size();
-        }
-
-        bool is_leaf() const ALWAYS_INLINE {
-            return size() == 0;
-        }
-    } __attribute__((packed));
+    using NodeIndex = typename Node::Index;
 
     NodeIndex capacity_;
     NodeIndex size_;
@@ -114,11 +88,11 @@ public:
         return size_ == capacity_;
     }
 
-    NodeData& data(NodeIndex const node) {
+    auto& data(NodeIndex const node) {
         return nodes_[node].data;
     }
 
-    NodeData const& data(NodeIndex const node) const {
+    auto const& data(NodeIndex const node) const {
         return nodes_[node].data;
     }
 
@@ -149,7 +123,7 @@ public:
 
         std::cout << "trie info"
                   << ": sizeof(Node)=" << sizeof(Node)
-                  << ", sizeof(NodeData)=" << sizeof(NodeData)
+                  << ", sizeof(NodeData)=" << sizeof(typename Node::Data)
                   << ", small_node_size_=" << Node::ChildArray::inline_size_
                   << ", small_node_align_=" << Node::ChildArray::inline_align_
                   << ", num_leaves=" << num_leaves
