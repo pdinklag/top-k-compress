@@ -16,12 +16,19 @@
 #include "always_inline.hpp"
 #include "trie.hpp"
 #include "min_pq.hpp"
-#include "topk_trie_node.hpp"
 #include "count_min.hpp"
 #include "rolling_karp_rabin.hpp"
 #include "display.hpp"
 
-template<size_t fp_window_size_ = 8>
+template<typename FilterNode, size_t fp_window_size_ = 8>
+requires requires {
+    typename FilterNode::Index;
+} && requires(FilterNode node) {
+    { node.freq };
+    { node.insert_freq };
+    { node.fingerprint };
+    { node.minpq };
+}
 class TopKSubstrings {
 private:
     static constexpr bool gather_stats_ = true;
@@ -56,8 +63,8 @@ private:
 
     RollingKarpRabin hash_;
 
-    using FilterIndex = uint32_t;
-    Trie<TopkTrieNode<FilterIndex>> filter_;
+    using FilterIndex = typename FilterNode::Index;
+    Trie<FilterNode> filter_;
     MinPQ<size_t, FilterIndex> min_pq_;
 
     using Sketch = CountMin<size_t>;

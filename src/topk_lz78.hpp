@@ -16,6 +16,7 @@
 #include "phrase_block_writer.hpp"
 #include "topk_format.hpp"
 #include "topk_substrings.hpp"
+#include "topk_trie_node.hpp"
 
 constexpr uint64_t MAGIC_LZ78 =
     ((uint64_t)'T') << 56 |
@@ -41,7 +42,8 @@ void topk_compress_lz78(In begin, In const& end, Out out, bool const omit_header
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
-    TopKSubstrings<> topk(k, num_sketches, sketch_rows, sketch_columns);
+    using Topk = TopKSubstrings<TopkTrieNode<>>;
+    Topk topk(k, num_sketches, sketch_rows, sketch_columns);
     size_t n = 0;
     size_t num_phrases = 0;
     size_t longest = 0;
@@ -49,7 +51,7 @@ void topk_compress_lz78(In begin, In const& end, Out out, bool const omit_header
     // initialize encoding
     PhraseBlockWriter writer(out, block_size);
 
-    TopKSubstrings<>::StringState s = topk.empty_string();
+    Topk::StringState s = topk.empty_string();
     auto handle = [&](char const c) {
         auto next = topk.extend(s, c);
         if(!next.frequent) {
@@ -107,7 +109,8 @@ void topk_decompress_lz78(In in, Out out) {
 
     // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character
-    TopKSubstrings<> topk(k, num_sketches, sketch_rows, sketch_columns);
+    using Topk = TopKSubstrings<TopkTrieNode<>>;
+    Topk topk(k, num_sketches, sketch_rows, sketch_columns);
 
     size_t n = 0;
     size_t num_phrases = 0;

@@ -17,6 +17,7 @@
 #include "phrase_block_writer.hpp"
 #include "topk_format.hpp"
 #include "topk_substrings.hpp"
+#include "topk_trie_node.hpp"
 
 constexpr uint64_t MAGIC_SEL =
     ((uint64_t)'T') << 56 |
@@ -41,7 +42,8 @@ void topk_compress_sel(In begin, In const& end, Out out, bool const omit_header,
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
-    TopKSubstrings<> topk(k, num_sketches, sketch_rows, sketch_columns);
+    using Topk = TopKSubstrings<TopkTrieNode<>>;
+    Topk topk(k, num_sketches, sketch_rows, sketch_columns);
 
     // initialize encoding
     PhraseBlockWriter writer(out, block_size);
@@ -52,8 +54,8 @@ void topk_compress_sel(In begin, In const& end, Out out, bool const omit_header,
     };
     std::list<NewNode> new_nodes;
 
-    TopKSubstrings<>::StringState s[window_size];
-    TopKSubstrings<>::StringState match[window_size];
+    Topk::StringState s[window_size];
+    Topk::StringState match[window_size];
     for(size_t j = 0; j < window_size; j++) {
         s[j] = topk.empty_string();
         match[j] = topk.empty_string();
@@ -175,12 +177,13 @@ void topk_decompress_sel(In in, Out out) {
 
     // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character
-    TopKSubstrings<> topk(k, num_sketches, sketch_rows, sketch_columns);
+    using Topk = TopKSubstrings<TopkTrieNode<>>;
+    Topk topk(k, num_sketches, sketch_rows, sketch_columns);
 
     // initialize decoding
     PhraseBlockReader reader(in);
 
-    TopKSubstrings<>::StringState s[window_size];
+    Topk::StringState s[window_size];
     for(size_t j = 0; j < window_size; j++) {
         s[j] = topk.empty_string();
     }
