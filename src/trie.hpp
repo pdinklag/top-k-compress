@@ -11,10 +11,24 @@
 
 #include "always_inline.hpp"
 
-template<typename Node>
+template<typename Node> requires 
+    requires {
+        typename Node::Character;
+        typename Node::Index;
+    }
+    && std::constructible_from<Node> // default
+    && std::constructible_from<Node, typename Node::Index, typename Node::Character> // parent / label
+    && requires(Node node) {
+        { node.children };
+        { node.inlabel };
+        { node.parent };
+    } && requires(Node const& node) {
+        { node.size() } -> std::convertible_to<size_t>;
+        { node.is_leaf() } -> std::same_as<bool>;
+    }
 class Trie {
 private:
-    using Character = char;
+    using Character = typename Node::Character;
     using NodeIndex = typename Node::Index;
 
     NodeIndex capacity_;
@@ -88,12 +102,12 @@ public:
         return size_ == capacity_;
     }
 
-    auto& data(NodeIndex const node) {
-        return nodes_[node].data;
+    Node& node(NodeIndex const v) {
+        return nodes_[v];
     }
 
-    auto const& data(NodeIndex const node) const {
-        return nodes_[node].data;
+    Node const& node(NodeIndex const v) const {
+        return nodes_[v];
     }
 
     size_t spell(NodeIndex const node, Character* buffer) const {
@@ -123,7 +137,6 @@ public:
 
         std::cout << "trie info"
                   << ": sizeof(Node)=" << sizeof(Node)
-                  << ", sizeof(NodeData)=" << sizeof(typename Node::Data)
                   << ", small_node_size_=" << Node::ChildArray::inline_size_
                   << ", small_node_align_=" << Node::ChildArray::inline_align_
                   << ", num_leaves=" << num_leaves

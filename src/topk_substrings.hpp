@@ -15,8 +15,8 @@
 
 #include "always_inline.hpp"
 #include "trie.hpp"
-#include "trie_node.hpp"
 #include "min_pq.hpp"
+#include "topk_trie_node.hpp"
 #include "count_min.hpp"
 #include "rolling_karp_rabin.hpp"
 #include "display.hpp"
@@ -54,17 +54,10 @@ private:
     static constexpr uint64_t rolling_fp_offset_ = (1ULL << 63) - 25;
     static constexpr uint64_t rolling_fp_base_ = (1ULL << 14) - 15;
 
-    struct FilterNodeData {
-        size_t freq;
-        size_t insert_freq;
-        uint64_t fingerprint;
-        MinPQ<size_t>::Location minpq;
-    } __attribute__((packed));
-
     RollingKarpRabin hash_;
 
     using FilterIndex = uint32_t;
-    Trie<TrieNode<FilterNodeData, FilterIndex>> filter_;
+    Trie<TopkTrieNode<FilterIndex>> filter_;
     MinPQ<size_t, FilterIndex> min_pq_;
 
     using Sketch = CountMin<size_t>;
@@ -90,7 +83,7 @@ private:
 
         // increment frequency
         bool const maximal = filter_.is_leaf(v);
-        auto& data = filter_.data(v);
+        auto& data = filter_.node(v);
         ++data.freq;
         if(maximal) {
             // prefix is maximal frequent string, increase in min pq
@@ -108,11 +101,16 @@ private:
         filter_.insert_child(v, parent, label);
 
         // insert into min PQ as a maximal string
-        filter_.data(v) = FilterNodeData { 1, 1, fingerprint, min_pq_.insert(v, 1) };
-        assert(min_pq_.freq(filter_.data(v).minpq) == 1);
+        auto& data = filter_.node(v);
+        data.freq = 1;
+        data.insert_freq = 1;
+        data.fingerprint = fingerprint;
+        data.minpq = min_pq_.insert(v, 1);
+
+        assert(min_pq_.freq(data.minpq) == 1);
 
         // mark the parent no longer maximal
-        auto& parent_data = filter_.data(parent);
+        auto& parent_data = filter_.node(parent);
         parent_data.minpq = min_pq_.remove(parent_data.minpq);
 
         return v;
@@ -128,12 +126,12 @@ private:
         // extract the substring from the filter and get the fingerprint and frequency delta
         assert(filter_.is_leaf(swap));
         auto const old_parent = filter_.extract(swap);
-        auto& swap_data = filter_.data(swap);
+        auto& swap_data = filter_.node(swap);
 
         // the old parent may now be maximal
         if(old_parent && filter_.is_leaf(old_parent)) {
             // insert into min PQ
-            auto& old_parent_data = filter_.data(old_parent);
+            auto& old_parent_data = filter_.node(old_parent);
             old_parent_data.minpq = min_pq_.insert(old_parent, old_parent_data.freq);
             assert(min_pq_.freq(old_parent_data.minpq) == old_parent_data.freq);
         }
@@ -144,7 +142,9 @@ private:
 
         // insert the current string into the filter, reusing the old entries' node ID
         filter_.insert_child(swap, parent, label);
-        filter_.data(swap) = FilterNodeData { frequency, frequency, fingerprint };
+        swap_data.freq = frequency;
+        swap_data.insert_freq = frequency;
+        swap_data.fingerprint = fingerprint;
         assert(filter_.is_leaf(swap));
 
         // also insert it into the min PQ
@@ -153,7 +153,7 @@ private:
         
         // the parent is no longer maximal, remove from min PQ
         if(parent) {
-            auto& parent_data = filter_.data(parent);
+            auto& parent_data = filter_.node(parent);
             parent_data.minpq = min_pq_.remove(parent_data.minpq);
         }
         
@@ -250,7 +250,7 @@ public:
                 // test if it is now frequent
                 if(est > min_pq_.min_frequency()) {
                     // it is now frequent according to just the numbers, test if we can swap
-                    if(i == 0 || (s.node && filter_.data(s.node).freq >= est)) {
+                    if(i == 0 || (s.node && filter_.node(s.node).freq >= est)) {
                         // the immediate prefix was frequent, so yes, we can!
                         ext.node = swap_into_filter(s.node, c, ext_fp, est, sketch);
 

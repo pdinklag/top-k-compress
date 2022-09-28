@@ -5,20 +5,18 @@
 #include "always_inline.hpp"
 #include "trie_edge_array.hpp"
 
-template<typename NodeData, std::unsigned_integral NodeIndex = uint32_t>
+template<std::unsigned_integral NodeIndex = uint32_t>
 struct TrieNode {
     using Character = char;
     using Index = NodeIndex;
     using Size = uint16_t;
-    using Data = NodeData;
 
     using ChildArray = TrieEdgeArray<Character, Index, Size>;
 
     ChildArray children;
     Character inlabel;
     Index parent;
-    Data data;
-    
+
     TrieNode(Index const _parent, Character const _inlabel) : parent(_parent), inlabel(_inlabel) {
     }
     
