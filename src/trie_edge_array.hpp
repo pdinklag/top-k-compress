@@ -108,7 +108,7 @@ private:
     }
 
 public:
-    TrieEdgeArray() {
+    TrieEdgeArray() : size_(0) {
         data_.ext.clear();
         data_.ext.links = nullptr;
     }
