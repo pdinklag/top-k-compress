@@ -12,3 +12,6 @@ target_link_libraries(hist tdc)
 
 add_executable(sync sync.cpp)
 target_link_libraries(sync tdc tlx)
+
+add_executable(firstdiff firstdiff.cpp)
+target_link_libraries(firstdiff tdc)

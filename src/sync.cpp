@@ -19,7 +19,7 @@ struct Options : public Entity {
     size_t fp_window = 32;
     size_t fp_mod = 512;
 
-    Options() : Entity("vitter87", "Encode a file using Vitter's dynamic Huffman codes from 1987") {
+    Options() : Entity("sync", "Compute a set of synchronizing positions") {
         param('f', "fp-window", fp_window, "The fingerprinting window.");
         param('m', "fp-mod", fp_mod, "The expected synchronization frequency.");
     }
