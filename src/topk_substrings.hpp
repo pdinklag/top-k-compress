@@ -228,6 +228,7 @@ public:
         ext.new_node = false;
 
         // slide fingerprint window (ring buffer)
+        for(size_t j = 0; j < fp_window_size_; j++) ext.fp_window[j] = s.fp_window[j];
         ext.fp_window[fp_window_begin] = c;
 
         if constexpr(measure_time_) if(s.frequent) stats_.t_filter_find.resume();
