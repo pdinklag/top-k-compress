@@ -135,17 +135,24 @@ private:
         auto const old_parent = filter_.extract(swap);
         auto& swap_data = filter_.node(swap);
 
-        // the old parent may now be maximal
-        if(old_parent && filter_.is_leaf(old_parent)) {
-            // insert into min PQ
+        assert(swap_data.freq >= swap_data.insert_freq);
+        auto const swap_freq_delta = swap_data.freq - swap_data.insert_freq;
+
+        if(old_parent) {
+            // propagate frequency delta to old parent (BEFORE potentially declaring it maximal)
             auto& old_parent_data = filter_.node(old_parent);
-            old_parent_data.minpq = min_pq_.insert(old_parent, old_parent_data.freq);
-            assert(min_pq_.freq(old_parent_data.minpq) == old_parent_data.freq);
+            old_parent_data.freq += swap_freq_delta;
+        
+            // the old parent may now be maximal
+            if(old_parent_data.is_leaf()) {
+                // insert into min PQ
+                old_parent_data.minpq = min_pq_.insert(old_parent, old_parent_data.freq);
+                assert(min_pq_.freq(old_parent_data.minpq) == old_parent_data.freq);
+            }
         }
 
         // count the extracted string in the sketch as often as it had been counted in the filter
-        assert(swap_data.freq >= swap_data.insert_freq);
-        sketch.increment(swap_data.fingerprint, swap_data.freq - swap_data.insert_freq);
+        sketch.increment(swap_data.fingerprint, swap_freq_delta);
 
         // insert the current string into the filter, reusing the old entries' node ID
         filter_.insert_child(swap, parent, label);
@@ -235,8 +242,9 @@ public:
         if(s.frequent && filter_.try_get_child(s.node, c, ext.node)) {
             if constexpr(measure_time_) stats_.t_filter_find.pause();
             
-            // the current prefix is frequent, increment it in the filter
-            increment_in_filter(ext.node);
+            // the current prefix is frequent
+            // we do not increment it in the filter directly, but do that lazily when we drop out of it
+            // whenever a node is swapped out of the filter, the increment will be propagated
 
             // done
             ext.frequent = true;
@@ -244,6 +252,10 @@ public:
             if constexpr(measure_time_) if(s.frequent) stats_.t_filter_find.pause();
             
             // the current prefix is non-frequent
+
+            // lazily increment immediate prefix in filter
+            if(s.node) increment_in_filter(s.node);
+
             if(filter_.full()) {
                 // the filter is full, count current prefix in the sketch
                 if constexpr(gather_stats_) ++stats_.num_sketch_inc;
@@ -292,6 +304,11 @@ public:
         }
 
         return ext;
+    }
+
+    // forcefully drop out of the filter, causing an increment at the corresponding node if the current state is frequent
+    void drop_out(StringState const& s) ALWAYS_INLINE {
+        if(s.frequent && s.node) increment_in_filter(s.node);
     }
 
     size_t limit(StringState const& s, size_t const max_len) const {
