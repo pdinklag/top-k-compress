@@ -243,7 +243,7 @@ public:
                             ++j;
                         }
                     }
-                    assert(j == small_node_size_);
+                    assert(j == inline_size_);
                 }
 
                 delete[] data_.ext.links;
