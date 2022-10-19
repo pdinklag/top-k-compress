@@ -150,6 +150,7 @@ void topk_compress_exh(In begin, In const& end, Out out, bool const omit_header,
             }
 
             // advance longest
+            topk.drop_out(s[longest]);
             s[longest] = topk.empty_string();
             match[longest] = topk.empty_string();
             longest = (longest + 1) % window_size;
@@ -231,6 +232,7 @@ void topk_decompress_exh(In in, Out out) {
             // advance longest
             assert(s[longest].len == window_size);
 
+            topk.drop_out(s[longest]);
             s[longest] = topk.empty_string();
             longest = (longest + 1) % window_size;
         }
