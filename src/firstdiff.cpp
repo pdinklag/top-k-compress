@@ -1,12 +1,12 @@
-#include <tdc/framework/application.hpp>
+#include <oocmd.hpp>
 #include <iopp/file_input_stream.hpp>
 
-using namespace tdc::framework;
+using namespace oocmd;
 
-struct Options : public Entity {
+struct Options : public ConfigObject {
     bool one_based = false;
     
-    Options() : Entity("firstdiff", "Find the first position at which two input files differ") {
+    Options() : ConfigObject("firstdiff", "Find the first position at which two input files differ") {
         param("one", one_based, "Make the output one-based instead of zero-based.");
     }
 };

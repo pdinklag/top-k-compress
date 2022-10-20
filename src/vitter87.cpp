@@ -1,7 +1,7 @@
 #include <iostream>
 #include <filesystem>
 
-#include <tdc/framework/application.hpp>
+#include <oocmd.hpp>
 
 #include <iopp/bitwise_io.hpp>
 #include <iopp/file_input_stream.hpp>
@@ -11,12 +11,12 @@
 
 #include "vitter87.hpp"
 
-using namespace tdc::framework;
+using namespace oocmd;
 
-struct Options : public Entity {
+struct Options : public ConfigObject {
     bool decode = false;
 
-    Options() : Entity("vitter87", "Encode a file using Vitter's dynamic Huffman codes from 1987") {
+    Options() : ConfigObject("vitter87", "Encode a file using Vitter's dynamic Huffman codes from 1987") {
         param('d', "decode", decode, "Decode the input file.");
     }
 };

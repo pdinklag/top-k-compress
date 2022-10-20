@@ -1,4 +1,4 @@
-#include <tdc/framework/application.hpp>
+#include <oocmd.hpp>
 
 #include <iopp/bitwise_io.hpp>
 #include <iopp/file_input_stream.hpp>
@@ -10,9 +10,9 @@
 #include "topk_lz78.hpp"
 #include "topk_selective.hpp"
 
-using namespace tdc::framework;
+using namespace oocmd;
 
-struct Options : public Entity {
+struct Options : public ConfigObject {
     std::string output;
     bool decompress = false;
     bool raw = false;
@@ -26,7 +26,7 @@ struct Options : public Entity {
     uint64_t sketch_columns = 1'000'000;
     uint64_t block_size = 65'536;
 
-    Options() : Entity("top-k-compress", "Compression using top-k substrings") {
+    Options() : ConfigObject("top-k-compress", "Compression using top-k substrings") {
         param('o', "out", output, "The output filename.");
         param('d', "decompress", decompress, "Decompress the input file; all other parameters are ignored.");
         param('k', "num-frequent", k, "The number of frequent substrings to maintain.");

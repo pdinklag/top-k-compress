@@ -1,7 +1,7 @@
 #include <iostream>
 #include <filesystem>
 
-#include <tdc/framework/application.hpp>
+#include <oocmd.hpp>
 
 #include <iopp/bitwise_io.hpp>
 #include <iopp/file_input_stream.hpp>
@@ -13,13 +13,13 @@
 
 #include "rolling_karp_rabin.hpp"
 
-using namespace tdc::framework;
+using namespace oocmd;
 
-struct Options : public Entity {
+struct Options : public ConfigObject {
     size_t fp_window = 32;
     size_t fp_mod = 512;
 
-    Options() : Entity("sync", "Compute a set of synchronizing positions") {
+    Options() : ConfigObject("sync", "Compute a set of synchronizing positions") {
         param('f', "fp-window", fp_window, "The fingerprinting window.");
         param('m', "fp-mod", fp_mod, "The expected synchronization frequency.");
     }
