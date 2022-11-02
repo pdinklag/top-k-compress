@@ -3,6 +3,10 @@
 #include <iopp/file_input_stream.hpp>
 #include <iopp/file_output_stream.hpp>
 
+#include <iopp/bitwise_io.hpp>
+#include <iopp/stream_input_iterator.hpp>
+#include <iopp/stream_output_iterator.hpp>
+
 using namespace oocmd;
 
 struct TopkCompressor : public ConfigObject {
@@ -54,7 +58,3 @@ struct TopkCompressor : public ConfigObject {
         }
     }
 };
-
-#include <iopp/bitwise_io.hpp>
-#include <iopp/stream_input_iterator.hpp>
-#include <iopp/stream_output_iterator.hpp>

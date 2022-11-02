@@ -1,6 +1,5 @@
 #include "topk_compressor.hpp"
-
-#include <topk_lz78.hpp>
+#include "topk_lz78_impl.hpp"
 
 struct TopkLZ78Compressor : public TopkCompressor {
     TopkLZ78Compressor() : TopkCompressor("topk-lz78", "Implements the top-k LZ78 algorithm") {

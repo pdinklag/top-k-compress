@@ -1,6 +1,5 @@
 #include "topk_compressor.hpp"
-
-#include <topk_selective.hpp>
+#include "topk_sel_impl.hpp"
 
 struct TopkLZ78Compressor : public TopkCompressor {
     uint64_t window = 8;

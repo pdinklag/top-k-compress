@@ -1,44 +1,27 @@
-#pragma once
+#include "topk_common.hpp"
 
-#include <bit>
-#include <cstdint>
-#include <cstdlib>
-#include <iostream>
-#include <list>
-
-#include <pm/malloc_counter.hpp>
-
-#include <tdc/code/universal/binary.hpp>
-#include <tdc/util/concepts.hpp>
-#include <tdc/util/math.hpp>
-
-#include "display.hpp"
-#include "phrase_block_reader.hpp"
-#include "phrase_block_writer.hpp"
-#include "topk_format.hpp"
-#include "topk_substrings.hpp"
-#include "topk_trie_node.hpp"
-
-constexpr uint64_t MAGIC_SEL =
+constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
     ((uint64_t)'O') << 48 |
     ((uint64_t)'P') << 40 |
     ((uint64_t)'K') << 32 |
-    ((uint64_t)'S') << 24 |
-    ((uint64_t)'E') << 16 |
-    ((uint64_t)'L') << 8 |
+    ((uint64_t)'E') << 24 |
+    ((uint64_t)'X') << 16 |
+    ((uint64_t)'H') << 8 |
     ((uint64_t)'#');
 
+constexpr bool DEBUG = false;
+constexpr bool PROTOCOL = false;
+
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size) {
+void topk_compress_exh(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size) {
     using namespace tdc::code;
 
     pm::MallocCounter malloc_counter;
     malloc_counter.start();
 
-    // write header
     TopkFormat f(k, window_size, num_sketches, sketch_rows, sketch_columns, false);
-    f.encode_header(out, MAGIC_SEL);
+    f.encode_header(out, MAGIC);
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
@@ -69,25 +52,31 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
     size_t next_phrase = 0;
 
     auto handle = [&](char const c, size_t len) {
+        if constexpr(DEBUG) {
+            std::cout << "read next character: " << display(c) << ", i=" << i << ", next_phrase=" << next_phrase << ", longest=" << longest << std::endl;
+        }
+
         // update the w cursors and find the maximum current match
         size_t const num_active_windows = std::min(window_size, i + 1);
         for(size_t j = 0; j < num_active_windows; j++) {
+            s[j] = topk.extend(s[j], c);
             if(s[j].frequent) {
-                s[j] = topk.extend(s[j], c);
-                if(s[j].frequent) {
-                    match[j] = s[j];
-                }
-                if(s[j].new_node) {
-                    new_nodes.push_back({ s[j].node, i + 1 - s[j].len });
-                }
+                match[j] = s[j];
+            }
+            if(s[j].new_node) {
+                new_nodes.push_back({ s[j].node, i + 1 - s[j].len });
             }
         }
 
         // test if our buffers are full
         if(i + 1 >= window_size) {
+            assert(s[longest].len == window_size);
+
             // decide whether something must be encoded now
             assert(i + 1 - window_size <= next_phrase); // if this doesn't hold, we missed something
             if(i + 1 - window_size == next_phrase) {
+                if constexpr(DEBUG) std::cout << "- [ENCODE] ";
+
                 // our longest phrase is now exactly w long; encode whatever is possible
                 auto phrase_index = match[longest].node;
                 auto phrase_len = match[longest].len;
@@ -102,9 +91,20 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
                                 // phrase is too long, limit
                                 phrase_index = topk.limit(match[longest], max_len);
                                 phrase_len = max_len;
+
+                                if constexpr(DEBUG) {
+                                    std::cout << "(LIMITED from index=" << phrase_index << ", length=" << phrase_len << ") ";
+                                }
                             }
                             break;
                         }
+                    }
+
+                    if constexpr(DEBUG) {
+                        std::cout << "frequent phrase: index=" << phrase_index << ", length=" << phrase_len << std::endl;
+                    }
+                    if constexpr(PROTOCOL) {
+                        std::cout << "(" << phrase_index << ") / " << phrase_len << std::endl;
                     }
 
                     assert(phrase_index > 0);
@@ -114,6 +114,14 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
                     next_phrase += phrase_len;
                 } else {
                     auto const x = s[longest].first;
+
+                    if constexpr(DEBUG) {
+                        std::cout << "literal phrase: " << display(x) << std::endl;
+                    }
+                    if constexpr(PROTOCOL) {
+                        std::cout << "0x" << std::hex << size_t(x) << std::dec << std::endl;
+                    }
+                    
                     writer.write_ref(0);
                     writer.write_literal(x);
 
@@ -164,11 +172,11 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
-void topk_decompress_sel(In in, Out out) {
+void topk_decompress_exh(In in, Out out) {
     using namespace tdc::code;
 
     // decode header
-    TopkFormat f(in, MAGIC_SEL);
+    TopkFormat f(in, MAGIC);
     auto const k = f.k;
     auto const window_size = f.window_size;
     auto const num_sketches = f.num_sketches;
@@ -198,7 +206,7 @@ void topk_decompress_sel(In in, Out out) {
         // update the w cursors and find the maximum current match
         size_t const num_active_windows = std::min(window_size, n + 1);
         for(size_t j = 0; j < num_active_windows; j++) {
-            if(s[j].frequent) s[j] = topk.extend(s[j], c);
+            s[j] = topk.extend(s[j], c);
         }
 
         if(n + 1 >= window_size) {
@@ -225,6 +233,15 @@ void topk_decompress_sel(In in, Out out) {
             ++num_frequent;
 
             auto const len = topk.get(p, frequent_string);
+
+            if constexpr(DEBUG) {
+                frequent_string[len] = 0;
+                std::cout << "- [DECODE] frequent phrase: \"" << frequent_string << "\" (index=" << p << ", length=" << len << ")" << std::endl;
+            }
+            if constexpr(PROTOCOL) {
+                std::cout << "(" << p << ") / " << len << std::endl;
+            }
+            
             for(size_t i = 0; i < len; i++) {
                 handle(frequent_string[i]);
             }
@@ -232,6 +249,12 @@ void topk_decompress_sel(In in, Out out) {
             // decode literal phrase
             ++num_literal;
             char const c = reader.read_literal();
+            if constexpr(DEBUG) {
+                std::cout << "- [DECODE] literal phrase: " << display(c) << std::endl;
+            }
+            if constexpr(PROTOCOL) {
+                std::cout << "0x" << std::hex << size_t(c) << std::dec << std::endl;
+            }
             handle(c);
         }
     }

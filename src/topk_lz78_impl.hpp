@@ -1,24 +1,6 @@
-#include <algorithm>
-#include <bit>
-#include <cstdint>
-#include <cstdlib>
-#include <iostream>
-#include <list>
+#include "topk_common.hpp"
 
-#include <pm/malloc_counter.hpp>
-
-#include <tdc/code/universal/binary.hpp>
-#include <tdc/util/concepts.hpp>
-#include <tdc/util/math.hpp>
-
-#include "display.hpp"
-#include "phrase_block_reader.hpp"
-#include "phrase_block_writer.hpp"
-#include "topk_format.hpp"
-#include "topk_substrings.hpp"
-#include "topk_trie_node.hpp"
-
-constexpr uint64_t MAGIC_LZ78 =
+constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
     ((uint64_t)'O') << 48 |
     ((uint64_t)'P') << 40 |
@@ -28,7 +10,7 @@ constexpr uint64_t MAGIC_LZ78 =
     ((uint64_t)'7') << 8 |
     ((uint64_t)'8');
 
-constexpr bool LZ78_PROTOCOL = false;
+constexpr bool PROTOCOL = false;
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size) {
@@ -38,7 +20,7 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
     malloc_counter.start();
 
     TopkFormat f(k, 0 /* indicator for LZ78 compression :-) */, num_sketches, sketch_rows, sketch_columns, false);
-    f.encode_header(out, MAGIC_LZ78);
+    f.encode_header(out, MAGIC);
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
@@ -59,7 +41,7 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
             writer.write_ref(s.node);
             writer.write_literal(c);
 
-            if constexpr(LZ78_PROTOCOL) std::cout << "(" << s.node << ") 0x" << std::hex << (size_t)c << std::dec << std::endl;
+            if constexpr(PROTOCOL) std::cout << "(" << s.node << ") 0x" << std::hex << (size_t)c << std::dec << std::endl;
 
             s = topk.empty_string();
             ++num_phrases;
@@ -79,7 +61,7 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
         writer.write_ref(s.node);
         ++num_phrases;
 
-        if constexpr(LZ78_PROTOCOL) std::cout << "(" << s.node << ")" << std::endl;
+        if constexpr(PROTOCOL) std::cout << "(" << s.node << ")" << std::endl;
     }
 
     writer.flush();
@@ -99,7 +81,7 @@ void topk_decompress_lz78(In in, Out out) {
     using namespace tdc::code;
 
     // decode header
-    TopkFormat f(in, MAGIC_LZ78);
+    TopkFormat f(in, MAGIC);
     auto const k = f.k;
     auto const window_size = f.window_size;
     auto const num_sketches = f.num_sketches;
@@ -122,7 +104,7 @@ void topk_decompress_lz78(In in, Out out) {
     while(in) {
         // decode and handle phrase
         auto const x = reader.read_ref();
-        if constexpr(LZ78_PROTOCOL) std::cout << "(" << x << ")";
+        if constexpr(PROTOCOL) std::cout << "(" << x << ")";
 
         auto const phrase_len = topk.get(x, phrase);
         
@@ -144,10 +126,10 @@ void topk_decompress_lz78(In in, Out out) {
             *out++ = literal;
             ++n;
 
-            if constexpr(LZ78_PROTOCOL) std::cout << " 0x" << std::hex << (size_t)literal << std::dec;
+            if constexpr(PROTOCOL) std::cout << " 0x" << std::hex << (size_t)literal << std::dec;
         }
 
-        if constexpr(LZ78_PROTOCOL) std::cout << std::endl;
+        if constexpr(PROTOCOL) std::cout << std::endl;
     }
 
     std::cout << "num_phrases=" << num_phrases << " -> n=" << n << std::endl;
