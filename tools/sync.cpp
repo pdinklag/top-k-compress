@@ -11,7 +11,7 @@
 
 #include <tlx/container/ring_buffer.hpp>
 
-#include "rolling_karp_rabin.hpp"
+#include <rolling_karp_rabin.hpp>
 
 using namespace oocmd;
 

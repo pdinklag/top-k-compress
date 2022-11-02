@@ -6,9 +6,9 @@
 #include <iopp/stream_input_iterator.hpp>
 #include <iopp/stream_output_iterator.hpp>
 
-#include "topk_exhaustive.hpp"
-#include "topk_lz78.hpp"
-#include "topk_selective.hpp"
+#include <topk_exhaustive.hpp>
+#include <topk_lz78.hpp>
+#include <topk_selective.hpp>
 
 using namespace oocmd;
 
