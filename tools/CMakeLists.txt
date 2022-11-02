@@ -4,6 +4,9 @@ target_link_libraries(firstdiff tdc)
 add_executable(hist hist.cpp)
 target_link_libraries(hist tdc)
 
+add_executable(lz78 lz78.cpp)
+target_link_libraries(lz78 tdc)
+
 add_executable(sync sync.cpp)
 target_link_libraries(sync tdc tlx)
 

@@ -30,7 +30,7 @@ constexpr uint64_t MAGIC_SEL =
     ((uint64_t)'#');
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_sel(In begin, In const& end, Out out, bool const omit_header, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size) {
+void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size) {
     using namespace tdc::code;
 
     pm::MallocCounter malloc_counter;
@@ -38,7 +38,7 @@ void topk_compress_sel(In begin, In const& end, Out out, bool const omit_header,
 
     // write header
     TopkFormat f(k, window_size, num_sketches, sketch_rows, sketch_columns, false);
-    if(!omit_header) f.encode_header(out, MAGIC_SEL);
+    f.encode_header(out, MAGIC_SEL);
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
