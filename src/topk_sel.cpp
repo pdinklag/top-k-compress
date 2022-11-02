@@ -1,10 +1,10 @@
 #include "topk_compressor.hpp"
 #include "topk_sel_impl.hpp"
 
-struct TopkLZ78Compressor : public TopkCompressor {
+struct Compressor : public TopkCompressor {
     uint64_t window = 8;
 
-    TopkLZ78Compressor() : TopkCompressor("topk-sel", "Implements the selective top-k compression algorithm") {
+    Compressor() : TopkCompressor("topk-sel", "Implements the selective top-k compression algorithm") {
         param('w', "window", window, "The window size.");
     }
 
@@ -22,6 +22,6 @@ struct TopkLZ78Compressor : public TopkCompressor {
 };
 
 int main(int argc, char** argv) {
-    TopkLZ78Compressor c;
+    Compressor c;
     return Application::run(c, argc, argv);
 }
