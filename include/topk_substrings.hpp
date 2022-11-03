@@ -218,7 +218,7 @@ public:
         s.frequent = true;
         s.new_node = false;
         
-        FilterNode const* v = &filter_.node(node);
+        auto const* v = &filter_.node(node);
         s.fingerprint = v->fingerprint;
 
         // to find the depth, first character and to reconstruct the fingerprint widow, we traverse back up to the root
@@ -235,7 +235,7 @@ public:
         ++s.len; // edge to root
 
         s.first = v->inlabel;
-        s.sketch = select_sketch(s.first);
+        s.sketch = select_sketch(s.first); // CAUTION: modifies the random state
 
         // reconstruct fingerprint window
         auto const i = s.len;
@@ -373,6 +373,10 @@ public:
             --len;
         }
         return v;
+    }
+
+    FilterNode const& filter_node(FilterIndex const node) const {
+        return filter_.node(node);
     }
 
     size_t get(size_t const index, char* buffer) const {
