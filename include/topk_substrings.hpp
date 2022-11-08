@@ -389,6 +389,10 @@ public:
         return v;
     }
 
+    FilterNode& filter_node(FilterIndex const node) {
+        return filter_.node(node);
+    }
+
     FilterNode const& filter_node(FilterIndex const node) const {
         return filter_.node(node);
     }
