@@ -196,10 +196,11 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
 
         if(x.node) {
             if(dv > x.len) {
-                if constexpr(PROTOCOL) std::cout << "\td(v)=" << dv << " > d(x)=" << x.len << " -> LZ phrase " << (num_phrases+1) << " continues" << std::endl;
+                if constexpr(PROTOCOL) std::cout << "\td(v)=" << dv << " > d(x)=" << x.len << " -> LZ phrase " << num_phrases << " continues" << std::endl;
             } else {
-                if constexpr(PROTOCOL) std::cout << "\td(v)=" << dv << " <= d(x)=" << x.len << " -> LZ phrase " << (num_phrases+1) << " ends" << std::endl;
                 ++num_phrases;
+                longest = std::max(longest, (size_t)x.len);
+                if constexpr(PROTOCOL) std::cout << "\td(v)=" << dv << " <= d(x)=" << x.len << " -> LZ phrase " << num_phrases << " ends" << std::endl;
             }
         }
 
@@ -217,8 +218,9 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
         }
 
         if(!x.node) {
-            if constexpr(PROTOCOL) std::cout << "\tLZ phrase " << (num_phrases+1) << " is literal " << display(c) << std::endl;
             ++num_phrases;
+            if constexpr(PROTOCOL) std::cout << "\tLZ phrase " << num_phrases << " is literal " << display(c) << std::endl;
+            longest = std::max(longest, (size_t)1);
         }
     };
 
@@ -228,9 +230,11 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
         handle(*begin++);
     }
 
-    // TODO: potentially encode final phrase
-    ++num_phrases;
-    if constexpr(PROTOCOL) std::cout << "done factorizing, num_phrases=" << num_phrases << std::endl;
+    // potentially encode final phrase
+    if(x.len) {
+        ++num_phrases;
+        longest = std::max(longest, (size_t)x.len);
+    }
 
     writer.flush();
     malloc_counter.stop();
