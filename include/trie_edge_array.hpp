@@ -127,6 +127,14 @@ public:
         return size_;
     }
 
+    NodeIndex operator[](size_t const i) const ALWAYS_INLINE {
+        if(is_inline()) {
+            return data_.inl.links[i];
+        } else {
+            return data_.ext.links[i];
+        }
+    }
+
     bool contains(NodeIndex const what) const ALWAYS_INLINE {
         if(is_inline()) {
             for(NodeIndex i = 0; i < size_; i++) {
