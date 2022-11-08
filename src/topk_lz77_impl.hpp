@@ -196,7 +196,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
 
         if(x.node) {
             if(dv > x.len) {
-                if constexpr(PROTOCOL) std::cout << "\td(v)=" << dv << " > d(x)=" << x.len << " -> LZ phrase " << num_phrases << " continues" << std::endl;
+                if constexpr(PROTOCOL) std::cout << "\td(v)=" << dv << " > d(x)=" << x.len << " -> LZ phrase " << (num_phrases+1) << " continues" << std::endl;
             } else {
                 ++num_phrases;
                 longest = std::max(longest, (size_t)x.len);
