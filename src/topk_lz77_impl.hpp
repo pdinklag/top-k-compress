@@ -177,7 +177,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
             if constexpr(PROTOCOL) std::cout << "\tfollowed Weiner link with label " << display(c) << " to node v=" << v << " at depth d(v)=" << dv << std::endl;
 
             // descend down as far as possible using characters of S in reverse order
-            assert(buffer.size() > dv);
+            assert(buffer.size() >= dv);
             size_t i = buffer.size() - dv;
 
             FilterIndex child;
