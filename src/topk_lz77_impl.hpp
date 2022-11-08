@@ -215,16 +215,6 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
                 ++dv;
             }
         }
-        /*
-        if(dv < buffer.size()) {
-            // extend current string if necessary
-            topk.extend(s, buffer[buffer.size() - dv - 1]);
-        } else {
-            // we found the entire buffer in the trie
-            // make sure to increment the reached leaf
-            topk.drop_out(s);
-        }
-        */
 
         if(!x.node) {
             if constexpr(PROTOCOL) std::cout << "\tLZ phrase " << (num_phrases+1) << " is literal " << display(c) << std::endl;
