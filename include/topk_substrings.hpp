@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <functional>
 #include <memory>
 #include <random>
 #include <vector>
@@ -120,6 +121,9 @@ private:
         auto& parent_data = filter_.node(parent);
         parent_data.minpq = min_pq_.remove(parent_data.minpq);
 
+        // callback
+        if(on_filter_node_inserted) on_filter_node_inserted(v);
+
         return v;
     }
 
@@ -154,6 +158,9 @@ private:
         // count the extracted string in the sketch as often as it had been counted in the filter
         sketch.increment(swap_data.fingerprint, swap_freq_delta);
 
+        // callback
+        if(on_filter_node_deleted) on_filter_node_deleted(swap);
+
         // insert the current string into the filter, reusing the old entries' node ID
         filter_.insert_child(swap, parent, label);
         swap_data.freq = frequency;
@@ -170,6 +177,9 @@ private:
             auto& parent_data = filter_.node(parent);
             parent_data.minpq = min_pq_.remove(parent_data.minpq);
         }
+
+        // callback
+        if(on_filter_node_inserted) on_filter_node_inserted(swap);
         
         if constexpr(measure_time_) stats_.t_swaps.pause();
         return swap;
@@ -197,6 +207,10 @@ public:
             sketches_[i] = Sketch(sketch_rows, sketch_columns / num_sketches_);
         }
     }
+
+    // callbacks
+    std::function<void(FilterIndex const)> on_filter_node_inserted;
+    std::function<void(FilterIndex const)> on_filter_node_deleted;
 
     struct StringState {
         FilterIndex len;         // length of the string
