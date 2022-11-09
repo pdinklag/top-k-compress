@@ -137,7 +137,6 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
 
     // 
     tlx::RingBuffer<char> buffer(window_size);
-    Topk::StringState s = topk.empty_string();
     Topk::StringState x = topk.empty_string();    
 
     auto handle = [&](char const c) {
@@ -149,78 +148,48 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
             buffer.push_back(c);
         }
 
-        // traverse up the trie and find node with Weiner link labeled c
-        FilterIndex link;
+        if constexpr(PROTOCOL) std::cout << "handle character " << display(c) << " at i=" << n << ", the factor node is x=" << x.node << " at depth d(x)=" << x.len << std::endl;
 
-        auto dv = s.len;
-        auto v = s.node;
-        if constexpr(PROTOCOL) std::cout << "handle character " << display(c) << " at i=" << n << ", the current node is v=" << v << " at depth d(v)=" << dv
-                                         << ", the factor node is x=" << x.node << " at depth d(x)=" << x.len << std::endl;
-
-        auto const* vdata = &topk.filter_node(v);
-        while(v && !vdata->weiner_links.try_get(c, link)) {
-            v = vdata->parent;
-            vdata = &topk.filter_node(v);
-
-            assert(dv);
-            --dv;
-        }
-        if constexpr(PROTOCOL) std::cout << "\tascended to node v=" << v << " at depth d(v)=" << dv << std::endl;
-
-        bool has_link = vdata->weiner_links.try_get(c, link);
-        if(has_link) {
-            // follow link
-            v = link;
-            vdata = &topk.filter_node(v);
-            ++dv; // following the Weiner link increases the depth by 1
-
-            if constexpr(PROTOCOL) std::cout << "\tfollowed Weiner link with label " << display(c) << " to node v=" << v << " at depth d(v)=" << dv << std::endl;
-
-            // descend down as far as possible using characters of S in reverse order
-            assert(buffer.size() >= dv);
-            size_t i = buffer.size() - dv;
-
-            FilterIndex child;
-            while(i && vdata->children.try_get(buffer[i-1], child)) {
-                ++dv;
-                v = child;
-                vdata = &topk.filter_node(v);
-                --i;
-            }
-            if constexpr(PROTOCOL) std::cout << "\tdescended to node " << v << " at depth d(v)=" << dv << std::endl;
+        auto const& xdata = topk.filter_node(x.node);
+        FilterIndex v;
+        if(xdata.weiner_links.try_get(c, v)) {
+            // Weiner link exists, extend LZ factor
+            if constexpr(PROTOCOL) std::cout << "\tfollowed Weiner link with label " << display(c) << " to node v=" << v
+                                             << " -> LZ phrase " << (num_phrases+1) << " continues" << std::endl;
+            
+            x = topk.at(v);
         } else {
-            // v must be the root and there is no edge with label c
-            if constexpr(PROTOCOL) std::cout << "\tno Weiner link found, concluding that v is the root" << std::endl;
-            assert(v == 0);
-        }
-
-        if(x.node) {
-            if(dv > x.len) {
-                if constexpr(PROTOCOL) std::cout << "\td(v)=" << dv << " > d(x)=" << x.len << " -> LZ phrase " << (num_phrases+1) << " continues" << std::endl;
-            } else {
+            if(x.len >= 1) {
                 ++num_phrases;
                 longest = std::max(longest, (size_t)x.len);
-                if constexpr(PROTOCOL) std::cout << "\td(v)=" << dv << " <= d(x)=" << x.len << " -> LZ phrase " << num_phrases << " ends" << std::endl;
+                if constexpr(PROTOCOL) std::cout << "\tWeiner link with label " << display(c) << " not found -> LZ phrase " << num_phrases << " ends" << std::endl;
+            }
+
+            auto const& root = topk.filter_node(0);
+            if(root.children.try_get(c, v)) {
+                // known literal
+                if constexpr(PROTOCOL) std::cout << "\tbeginning new phrase with known literal " << display(c) << std::endl;
+
+                x = topk.at(v);
+            } else {
+                // new literal (-> literal phrase)
+                ++num_phrases;
+                longest = std::max(longest, (size_t)1);
+                if constexpr(PROTOCOL) std::cout << "\tLZ phrase " << num_phrases << " is new literal " << display(c) << std::endl;
+
+                x = topk.empty_string();
             }
         }
 
-        s = topk.at(v);
-        x = s;
-
+        // insert remaining nodes for buffer until we drop out
         {
-            // insert remaining nodes for buffer until we drop out
-            auto ss = s;
-            while(dv < buffer.size() && (ss.frequent || ss.new_node)) {
-                if constexpr(PROTOCOL) std::cout << "\tinsert new edge labeled " << display(buffer[buffer.size() - dv - 1]) << std::endl;
-                ss = topk.extend(ss, buffer[buffer.size() - dv - 1]);
-                ++dv;
+            auto s = x;
+            auto d = x.len;
+            while(d < buffer.size() && (s.frequent || s.new_node)) {
+                if constexpr(PROTOCOL) std::cout << "\tinsert new edge labeled " << display(buffer[buffer.size() - d - 1]) << " to v=" << s.node << std::endl;
+                s = topk.extend(s, buffer[buffer.size() - d - 1]);
+                ++d;
             }
-        }
-
-        if(!x.node) {
-            ++num_phrases;
-            if constexpr(PROTOCOL) std::cout << "\tLZ phrase " << num_phrases << " is literal " << display(c) << std::endl;
-            longest = std::max(longest, (size_t)1);
         }
     };
 
