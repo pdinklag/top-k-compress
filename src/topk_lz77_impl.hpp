@@ -18,13 +18,19 @@ struct TopkLZ77TrieNode : public TopkTrieNode<> {
     using TopkTrieNode::Character;
     using TopkTrieNode::Index;
 
-    using TopkTrieNode::TopkTrieNode;
+    static constexpr Index DOES_NOT_EXIST = -1;
 
     using WeinerLinkArray = TrieEdgeArray<Character, Index, TrieNode::Size>;
 
     Index           suffix_link;
     WeinerLinkArray weiner_links;
     Character       root_label;
+
+    TopkLZ77TrieNode(Index const _parent, Character const _inlabel) : TopkTrieNode(_parent, _inlabel), suffix_link(DOES_NOT_EXIST) {
+    }
+    
+    TopkLZ77TrieNode() : TopkLZ77TrieNode(0, 0) {
+    }
 
 } __attribute__((packed));
 
@@ -42,16 +48,12 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     // - frequent substring 0 is reserved to indicate a literal character
     using Topk = TopKSubstrings<TopkLZ77TrieNode>;
     using FilterIndex = TopkLZ77TrieNode::Index;
-
-    constexpr FilterIndex DOES_NOT_EXIST = -1;
+    static constexpr FilterIndex DOES_NOT_EXIST = TopkLZ77TrieNode::DOES_NOT_EXIST;
 
     Topk topk(k, num_sketches, sketch_rows, sketch_columns);
     size_t n = 0;
     size_t num_phrases = 0;
     size_t longest = 0;
-
-    // the root has no suffix link
-    topk.filter_node(0).suffix_link = DOES_NOT_EXIST;
 
     // callbacks
     topk.on_filter_node_inserted = [&](FilterIndex const v){
@@ -124,12 +126,29 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
         }
     };
 
-    topk.on_filter_node_deleted = [&](FilterIndex const v){
+    topk.on_delete_node = [&](FilterIndex const v){
         assert(v); // cannot be the root
         auto& vdata = topk.filter_node(v);
 
-        // TODO: delete Weiner link pointing here
-        // TODO: delete suffix links pointing here
+        // STEP 1: delete Weiner link pointing to v
+        if(vdata.suffix_link != DOES_NOT_EXIST) {
+            auto& link_data = topk.filter_node(vdata.suffix_link);
+
+            #ifndef NDEBUG
+            FilterIndex x;
+            assert(link_data.weiner_links.try_get(vdata.root_label, x));
+            assert(x == v);
+            #endif
+
+            link_data.weiner_links.remove(vdata.root_label);
+        }
+
+        // STEP 2: delete suffix links pointing to v
+        for(size_t i = 0; i < vdata.weiner_links.size(); i++) {
+            auto& link_data = topk.filter_node(vdata.weiner_links[i]);
+            assert(link_data.suffix_link == v);
+            link_data.suffix_link = DOES_NOT_EXIST;
+        }
     };
 
     // initialize encoding

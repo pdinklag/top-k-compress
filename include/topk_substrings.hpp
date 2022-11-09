@@ -159,7 +159,7 @@ private:
         sketch.increment(swap_data.fingerprint, swap_freq_delta);
 
         // callback
-        if(on_filter_node_deleted) on_filter_node_deleted(swap);
+        if(on_delete_node) on_delete_node(swap);
 
         // insert the current string into the filter, reusing the old entries' node ID
         filter_.insert_child(swap, parent, label);
@@ -210,7 +210,7 @@ public:
 
     // callbacks
     std::function<void(FilterIndex const)> on_filter_node_inserted;
-    std::function<void(FilterIndex const)> on_filter_node_deleted;
+    std::function<void(FilterIndex const)> on_delete_node;
 
     struct StringState {
         FilterIndex len;         // length of the string
