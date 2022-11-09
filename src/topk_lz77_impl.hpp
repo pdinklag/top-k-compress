@@ -12,7 +12,7 @@ constexpr uint64_t MAGIC =
     ((uint64_t)'7') << 8 |
     ((uint64_t)'7');
 
-constexpr bool PROTOCOL = true;
+constexpr bool PROTOCOL = false;
 
 struct TopkLZ77TrieNode : public TopkTrieNode<> {
     using TopkTrieNode::Character;
@@ -208,6 +208,10 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
                 if constexpr(PROTOCOL) std::cout << "\tinsert new edge labeled " << display(buffer[buffer.size() - d - 1]) << " to v=" << s.node << std::endl;
                 s = topk.extend(s, buffer[buffer.size() - d - 1]);
                 ++d;
+            }
+
+            if(s.frequent) {
+                topk.drop_out(s); // force count
             }
         }
     };
