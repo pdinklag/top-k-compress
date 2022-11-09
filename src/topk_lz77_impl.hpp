@@ -156,7 +156,8 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
 
     // 
     tlx::RingBuffer<char> buffer(window_size);
-    Topk::StringState x = topk.empty_string();    
+    FilterIndex x = 0;
+    size_t dx = 0;
 
     auto handle = [&](char const c) {
         // append to ring buffer
@@ -167,20 +168,21 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
             buffer.push_back(c);
         }
 
-        if constexpr(PROTOCOL) std::cout << "handle character " << display(c) << " at i=" << n << ", the factor node is x=" << x.node << " at depth d(x)=" << x.len << std::endl;
+        if constexpr(PROTOCOL) std::cout << "handle character " << display(c) << " at i=" << n << ", the factor node is x=" << x << " at depth d(x)=" << dx << std::endl;
 
-        auto const& xdata = topk.filter_node(x.node);
+        auto const& xdata = topk.filter_node(x);
         FilterIndex v;
         if(xdata.weiner_links.try_get(c, v)) {
             // Weiner link exists, extend LZ factor
             if constexpr(PROTOCOL) std::cout << "\tfollowed Weiner link with label " << display(c) << " to node v=" << v
                                              << " -> LZ phrase " << (num_phrases+1) << " continues" << std::endl;
             
-            x = topk.at(v);
+            x = v;
+            ++dx;
         } else {
-            if(x.len >= 1) {
+            if(dx >= 1) {
                 ++num_phrases;
-                longest = std::max(longest, (size_t)x.len);
+                longest = std::max(longest, dx);
                 if constexpr(PROTOCOL) std::cout << "\tWeiner link with label " << display(c) << " not found -> LZ phrase " << num_phrases << " ends" << std::endl;
             }
 
@@ -189,30 +191,30 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
                 // known literal
                 if constexpr(PROTOCOL) std::cout << "\tbeginning new phrase with known literal " << display(c) << std::endl;
 
-                x = topk.at(v);
+                x = v;
+                dx = 1;
             } else {
                 // new literal (-> literal phrase)
                 ++num_phrases;
                 longest = std::max(longest, (size_t)1);
                 if constexpr(PROTOCOL) std::cout << "\tLZ phrase " << num_phrases << " is new literal " << display(c) << std::endl;
 
-                x = topk.empty_string();
+                x = 0;
+                dx = 0;
             }
         }
 
         // insert remaining nodes for buffer until we drop out
         {
-            auto s = x;
-            auto d = x.len;
+            auto s = topk.at(x);
+            auto d = dx;
             while(d < buffer.size() && (s.frequent || s.new_node)) {
                 if constexpr(PROTOCOL) std::cout << "\tinsert new edge labeled " << display(buffer[buffer.size() - d - 1]) << " to v=" << s.node << std::endl;
                 s = topk.extend(s, buffer[buffer.size() - d - 1]);
                 ++d;
             }
 
-            if(s.frequent) {
-                topk.drop_out(s); // force count
-            }
+            topk.drop_out(s); // force count
         }
     };
 
@@ -223,9 +225,9 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     }
 
     // potentially encode final phrase
-    if(x.len) {
+    if(dx) {
         ++num_phrases;
-        longest = std::max(longest, (size_t)x.len);
+        longest = std::max(longest, dx);
     }
 
     writer.flush();
