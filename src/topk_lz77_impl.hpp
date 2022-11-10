@@ -13,6 +13,7 @@ constexpr uint64_t MAGIC =
     ((uint64_t)'7');
 
 constexpr bool PROTOCOL = false;
+constexpr bool DEBUG = false;
 
 struct TopkLZ77TrieNode : public TopkTrieNode<> {
     using TopkTrieNode::Character;
@@ -25,6 +26,7 @@ struct TopkLZ77TrieNode : public TopkTrieNode<> {
     Index           suffix_link;
     WeinerLinkArray weiner_links;
     Character       root_label;
+    size_t          prev_occ;
 
     TopkLZ77TrieNode(Index const _parent, Character const _inlabel) : TopkTrieNode(_parent, _inlabel), suffix_link(DOES_NOT_EXIST) {
     }
@@ -155,30 +157,38 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     };
 
     // initialize encoding
-    PhraseBlockWriter writer(out, block_size);
+    PhraseBlockWriter writer(out, block_size, true);
 
     // 
     tlx::RingBuffer<char> buffer(window_size);
     FilterIndex x = 0;
     size_t dx = 0;
 
+    size_t xbegin = 0; // the position at which the current factor starts
+    size_t xsrc = 0;   // the source position of the current reference
+
     auto write_literal = [&](char const c){
+        if constexpr(DEBUG) std::cout << "LITERAL: " << display(c) << std::endl;
+
+        writer.write_ref(0);
+        writer.write_literal(c);
+
         ++num_phrases;
         ++num_literal;
     };
 
     auto write_ref = [&](size_t const src, size_t const len){
-        if(len > 1) {
-            ++num_phrases;
-            ++num_ref;
+        if constexpr(DEBUG) std::cout << "REFERENCE: (" << src << ", " << len << ")" << std::endl;
 
-            longest = std::max(longest, len);
-            total_ref_len += len;
-        } else {
-            // encode a reference of length 1 as a literal
-            assert(buffer.size() >= 2);
-            write_literal(buffer[buffer.size() - 2]);
-        }
+        assert(src > 0);
+        writer.write_ref(src);
+        writer.write_len(len);
+
+        ++num_phrases;
+        ++num_ref;
+
+        longest = std::max(longest, len);
+        total_ref_len += len;
     };
 
     auto handle = [&](char const c) {
@@ -203,9 +213,16 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
             x = v;
             ++dx;
             s = topk.at(x, dx, c);
+
+            auto const prev_occ = topk.filter_node(v).prev_occ;
+            if(prev_occ < xbegin) xsrc = prev_occ;
         } else {
             if(dx >= 1) {
-                write_ref(0, dx);
+                if(dx > 1) {
+                    write_ref(xbegin - xsrc, dx);
+                } else {
+                    write_literal(xdata.root_label);
+                }
                 if constexpr(PROTOCOL) std::cout << "\tWeiner link with label " << display(c) << " not found -> LZ phrase " << num_phrases << " ends" << std::endl;
             }
 
@@ -217,6 +234,9 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
                 x = v;
                 dx = 1;
                 s = topk.at(x, dx, c);
+
+                xbegin = n;
+                xsrc = topk.filter_node(v).prev_occ;
             } else {
                 // new literal (-> literal phrase)
                 write_literal(c);
@@ -225,15 +245,30 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
                 x = 0;
                 dx = 0;
                 s = topk.empty_string();
+
+                xbegin = n + 1;
+                xsrc = 0;
             }
         }
 
         // insert remaining nodes for buffer until we drop out
         {
             auto d = dx;
+            auto occ = n;
+
+            if(s.node) {
+                topk.filter_node(s.node).prev_occ = occ--;
+            }
+
             while(d < buffer.size() && (s.frequent || s.new_node)) {
-                if constexpr(PROTOCOL) std::cout << "\tinsert new edge labeled " << display(buffer[buffer.size() - d - 1]) << " to v=" << s.node << std::endl;
+                auto const v = s.node;
                 s = topk.extend(s, buffer[buffer.size() - d - 1]);
+                if constexpr(PROTOCOL) std::cout << "\tinsert/follow edge labeled " << display(buffer[buffer.size() - d - 1]) << " from v=" << v << " to v'=" << s.node << ", occ=" << occ << std::endl;
+                
+                if(s.frequent || s.new_node) {
+                    topk.filter_node(s.node).prev_occ = occ--;
+                }
+
                 ++d;
             }
 
@@ -243,13 +278,17 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
 
     while(begin != end) {
         // read next character
-        ++n;
         handle(*begin++);
+        ++n;
     }
 
     // potentially encode final phrase
-    if(dx) {
-        write_ref(0, dx);
+    if(dx >= 1) {
+        if(dx > 1) {
+            write_ref(xbegin - xsrc, dx);
+        } else {
+            write_literal(topk.filter_node(x).root_label);
+        }
     }
 
     writer.flush();
