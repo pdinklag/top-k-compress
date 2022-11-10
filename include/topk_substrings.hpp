@@ -21,7 +21,7 @@
 #include "rolling_karp_rabin.hpp"
 #include "display.hpp"
 
-template<typename FilterNode, size_t fp_window_size_ = 8>
+template<typename FilterNode>
 requires requires {
     typename FilterNode::Index;
 } && requires(FilterNode node) {
@@ -186,12 +186,8 @@ private:
     }
 
 public:
-    static constexpr size_t fp_window_size() {
-        return fp_window_size_;
-    }
-
-    inline TopKSubstrings(size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns)
-        : hash_(fp_window_size_, rolling_fp_base_),
+    inline TopKSubstrings(size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const fp_window_size = 8)
+        : hash_(fp_window_size, rolling_fp_base_),
           filter_(k),
           min_pq_(k),
           k_(k),
@@ -220,11 +216,11 @@ public:
         uint8_t     sketch;      // which sketch is used for this string
         bool        frequent;    // whether or not the string is frequent
         bool        new_node;    // did the last extension cause a new filter entry to be created?
-        char        fp_window[fp_window_size_]; // the current fingerprinting window (first character = oldest)
     };
 
     // construct a string state for a specific node in the filter
-    StringState at(FilterIndex const node) ALWAYS_INLINE {
+    // the depth and root label of the node must be known, because such information is not stored by default
+    StringState at(FilterIndex const node, FilterIndex const depth, char const first) ALWAYS_INLINE {
         if(!node) return empty_string(); // root
 
         StringState s;
@@ -235,30 +231,9 @@ public:
         auto const* v = &filter_.node(node);
         s.fingerprint = v->fingerprint;
 
-        // to find the depth, first character and to reconstruct the fingerprint widow, we traverse back up to the root
-        char fp_window_rev[fp_window_size_] = "\0";
-        s.len = 0;
-
-        auto const root = filter_.root();
-        while(v->parent != root) {
-            if(s.len < fp_window_size_) fp_window_rev[s.len] = v->inlabel;
-            ++s.len;
-            v = &filter_.node(v->parent);
-        }
-        if(s.len < fp_window_size_) fp_window_rev[s.len] = v->inlabel;
-        ++s.len; // edge to root
-
-        s.first = v->inlabel;
+        s.len = depth;
+        s.first = first;
         s.sketch = select_sketch(s.first); // CAUTION: modifies the random state
-
-        // reconstruct fingerprint window
-        auto const i = s.len;
-        if(i >= fp_window_size_) {
-            for(size_t j = 0; j < fp_window_size_; j++) s.fp_window[j] = fp_window_rev[fp_window_size_ - 1 - j];
-        } else {
-            for(size_t j = 0; j < i; j++) s.fp_window[j] = fp_window_rev[i - 1 - j];
-            for(size_t j = i; j < fp_window_size_; j++) s.fp_window[j] = 0;
-        }
 
         return s;
     }
@@ -273,7 +248,6 @@ public:
         s.sketch = 0;
         s.frequent = true;
         s.new_node = false;
-        for(size_t j = 0; j < fp_window_size_; j++) s.fp_window[j] = 0;
         return s;
     }
 
@@ -284,8 +258,7 @@ public:
         auto const i = s.len;
 
         // update fingerprint
-        char const pop = (i >= fp_window_size_) ? s.fp_window[0] : 0;
-        auto const ext_fp = hash_.roll(s.fingerprint, pop, c);
+        auto const ext_fp = hash_.roll(s.fingerprint, 0, c);
 
         // try and find extension in filter
         StringState ext;
@@ -294,17 +267,6 @@ public:
         ext.first = (i == 0) ? c : s.first;
         ext.sketch = (i == 0) ? select_sketch(c) : s.sketch;
         ext.new_node = false;
-
-        if(i >= fp_window_size_) {
-            // slide fingerprint window
-            for(size_t j = 1; j < fp_window_size_; j++) ext.fp_window[j-1] = s.fp_window[j];
-            ext.fp_window[fp_window_size_-1] = c;
-        } else {
-            // append to fingerprint window
-            for(size_t j = 0; j < i; j++) ext.fp_window[j] = s.fp_window[j];
-            for(size_t j = i; j < fp_window_size_; j++) ext.fp_window[j] = 0;
-            ext.fp_window[i] = c;
-        }
 
         if constexpr(measure_time_) if(s.frequent) stats_.t_filter_find.resume();
         if(s.frequent && filter_.try_get_child(s.node, c, ext.node)) {

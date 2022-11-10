@@ -172,6 +172,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
 
         auto const& xdata = topk.filter_node(x);
         FilterIndex v;
+        Topk::StringState s;
         if(xdata.weiner_links.try_get(c, v)) {
             // Weiner link exists, extend LZ factor
             if constexpr(PROTOCOL) std::cout << "\tfollowed Weiner link with label " << display(c) << " to node v=" << v
@@ -179,6 +180,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
             
             x = v;
             ++dx;
+            s = topk.at(x, dx, c);
         } else {
             if(dx >= 1) {
                 ++num_phrases;
@@ -193,6 +195,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
 
                 x = v;
                 dx = 1;
+                s = topk.at(x, dx, c);
             } else {
                 // new literal (-> literal phrase)
                 ++num_phrases;
@@ -201,12 +204,12 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
 
                 x = 0;
                 dx = 0;
+                s = topk.empty_string();
             }
         }
 
         // insert remaining nodes for buffer until we drop out
         {
-            auto s = topk.at(x);
             auto d = dx;
             while(d < buffer.size() && (s.frequent || s.new_node)) {
                 if constexpr(PROTOCOL) std::cout << "\tinsert new edge labeled " << display(buffer[buffer.size() - d - 1]) << " to v=" << s.node << std::endl;
