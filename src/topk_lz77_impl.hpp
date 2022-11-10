@@ -37,7 +37,7 @@ struct TopkLZ77TrieNode : public TopkTrieNode<> {
 } __attribute__((packed));
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size) {
+void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, size_t const threshold = 2) {
     using namespace tdc::code;
 
     pm::MallocCounter malloc_counter;
@@ -171,7 +171,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     auto write_literal = [&](char const c){
         if constexpr(DEBUG) std::cout << "LITERAL: " << display(c) << std::endl;
 
-        writer.write_ref(0);
+        writer.write_len(0);
         writer.write_literal(c);
 
         ++num_phrases;
@@ -181,8 +181,8 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     auto write_ref = [&](size_t const src, size_t const len){
         if constexpr(DEBUG) std::cout << "REFERENCE: (" << src << ", " << len << ")" << std::endl;
 
-        writer.write_ref(src);
         writer.write_len(len);
+        writer.write_ref(src);
 
         ++num_phrases;
         ++num_ref;
@@ -190,6 +190,18 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
         longest = std::max(longest, len);
         total_ref_len += len;
         total_ref_dist += src;
+    };
+
+    auto write_ref_or_literals = [&](size_t const src, size_t const len, FilterIndex const v){
+        if(len >= threshold) {
+            write_ref(src, len);
+        } else {
+            char buf[len] = "\0";
+            topk.get(v, buf);
+            for(size_t i = 0; i < len; i++) {
+                write_literal(buf[len - 1 - i]);
+            }
+        }
     };
 
     auto handle = [&](char const c) {
@@ -219,12 +231,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
             if(prev_occ < xbegin) xsrc = prev_occ;
         } else {
             if(dx >= 1) {
-                if(dx > 1) {
-                    assert(xbegin > xsrc);
-                    write_ref(xbegin - xsrc, dx);
-                } else {
-                    write_literal(xdata.root_label);
-                }
+                write_ref_or_literals(xbegin - xsrc, dx, x);
                 if constexpr(PROTOCOL) std::cout << "\tWeiner link with label " << display(c) << " not found -> LZ phrase " << num_phrases << " ends" << std::endl;
             }
 
@@ -286,12 +293,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
 
     // potentially encode final phrase
     if(dx >= 1) {
-        if(dx > 1) {
-            assert(xbegin > xsrc);
-            write_ref(xbegin - xsrc, dx);
-        } else {
-            write_literal(topk.filter_node(x).root_label);
-        }
+        write_ref_or_literals(xbegin - xsrc, dx, x);
     }
 
     writer.flush();

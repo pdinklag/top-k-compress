@@ -3,9 +3,11 @@
 
 struct Compressor : public TopkCompressor {
     uint64_t window = 8;
+    unsigned int threshold = 2;
 
     Compressor() : TopkCompressor("topk-lz77", "Implements the top-k LZ77 compression algorithm") {
         param('w', "window", window, "The window size.");
+        param('t', "threshold", threshold, "The minimum reference length");
     }
 
     virtual std::string file_ext() override {
@@ -13,7 +15,7 @@ struct Compressor : public TopkCompressor {
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out) override {
-        topk_compress_lz77(in.begin(), in.end(), iopp::bitwise_output_to(out), k, window, sketch_count, sketch_rows, sketch_columns, block_size);
+        topk_compress_lz77(in.begin(), in.end(), iopp::bitwise_output_to(out), k, window, sketch_count, sketch_rows, sketch_columns, block_size, threshold);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out) override {
