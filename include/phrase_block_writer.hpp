@@ -17,24 +17,40 @@ class PhraseBlockWriter {
 private:
     static constexpr bool DEBUG = false;
 
+    using ItemType = uint8_t;
+
+    static constexpr ItemType TYPE_REF = 0;
+    static constexpr ItemType TYPE_LIT = 1;
+    static constexpr ItemType TYPE_LEN = 2;
+
     Out* out_;
     
     size_t block_size_;
+    bool use_len_;
     std::vector<Ref> cur_refs_;
+    std::vector<Ref> cur_lens_;
     std::vector<char> cur_literals_;
-    std::vector<bool> cur_block_;
+    std::vector<ItemType> cur_block_;
 
     Ref ref_min_, ref_max_;
+    Ref len_min_, len_max_;
     uint8_t lit_min_, lit_max_;
 
     void flush_block() {
         // encode block header
         tdc::code::Binary::encode(*out_, ref_min_, tdc::code::Universe::of<Ref>());
         tdc::code::Binary::encode(*out_, ref_max_, tdc::code::Universe::of<Ref>());
+
+        if(use_len_) {
+            tdc::code::EliasDelta::encode(*out_, len_min_, tdc::code::Universe::of<Ref>());
+            tdc::code::EliasDelta::encode(*out_, len_max_ - len_min_, tdc::code::Universe::of<Ref>());            
+        }
+
         tdc::code::EliasDelta::encode(*out_, lit_min_, tdc::code::Universe::of<uint8_t>());
-        tdc::code::EliasDelta::encode(*out_, lit_max_, tdc::code::Universe::of<uint8_t>());
+        tdc::code::EliasDelta::encode(*out_, lit_max_ - lit_min_, tdc::code::Universe::of<uint8_t>());
 
         tdc::code::Universe u_refs(ref_min_, ref_max_);
+        tdc::code::Universe u_lens(len_min_, len_max_);
         tdc::code::Universe u_lits(lit_min_, lit_max_);
 
         if constexpr(DEBUG) {
@@ -57,11 +73,20 @@ private:
         // encode current block
         size_t next_lit = 0;
         size_t next_ref = 0;
-        for(bool const literal : cur_block_) {
-            if(literal) {
-                tdc::code::Binary::encode(*out_, cur_literals_[next_lit++], u_lits);
-            } else {
-                tdc::code::Binary::encode(*out_, cur_refs_[next_ref++], u_refs);
+        size_t next_len = 0;
+        for(auto const type : cur_block_) {
+            switch(type) {
+                case TYPE_REF:
+                    tdc::code::Binary::encode(*out_, cur_refs_[next_ref++], u_refs);
+                    break;
+                
+                case TYPE_LIT:
+                    tdc::code::Binary::encode(*out_, cur_literals_[next_lit++], u_lits);
+                    break;
+
+                case TYPE_LEN:
+                    tdc::code::Binary::encode(*out_, cur_lens_[next_len++], u_lens);
+                    break;
             }
         }
 
@@ -69,6 +94,7 @@ private:
         cur_block_.clear();
         cur_refs_.clear();
         cur_literals_.clear();
+        cur_lens_.clear();
         reset_universe();
     }
 
@@ -84,10 +110,13 @@ private:
 
         lit_min_ = UINT8_MAX;
         lit_max_ = 0;
+
+        len_min_ = std::numeric_limits<Ref>::max();
+        len_max_ = 0;
     }
 
 public:
-    PhraseBlockWriter(Out& out, size_t const block_size) : out_(&out), block_size_(block_size) {
+    PhraseBlockWriter(Out& out, size_t const block_size, bool const use_len = false) : out_(&out), block_size_(block_size), use_len_(use_len) {
         // allocate
         cur_block_.reserve(block_size);
         cur_refs_.reserve(block_size);
@@ -107,7 +136,7 @@ public:
     void write_ref(Ref const x) {
         check_overflow();
 
-        cur_block_.push_back(false);
+        cur_block_.push_back(TYPE_REF);
         cur_refs_.push_back(x);
 
         ref_min_ = std::min(ref_min_, x);
@@ -117,12 +146,22 @@ public:
     void write_literal(char const c) {
         check_overflow();
 
-        cur_block_.push_back(true);
+        cur_block_.push_back(TYPE_LIT);
         cur_literals_.push_back(c);
 
         uint8_t const x = c;
         lit_min_ = std::min(lit_min_, x);
         lit_max_ = std::max(lit_max_, x);
+    }
+
+    void write_len(Ref const len) {
+        check_overflow();
+
+        cur_block_.push_back(TYPE_LEN);
+        cur_lens_.push_back(len);
+
+        len_min_ = std::min(len_min_, len);
+        len_max_ = std::max(len_max_, len);
     }
 
     void flush() {
