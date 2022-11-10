@@ -58,6 +58,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     size_t num_literal = 0;
     size_t num_ref = 0;
     size_t total_ref_len = 0;
+    size_t total_ref_dist = 0;
     size_t longest = 0;
 
     // callbacks
@@ -180,7 +181,6 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     auto write_ref = [&](size_t const src, size_t const len){
         if constexpr(DEBUG) std::cout << "REFERENCE: (" << src << ", " << len << ")" << std::endl;
 
-        assert(src > 0);
         writer.write_ref(src);
         writer.write_len(len);
 
@@ -189,6 +189,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
 
         longest = std::max(longest, len);
         total_ref_len += len;
+        total_ref_dist += src;
     };
 
     auto handle = [&](char const c) {
@@ -219,6 +220,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
         } else {
             if(dx >= 1) {
                 if(dx > 1) {
+                    assert(xbegin > xsrc);
                     write_ref(xbegin - xsrc, dx);
                 } else {
                     write_literal(xdata.root_label);
@@ -285,6 +287,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     // potentially encode final phrase
     if(dx >= 1) {
         if(dx > 1) {
+            assert(xbegin > xsrc);
             write_ref(xbegin - xsrc, dx);
         } else {
             write_literal(topk.filter_node(x).root_label);
@@ -303,5 +306,6 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
         << " -> total phrases: " << num_phrases
         << ", longest_ref=" << longest
         << ", avg_ref_len=" << ((double)total_ref_len / (double)num_ref)
+        << ", avg_ref_dist=" << ((double)total_ref_dist / (double)num_ref)
         << std::endl;
 }
