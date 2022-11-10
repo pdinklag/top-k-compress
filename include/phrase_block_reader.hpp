@@ -5,10 +5,11 @@
 #include <iopp/concepts.hpp>
 
 #include <tdc/code/universal/binary.hpp>
+#include <tdc/code/universal/elias_delta.hpp>
 
 #include <vector>
 
-template<iopp::BitSource In>
+template<iopp::BitSource In, std::unsigned_integral Ref = uint32_t>
 class PhraseBlockReader {
 private:
     In* in_;
@@ -24,10 +25,10 @@ private:
         read_ = 0;
 
         // load block header
-        auto const ref_min = tdc::code::Binary::decode(*in_, tdc::code::Universe::of<uint64_t>());
-        auto const ref_max = tdc::code::Binary::decode(*in_, tdc::code::Universe::of<uint64_t>());
-        auto const lit_min = tdc::code::Binary::decode(*in_, tdc::code::Universe::of<uint8_t>());
-        auto const lit_max = tdc::code::Binary::decode(*in_, tdc::code::Universe::of<uint8_t>());
+        auto const ref_min = tdc::code::Binary::decode(*in_, tdc::code::Universe::of<Ref>());
+        auto const ref_max = tdc::code::Binary::decode(*in_, tdc::code::Universe::of<Ref>());
+        auto const lit_min = tdc::code::EliasDelta::decode(*in_, tdc::code::Universe::of<uint8_t>());
+        auto const lit_max = tdc::code::EliasDelta::decode(*in_, tdc::code::Universe::of<uint8_t>());
 
         u_refs_ = tdc::code::Universe(ref_min, ref_max);
         u_lits_ = tdc::code::Universe(lit_min, lit_max);
@@ -48,7 +49,7 @@ public:
         read_ = block_size_;
     }
 
-    uint64_t read_ref() {
+    Ref read_ref() {
         check_underflow();
         ++read_;
         return tdc::code::Binary::decode(*in_, u_refs_);

@@ -17,7 +17,7 @@ struct TopkCompressor : public ConfigObject {
     uint64_t sketch_count = 1;
     uint64_t sketch_rows = 2;
     uint64_t sketch_columns = 1'000'000;
-    uint64_t block_size = 65'536;
+    uint64_t block_size = 4'096;
 
     TopkCompressor(std::string&& type_name, std::string&& desc) : ConfigObject(std::move(type_name), std::move(desc)) {
         param('o', "out", output, "The output filename.");

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <limits>
 #include <vector>
 
 #include <iostream>
@@ -9,8 +10,9 @@
 #include <iopp/concepts.hpp>
 
 #include <tdc/code/universal/binary.hpp>
+#include <tdc/code/universal/elias_delta.hpp>
 
-template<iopp::BitSink Out>
+template<iopp::BitSink Out, std::unsigned_integral Ref = uint32_t>
 class PhraseBlockWriter {
 private:
     static constexpr bool DEBUG = false;
@@ -18,19 +20,19 @@ private:
     Out* out_;
     
     size_t block_size_;
-    std::vector<uint64_t> cur_refs_;
+    std::vector<Ref> cur_refs_;
     std::vector<char> cur_literals_;
     std::vector<bool> cur_block_;
 
-    uint64_t ref_min_, ref_max_;
+    Ref ref_min_, ref_max_;
     uint8_t lit_min_, lit_max_;
 
     void flush_block() {
         // encode block header
-        tdc::code::Binary::encode(*out_, ref_min_, tdc::code::Universe::of<uint64_t>());
-        tdc::code::Binary::encode(*out_, ref_max_, tdc::code::Universe::of<uint64_t>());
-        tdc::code::Binary::encode(*out_, lit_min_, tdc::code::Universe::of<uint8_t>());
-        tdc::code::Binary::encode(*out_, lit_max_, tdc::code::Universe::of<uint8_t>());
+        tdc::code::Binary::encode(*out_, ref_min_, tdc::code::Universe::of<Ref>());
+        tdc::code::Binary::encode(*out_, ref_max_, tdc::code::Universe::of<Ref>());
+        tdc::code::EliasDelta::encode(*out_, lit_min_, tdc::code::Universe::of<uint8_t>());
+        tdc::code::EliasDelta::encode(*out_, lit_max_, tdc::code::Universe::of<uint8_t>());
 
         tdc::code::Universe u_refs(ref_min_, ref_max_);
         tdc::code::Universe u_lits(lit_min_, lit_max_);
@@ -77,7 +79,7 @@ private:
     }
 
     void reset_universe() {
-        ref_min_ = UINT64_MAX;
+        ref_min_ = std::numeric_limits<Ref>::max();
         ref_max_ = 0;
 
         lit_min_ = UINT8_MAX;
@@ -102,7 +104,7 @@ public:
         flush();
     }
 
-    void write_ref(uint64_t const x) {
+    void write_ref(Ref const x) {
         check_overflow();
 
         cur_block_.push_back(false);
