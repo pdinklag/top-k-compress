@@ -45,6 +45,9 @@ void topk_compress_exh(In begin, In const& end, Out out, size_t const k, size_t 
     }
     size_t longest = 0;
 
+    size_t max_freq_len = 0;
+    size_t total_freq_len = 0;
+
     size_t num_frequent = 0;
     size_t num_literal = 0;
 
@@ -110,6 +113,9 @@ void topk_compress_exh(In begin, In const& end, Out out, size_t const k, size_t 
                     assert(phrase_index > 0);
                     writer.write_ref(phrase_index);
 
+                    max_freq_len = std::max(max_freq_len, (size_t)phrase_len);
+                    total_freq_len += phrase_len;
+
                     ++num_frequent;
                     next_phrase += phrase_len;
                 } else {
@@ -168,6 +174,8 @@ void topk_compress_exh(In begin, In const& end, Out out, size_t const k, size_t 
         << ": num_frequent=" << num_frequent
         << ", num_literal=" << num_literal
         << " -> total phrases: " << (num_frequent + num_literal)
+        << ", longest_ref=" << max_freq_len
+        << ", avg_ref_len=" << ((double)total_freq_len / (double)num_frequent)
         << std::endl;
 }
 

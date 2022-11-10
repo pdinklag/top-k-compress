@@ -53,6 +53,9 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     Topk topk(k, num_sketches, sketch_rows, sketch_columns);
     size_t n = 0;
     size_t num_phrases = 0;
+    size_t num_literal = 0;
+    size_t num_ref = 0;
+    size_t total_ref_len = 0;
     size_t longest = 0;
 
     // callbacks
@@ -159,6 +162,25 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     FilterIndex x = 0;
     size_t dx = 0;
 
+    auto write_literal = [&](char const c){
+        ++num_phrases;
+        ++num_literal;
+    };
+
+    auto write_ref = [&](size_t const src, size_t const len){
+        if(len > 1) {
+            ++num_phrases;
+            ++num_ref;
+
+            longest = std::max(longest, len);
+            total_ref_len += len;
+        } else {
+            // encode a reference of length 1 as a literal
+            assert(buffer.size() >= 2);
+            write_literal(buffer[buffer.size() - 2]);
+        }
+    };
+
     auto handle = [&](char const c) {
         // append to ring buffer
         {
@@ -183,8 +205,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
             s = topk.at(x, dx, c);
         } else {
             if(dx >= 1) {
-                ++num_phrases;
-                longest = std::max(longest, dx);
+                write_ref(0, dx);
                 if constexpr(PROTOCOL) std::cout << "\tWeiner link with label " << display(c) << " not found -> LZ phrase " << num_phrases << " ends" << std::endl;
             }
 
@@ -198,8 +219,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
                 s = topk.at(x, dx, c);
             } else {
                 // new literal (-> literal phrase)
-                ++num_phrases;
-                longest = std::max(longest, (size_t)1);
+                write_literal(c);
                 if constexpr(PROTOCOL) std::cout << "\tLZ phrase " << num_phrases << " is new literal " << display(c) << std::endl;
 
                 x = 0;
@@ -229,8 +249,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
 
     // potentially encode final phrase
     if(dx) {
-        ++num_phrases;
-        longest = std::max(longest, dx);
+        write_ref(0, dx);
     }
 
     writer.flush();
@@ -240,7 +259,10 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     std::cout << "mem_peak=" << malloc_counter.peak() << std::endl;
     std::cout << "parse"
         << " n=" << n
-        << " -> num_phrases=" << num_phrases
-        << ", longest=" << longest
+        << ": num_ref=" << num_ref
+        << ", num_literal=" << num_literal
+        << " -> total phrases: " << num_phrases
+        << ", longest_ref=" << longest
+        << ", avg_ref_len=" << ((double)total_ref_len / (double)num_ref)
         << std::endl;
 }

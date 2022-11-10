@@ -51,6 +51,8 @@ struct TopkCompressor : public ConfigObject {
                     compress(fis, fos);
                 }
             }
+
+            std::cout << "n'=" << std::filesystem::file_size(output) << std::endl;
             return 0;
         } else {
             app.print_usage(*this);
