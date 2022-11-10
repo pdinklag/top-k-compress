@@ -69,4 +69,10 @@ public:
         const uint128_t pop = MERSENNE61_SQUARE - mult(max_exponent_exclusive_, pop_left);
         return modulo(shifted_fingerprint + pop + push_right);
     }
+
+    inline uint64_t push(uint64_t const fp, uint64_t const push_right) {
+        const uint128_t shifted_fingerprint = mult(base_, fp);
+        const uint128_t pop = MERSENNE61_SQUARE;
+        return modulo(shifted_fingerprint + pop + push_right);
+    }
 };

@@ -258,7 +258,7 @@ public:
         auto const i = s.len;
 
         // update fingerprint
-        auto const ext_fp = hash_.roll(s.fingerprint, 0, c);
+        auto const ext_fp = hash_.push(s.fingerprint, c);
 
         // try and find extension in filter
         StringState ext;
