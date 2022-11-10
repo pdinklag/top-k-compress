@@ -81,8 +81,12 @@ private:
     Stats stats_;
 
     size_t select_sketch(char const c) {
-        uint8_t const x = c;
-        return ((x ^ 0b1011'1010) + (sketch_selector_() % sketch_distr_)) % num_sketches_;
+        if(num_sketches_ > 1) {
+            uint8_t const x = c;
+            return ((x ^ 0b1011'1010) + (sketch_selector_() % sketch_distr_)) % num_sketches_;
+        } else {
+            return 0;
+        }
     }
 
     void increment_in_filter(FilterIndex const v) ALWAYS_INLINE {
