@@ -19,8 +19,8 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
     pm::MallocCounter malloc_counter;
     malloc_counter.start();
 
-    TopkFormat f(k, 0 /* indicator for LZ78 compression :-) */, num_sketches, sketch_rows, sketch_columns, false);
-    f.encode_header(out, MAGIC);
+    TopkHeader header(k, 0 /* indicator for LZ78 compression :-) */, num_sketches, sketch_rows, sketch_columns, false);
+    header.encode(out, MAGIC);
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
@@ -81,13 +81,13 @@ void topk_decompress_lz78(In in, Out out) {
     using namespace tdc::code;
 
     // decode header
-    TopkFormat f(in, MAGIC);
-    auto const k = f.k;
-    auto const window_size = f.window_size;
-    auto const num_sketches = f.num_sketches;
-    auto const sketch_rows = f.sketch_rows;
-    auto const sketch_columns = f.sketch_columns;
-    auto const huffman_coding = f.huffman_coding;
+    TopkHeader header(in, MAGIC);
+    auto const k = header.k;
+    auto const window_size = header.window_size;
+    auto const num_sketches = header.num_sketches;
+    auto const sketch_rows = header.sketch_rows;
+    auto const sketch_columns = header.sketch_columns;
+    auto const huffman_coding = header.huffman_coding;
 
     // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character
