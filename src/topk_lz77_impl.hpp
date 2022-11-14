@@ -267,7 +267,16 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
             size_t occ;
             if(s.node) {
                 occ = n - d + 1;
-                topk.filter_node(s.node).prev_occ = occ--;
+
+                // ascend in tree to update previous occurrences
+                auto v = s.node;
+                while(v) {
+                    auto* vdata = &topk.filter_node(v);
+                    vdata->prev_occ = occ++;
+                    v = vdata->parent;
+                }
+
+                occ = n - d;
             } else {
                 occ = n;
             }
