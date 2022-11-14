@@ -3,14 +3,14 @@
 #include <tlx/container/ring_buffer.hpp>
 
 constexpr uint64_t MAGIC =
-    ((uint64_t)'T') << 56 |
-    ((uint64_t)'O') << 48 |
-    ((uint64_t)'P') << 40 |
-    ((uint64_t)'K') << 32 |
+    ((uint64_t)'L') << 56 |
+    ((uint64_t)'Z') << 48 |
+    ((uint64_t)'7') << 40 |
+    ((uint64_t)'7') << 32 |
     ((uint64_t)'L') << 24 |
-    ((uint64_t)'Z') << 16 |
-    ((uint64_t)'7') << 8 |
-    ((uint64_t)'7');
+    ((uint64_t)'I') << 16 |
+    ((uint64_t)'K') << 8 |
+    ((uint64_t)'E');
 
 constexpr bool PROTOCOL = false;
 constexpr bool DEBUG = false;
@@ -43,8 +43,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     pm::MallocCounter malloc_counter;
     malloc_counter.start();
 
-    TopkFormat f(k, 0, num_sketches, sketch_rows, sketch_columns, false);
-    f.encode_header(out, MAGIC);
+    out.write(MAGIC, 64);
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
@@ -169,23 +168,25 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     size_t xsrc = 0;   // the source position of the current reference
 
     auto write_literal = [&](char const c){
-        if constexpr(DEBUG) std::cout << "LITERAL: " << display(c) << std::endl;
+        if constexpr(DEBUG) std::cout << xbegin << ": LITERAL " << display(c) << std::endl;
 
         writer.write_len(0);
         writer.write_literal(c);
 
         ++num_phrases;
         ++num_literal;
+        ++xbegin;
     };
 
     auto write_ref = [&](size_t const src, size_t const len){
-        if constexpr(DEBUG) std::cout << "REFERENCE: (" << src << ", " << len << ")" << std::endl;
+        if constexpr(DEBUG) std::cout << xbegin << ": REFERENCE (" << src << "/" << xbegin - src << ", " << len << ")" << std::endl;
 
         writer.write_len(len);
         writer.write_ref(src);
 
         ++num_phrases;
         ++num_ref;
+        xbegin += len;
 
         longest = std::max(longest, len);
         total_ref_len += len;
@@ -244,7 +245,6 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
                 dx = 1;
                 s = topk.at(x, dx, c);
 
-                xbegin = n;
                 xsrc = topk.filter_node(v).prev_occ;
             } else {
                 // new literal (-> literal phrase)
@@ -255,7 +255,6 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
                 dx = 0;
                 s = topk.empty_string();
 
-                xbegin = n + 1;
                 xsrc = 0;
             }
         }
@@ -263,17 +262,21 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
         // insert remaining nodes for buffer until we drop out
         {
             auto d = dx;
-            auto occ = n;
+            assert(n >= d);
 
+            size_t occ;
             if(s.node) {
+                occ = n - d + 1;
                 topk.filter_node(s.node).prev_occ = occ--;
+            } else {
+                occ = n;
             }
 
             while(d < buffer.size() && (s.frequent || s.new_node)) {
                 auto const v = s.node;
                 s = topk.extend(s, buffer[buffer.size() - d - 1]);
-                if constexpr(PROTOCOL) std::cout << "\tinsert/follow edge labeled " << display(buffer[buffer.size() - d - 1]) << " from v=" << v << " to v'=" << s.node << ", occ=" << occ << std::endl;
-                
+                if constexpr(PROTOCOL) std::cout << "\tinsert/follow edge labeled " << display(buffer[buffer.size() - d - 1]) << " from v=" << v << " to v'=" << s.node << std::endl;
+
                 if(s.frequent || s.new_node) {
                     topk.filter_node(s.node).prev_occ = occ--;
                 }
@@ -309,5 +312,56 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
         << ", longest_ref=" << longest
         << ", avg_ref_len=" << ((double)total_ref_len / (double)num_ref)
         << ", avg_ref_dist=" << ((double)total_ref_dist / (double)num_ref)
+        << std::endl;
+}
+
+template<iopp::BitSource In, std::output_iterator<char> Out>
+void lz77like_decompress(In in, Out out) {
+    uint64_t const magic = in.read(64);
+    if(magic != MAGIC) {
+        std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << MAGIC << ")" << std::endl;
+        std::abort();
+    }
+
+    std::string dec; // yes, we do it in RAM...
+
+    size_t num_ref = 0;
+    size_t num_literal = 0;
+
+    PhraseBlockReader reader(in, true);
+    while(in) {
+        auto len = reader.read_len();
+        if(len > 0) {
+            ++num_ref;
+
+            auto const src = reader.read_ref();
+            assert(src > 0);
+
+            if constexpr(DEBUG) std::cout << dec.length() << ": REFERENCE (" << src << ", " << len << ")" << std::endl;            
+
+            auto const i = dec.length();
+            assert(i >= src);
+
+            auto j = i - src;
+            while(len--) dec.push_back(dec[j++]);
+        } else {
+            ++num_literal;
+
+            auto const c = reader.read_literal();
+            if constexpr(DEBUG) std::cout << dec.length() << ": LITERAL " << display(c) << std::endl;
+
+            dec.push_back(c);
+        }
+    }
+
+    // output
+    std::copy(dec.begin(), dec.end(), out);
+
+    // debug
+    std::cout << "decompress"
+        << ": n=" << dec.length()
+        << ", num_ref=" << num_ref
+        << ", num_literal=" << num_literal
+        << " -> total phrases: " << (num_ref + num_literal)
         << std::endl;
 }
