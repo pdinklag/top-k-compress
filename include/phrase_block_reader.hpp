@@ -6,12 +6,17 @@
 
 #include <tdc/code/universal/binary.hpp>
 #include <tdc/code/universal/elias_delta.hpp>
+#include <tdc/code/entropical/huffman.hpp>
 
 #include <vector>
 
-template<iopp::BitSource In, std::unsigned_integral Ref = uint32_t>
+template<iopp::BitSource In, std::unsigned_integral Ref = uint32_t, std::unsigned_integral Len = uint32_t>
 class PhraseBlockReader {
 private:
+    static constexpr bool DEBUG = false;
+
+    using Char = uint8_t;
+
     In* in_;
 
     size_t block_size_;
@@ -19,10 +24,12 @@ private:
     size_t read_;
 
     tdc::code::Universe u_refs_;
-    tdc::code::Universe u_lits_;
-    tdc::code::Universe u_lens_;
+    tdc::code::HuffmanTree<Char> huff_lits_;
+    tdc::code::HuffmanTree<Len> huff_lens_;
 
     void advance_block() {
+        if constexpr(DEBUG) std::cout << "advance block" << std::endl;
+
         // reset current block
         read_ = 0;
 
@@ -32,14 +39,10 @@ private:
         u_refs_ = tdc::code::Universe(ref_min, ref_max);
 
         if(use_len_) {
-            auto const len_min = tdc::code::EliasDelta::decode(*in_, tdc::code::Universe::of<Ref>());
-            auto const len_max = len_min + tdc::code::EliasDelta::decode(*in_, tdc::code::Universe::of<Ref>());
-            u_lens_ = tdc::code::Universe(len_min, len_max);
+            huff_lens_ = decltype(huff_lens_)(*in_);
         }
 
-        auto const lit_min = tdc::code::EliasDelta::decode(*in_, tdc::code::Universe::of<uint8_t>());
-        auto const lit_max = lit_min + tdc::code::EliasDelta::decode(*in_, tdc::code::Universe::of<uint8_t>());
-        u_lits_ = tdc::code::Universe(lit_min, lit_max);
+        huff_lits_ = decltype(huff_lits_)(*in_);
     }
 
     void check_underflow() {
@@ -66,12 +69,12 @@ public:
     char read_literal() {
         check_underflow();
         ++read_;
-        return (char)tdc::code::Binary::decode(*in_, u_lits_);
+        return (char)tdc::code::Huffman::decode(*in_, huff_lits_.root());
     }
 
     Ref read_len() {
         check_underflow();
         ++read_;
-        return (char)tdc::code::Binary::decode(*in_, u_lens_);
+        return (Ref)tdc::code::Huffman::decode(*in_, huff_lens_.root());
     }
 };
