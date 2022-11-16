@@ -18,6 +18,7 @@ struct TopkCompressor : public ConfigObject {
     uint64_t sketch_rows = 2;
     uint64_t sketch_columns = 1'000'000;
     uint64_t block_size = 4'096;
+    uint64_t prefix = UINTMAX_MAX;
 
     TopkCompressor(std::string&& type_name, std::string&& desc) : ConfigObject(std::move(type_name), std::move(desc)) {
         param('o', "out", output, "The output filename.");
@@ -27,6 +28,7 @@ struct TopkCompressor : public ConfigObject {
         param('r', "sketch-rows", sketch_rows, "The number of rows in the Count-Min sketch.");
         param('c', "sketch-columns", sketch_columns, "The total number of columns in each Count-Min row.");
         param('b', "block-size", block_size, "The block size for encoding.");
+        param('p', "prefix", prefix, "The prefix of the input file to consider.");
     }
 
     virtual std::string file_ext() = 0;
@@ -43,7 +45,7 @@ struct TopkCompressor : public ConfigObject {
             }
 
             {
-                iopp::FileInputStream fis(input);
+                iopp::FileInputStream fis(input, 0, prefix);
                 iopp::FileOutputStream fos(output);
                 if(decompress_flag) {
                     decompress(fis, fos);
