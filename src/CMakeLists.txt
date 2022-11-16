@@ -7,6 +7,9 @@ target_link_libraries(topk-exh topk)
 add_executable(topk-lz77 topk_lz77.cpp)
 target_link_libraries(topk-lz77 topk)
 
+add_executable(topk-lz77-fast topk_lz77_fast.cpp)
+target_link_libraries(topk-lz77-fast topk)
+
 add_executable(topk-lz78 topk_lz78.cpp)
 target_link_libraries(topk-lz78 topk)
 

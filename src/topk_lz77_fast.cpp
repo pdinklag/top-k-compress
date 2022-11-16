@@ -11,11 +11,11 @@ struct Compressor : public TopkCompressor {
     }
 
     virtual std::string file_ext() override {
-        return ".lz77";
+        return ".lz77f";
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out) override {
-        topk_compress_lz77<false>(in.begin(), in.end(), iopp::bitwise_output_to(out), k, window, sketch_count, sketch_rows, sketch_columns, block_size, threshold);
+        topk_compress_lz77<true>(in.begin(), in.end(), iopp::bitwise_output_to(out), k, window, sketch_count, sketch_rows, sketch_columns, block_size, threshold);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out) override {

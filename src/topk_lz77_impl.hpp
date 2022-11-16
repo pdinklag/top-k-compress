@@ -36,7 +36,7 @@ struct TopkLZ77TrieNode : public TopkTrieNode<> {
 
 } __attribute__((packed));
 
-template<tdc::InputIterator<char> In, iopp::BitSink Out>
+template<bool fast, tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, size_t const threshold = 2) {
     using namespace tdc::code;
 
@@ -266,16 +266,16 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
 
             size_t occ;
             if(s.node) {
-                occ = n - d + 1;
-
-                // ascend in tree to update previous occurrences
-                auto v = s.node;
-                while(v) {
-                    auto* vdata = &topk.filter_node(v);
-                    vdata->prev_occ = occ++;
-                    v = vdata->parent;
+                if constexpr(!fast) {
+                    // ascend in trie to update previous occurrences
+                    occ = n - d + 1;
+                    auto v = s.node;
+                    while(v) {
+                        auto* vdata = &topk.filter_node(v);
+                        vdata->prev_occ = occ++;
+                        v = vdata->parent;
+                    }
                 }
-
                 occ = n - d;
             } else {
                 occ = n;
@@ -288,6 +288,10 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
 
                 if(s.frequent || s.new_node) {
                     topk.filter_node(s.node).prev_occ = occ--;
+                }
+
+                if constexpr(fast) {
+                    if(!s.new_node) break; // unless we a adding a new frequent string, don't bother
                 }
 
                 ++d;
