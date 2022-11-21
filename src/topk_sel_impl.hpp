@@ -1,4 +1,5 @@
 #include "topk_common.hpp"
+#include <tlx/container/ring_buffer.hpp>
 
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
@@ -33,7 +34,7 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
         size_t index;
         size_t pos;
     };
-    std::list<NewNode> new_nodes;
+    tlx::RingBuffer<NewNode> new_nodes((window_size * (window_size + 1)) / 2); // w(w+1)/2 is the maximum number of nodes we can possibly create within a window
 
     Topk::StringState s[window_size];
     Topk::StringState match[window_size];
@@ -62,6 +63,7 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
                     match[j] = s[j];
                 }
                 if(s[j].new_node) {
+                    assert(i + 1 >= s[j].len);
                     new_nodes.push_back({ s[j].node, i + 1 - s[j].len });
                 }
             }
@@ -78,7 +80,8 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
 
                 if(phrase_len >= 1) {
                     // check if the phrase node was only recently created
-                    for(auto& recent : new_nodes) {
+                    for(size_t j = 0; j < new_nodes.size(); j++) {
+                        auto const& recent = new_nodes[j];
                         if(recent.index == phrase_index) {
                             // it has - determine the maximum possible length for the phrase
                             size_t const max_len = next_phrase - recent.pos;
