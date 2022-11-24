@@ -2,7 +2,10 @@
 #include "topk_lz78_impl.hpp"
 
 struct Compressor : public TopkCompressor {
+    uint64_t ignored_ = 0;
+
     Compressor() : TopkCompressor("topk-lz78", "Implements the top-k LZ78 compression algorithm") {
+        param('w', "window", ignored_, "Ignored, provided only for interoperability.");
     }
 
     virtual std::string file_ext() override {
