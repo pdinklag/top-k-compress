@@ -11,6 +11,9 @@ constexpr uint64_t MAGIC =
     ((uint64_t)'L') << 8 |
     ((uint64_t)'#');
 
+constexpr bool DEBUG = false;
+constexpr bool PROTOCOL = false;
+
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     using namespace tdc::code;
@@ -51,6 +54,10 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
     size_t next_phrase = 0;
 
     auto handle = [&](char const c, size_t len) {
+        if constexpr(DEBUG) {
+            std::cout << "read next character: " << display(c) << ", i=" << i << ", next_phrase=" << next_phrase << ", longest=" << longest << std::endl;
+        }
+
         // update the w cursors and find the maximum current match
         size_t const num_active_windows = std::min(window_size, i + 1);
         for(size_t j = 0; j < num_active_windows; j++) {
@@ -71,6 +78,8 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
             // decide whether something must be encoded now
             assert(i + 1 - window_size <= next_phrase); // if this doesn't hold, we missed something
             if(i + 1 - window_size == next_phrase) {
+                if constexpr(DEBUG) std::cout << "- [ENCODE] ";
+
                 // our longest phrase is now exactly w long; encode whatever is possible
                 auto phrase_index = match[longest].node;
                 auto phrase_len = match[longest].len;
@@ -86,9 +95,20 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
                                 // phrase is too long, limit
                                 phrase_index = topk.limit(match[longest], max_len);
                                 phrase_len = max_len;
+
+                                if constexpr(DEBUG) {
+                                    std::cout << "(LIMITED from index=" << phrase_index << ", length=" << phrase_len << ") ";
+                                }
                             }
                             break;
                         }
+                    }
+
+                    if constexpr(DEBUG) {
+                        std::cout << "frequent phrase: index=" << phrase_index << ", length=" << phrase_len << std::endl;
+                    }
+                    if constexpr(PROTOCOL) {
+                        std::cout << "(" << phrase_index << ") / " << phrase_len << std::endl;
                     }
 
                     assert(phrase_index > 0);
@@ -101,6 +121,14 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
                     max_freq_len = std::max(max_freq_len, (size_t)phrase_len);
                 } else {
                     auto const x = s[longest].first;
+
+                    if constexpr(DEBUG) {
+                        std::cout << "literal phrase: " << display(x) << std::endl;
+                    }
+                    if constexpr(PROTOCOL) {
+                        std::cout << display(x) << std::endl;
+                    }
+
                     writer.write_ref(0);
                     writer.write_literal(x);
 

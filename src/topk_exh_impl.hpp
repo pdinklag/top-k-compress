@@ -124,7 +124,7 @@ void topk_compress_exh(In begin, In const& end, Out out, size_t const k, size_t 
                         std::cout << "literal phrase: " << display(x) << std::endl;
                     }
                     if constexpr(PROTOCOL) {
-                        std::cout << "0x" << std::hex << size_t(x) << std::dec << std::endl;
+                        std::cout << display(x) << std::endl;
                     }
                     
                     writer.write_ref(0);
