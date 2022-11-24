@@ -34,27 +34,27 @@ class XzTask(WrapCompressorTask):
         super().__init__("xz", "xz", filename, 360)
 
 class TopkTask(Task):
-    def __init__(self, compressor: str, w: int, k: str, filename: str, max_time: int):
+    def __init__(self, compressor: str, w: int, k: str, xcmd: list[str], filename: str, max_time: int):
         global project_path
 
         bin = os.path.join(project_path, "build", "src", compressor)
-        super().__init__([bin, f"--window={str(w)}", "-k", k, "-c", "8M", "-s", "2K", filename], max_time)
+        super().__init__([bin, f"--window={str(w)}", "-k", k, "-c", "8M", "-s", "2K"] + xcmd + [filename], max_time)
 
 class TopkLz78Task(TopkTask):
     def __init__(self, filename: str, k: str):
-        super().__init__("topk-lz78", 0, k, filename, 60)
+        super().__init__("topk-lz78", 0, k, [], filename, 60)
 
 class TopkLz77Task(TopkTask):
     def __init__(self, filename: str, w: int, k: str):
-        super().__init__("topk-lz77", w, k, filename, 240)
+        super().__init__("topk-lz77", w, k, ["-t", "4"], filename, 240)
 
 class TopkLz77FastTask(TopkTask):
     def __init__(self, filename: str, w: int, k: str):
-        super().__init__("topk-lz77-fast", w, k, filename, 60)
+        super().__init__("topk-lz77-fast", w, k, ["-t", "4"], filename, 60)
 
 class TopkSelTask(TopkTask):
     def __init__(self, filename: str, w: int, k: str):
-        super().__init__("topk-sel", w, k, filename, 240)
+        super().__init__("topk-sel", w, k, [], filename, 240)
 
 def create_job():
     global cp_task
