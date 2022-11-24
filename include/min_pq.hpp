@@ -11,7 +11,7 @@
 template<std::unsigned_integral Frequency, std::unsigned_integral EntryIndex = uint32_t>
 class MinPQ {
 private:
-    static constexpr bool gather_stats_ = true;
+    static constexpr bool gather_stats_ = false;
     struct Stats {
         size_t num_bucket_inserts;
         size_t num_bucket_deletes;
@@ -228,6 +228,7 @@ public:
     }
 
     void print_debug_info() const {
+        if constexpr(!gather_stats_) return;
         std::cout << "min pq info"
                   << ": num_bucket_inserts=" << stats_.num_bucket_inserts
                   << ", num_bucket_deletes=" << stats_.num_bucket_deletes

@@ -5,11 +5,11 @@
 #include <iostream>
 #include <list>
 
-#include <pm/malloc_counter.hpp>
-
 #include <tdc/code/universal/binary.hpp>
 #include <tdc/util/concepts.hpp>
 #include <tdc/util/math.hpp>
+
+#include <pm/result.hpp>
 
 #include <display.hpp>
 #include <phrase_block_reader.hpp>

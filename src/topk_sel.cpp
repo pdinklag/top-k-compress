@@ -8,15 +8,21 @@ struct Compressor : public TopkCompressor {
         param('w', "window", window, "The window size.");
     }
 
+    virtual void init_result(pm::Result& result) override {
+        result.add("algo", "topk-sel");
+        TopkCompressor::init_result(result);
+        result.add("window", window);
+    }
+
     virtual std::string file_ext() override {
         return ".topk";
     }
 
-    virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out) override {
-        topk_compress_sel(in.begin(), in.end(), iopp::bitwise_output_to(out), k, window, sketch_count, sketch_rows, sketch_columns, block_size);
+    virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
+        topk_compress_sel(in.begin(), in.end(), iopp::bitwise_output_to(out), k, window, sketch_count, sketch_rows, sketch_columns, block_size, result);
     }
     
-    virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out) override {
+    virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
         topk_decompress_sel(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
     }
 };

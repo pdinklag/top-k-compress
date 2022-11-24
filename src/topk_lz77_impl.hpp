@@ -37,11 +37,8 @@ struct TopkLZ77TrieNode : public TopkTrieNode<> {
 } __attribute__((packed));
 
 template<bool fast, tdc::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, size_t const threshold = 2) {
+void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, size_t const threshold, pm::Result& result) {
     using namespace tdc::code;
-
-    pm::MallocCounter malloc_counter;
-    malloc_counter.start();
 
     out.write(MAGIC, 64);
 
@@ -313,19 +310,15 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     }
 
     writer.flush();
-    malloc_counter.stop();
 
     topk.print_debug_info();
-    std::cout << "mem_peak=" << malloc_counter.peak() << std::endl;
-    std::cout << "parse"
-        << " n=" << n
-        << ": num_ref=" << num_ref
-        << ", num_literal=" << num_literal
-        << " -> total phrases: " << num_phrases
-        << ", longest_ref=" << longest
-        << ", avg_ref_len=" << ((double)total_ref_len / (double)num_ref)
-        << ", avg_ref_dist=" << ((double)total_ref_dist / (double)num_ref)
-        << std::endl;
+
+    result.add("phrases_total", num_ref + num_literal);
+    result.add("phrases_ref", num_ref);
+    result.add("phrases_literal", num_literal);
+    result.add("phrases_longest", longest);
+    result.add("phrases_avg_len", std::round(100.0 * ((double)total_ref_len / (double)num_ref)) / 100.0);
+    result.add("phrases_avg_dist", (uint64_t)std::round((double)total_ref_dist / (double)num_ref));
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
@@ -369,12 +362,4 @@ void lz77like_decompress(In in, Out out) {
 
     // output
     std::copy(dec.begin(), dec.end(), out);
-
-    // debug
-    std::cout << "decompress"
-        << ": n=" << dec.length()
-        << ", num_ref=" << num_ref
-        << ", num_literal=" << num_literal
-        << " -> total phrases: " << (num_ref + num_literal)
-        << std::endl;
 }

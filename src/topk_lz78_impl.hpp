@@ -13,11 +13,8 @@ constexpr uint64_t MAGIC =
 constexpr bool PROTOCOL = false;
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size) {
+void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     using namespace tdc::code;
-
-    pm::MallocCounter malloc_counter;
-    malloc_counter.start();
 
     TopkHeader header(k, 0 /* indicator for LZ78 compression :-) */, num_sketches, sketch_rows, sketch_columns, false);
     header.encode(out, MAGIC);
@@ -29,6 +26,7 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
     size_t n = 0;
     size_t num_phrases = 0;
     size_t longest = 0;
+    size_t total_len = 0;
 
     // initialize encoding
     PhraseBlockWriter writer(out, block_size);
@@ -38,6 +36,7 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
         auto next = topk.extend(s, c);
         if(!next.frequent) {
             longest = std::max(longest, size_t(next.len));
+            total_len += next.len;
             writer.write_ref(s.node);
             writer.write_literal(c);
 
@@ -65,15 +64,12 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
     }
 
     writer.flush();
-    malloc_counter.stop();
 
     topk.print_debug_info();
-    std::cout << "mem_peak=" << malloc_counter.peak() << std::endl;
-    std::cout << "parse"
-        << " n=" << n
-        << " -> num_phrases=" << num_phrases
-        << ", longest=" << longest
-        << std::endl;
+    
+    result.add("phrases_total", num_phrases);
+    result.add("phrases_longest", longest);
+    result.add("phrases_avg_len", std::round(100.0 * ((double)total_len / (double)num_phrases)) / 100.0);
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
@@ -131,6 +127,4 @@ void topk_decompress_lz78(In in, Out out) {
 
         if constexpr(PROTOCOL) std::cout << std::endl;
     }
-
-    std::cout << "num_phrases=" << num_phrases << " -> n=" << n << std::endl;
 }

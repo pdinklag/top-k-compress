@@ -10,15 +10,22 @@ struct Compressor : public TopkCompressor {
         param('t', "threshold", threshold, "The minimum reference length");
     }
 
+    virtual void init_result(pm::Result& result) override {
+        result.add("algo", "topk-lz77");
+        TopkCompressor::init_result(result);
+        result.add("window", window);
+        result.add("threshold", threshold);
+    }
+
     virtual std::string file_ext() override {
         return ".lz77";
     }
 
-    virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out) override {
-        topk_compress_lz77<false>(in.begin(), in.end(), iopp::bitwise_output_to(out), k, window, sketch_count, sketch_rows, sketch_columns, block_size, threshold);
+    virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
+        topk_compress_lz77<false>(in.begin(), in.end(), iopp::bitwise_output_to(out), k, window, sketch_count, sketch_rows, sketch_columns, block_size, threshold, result);
     }
     
-    virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out) override {
+    virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
         lz77like_decompress(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
     }
 };

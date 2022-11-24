@@ -7,6 +7,13 @@
 #include <iopp/stream_input_iterator.hpp>
 #include <iopp/stream_output_iterator.hpp>
 
+#include <cmath>
+
+#include <pm/malloc_counter.hpp>
+#include <pm/stopwatch.hpp>
+
+#include <pm/result.hpp>
+
 using namespace oocmd;
 
 struct TopkCompressor : public ConfigObject {
@@ -31,11 +38,18 @@ struct TopkCompressor : public ConfigObject {
         param('p', "prefix", prefix, "The prefix of the input file to consider.");
     }
 
+    virtual void init_result(pm::Result& result) {
+        result.add("k", k);
+        result.add("sketch_columns", sketch_columns);
+        result.add("sketch_count", sketch_count);
+        result.add("block_size", block_size);
+    }
+
     virtual std::string file_ext() = 0;
 
-    virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out) = 0;
+    virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) = 0;
 
-    virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out) = 0;
+    virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) = 0;
 
     int run(Application const& app) {
         if(!app.args().empty()) {
@@ -44,17 +58,37 @@ struct TopkCompressor : public ConfigObject {
                 output = input + (decompress_flag ? ".dec" : file_ext());
             }
 
+            pm::Result result;
+            result.add("file", std::filesystem::path(input).filename().string());
+            result.add("n", std::filesystem::file_size(input));
+            this->init_result(result);
+
             {
                 iopp::FileInputStream fis(input, 0, prefix);
                 iopp::FileOutputStream fos(output);
+
+                pm::MallocCounter m;
+                m.start();
+
+                pm::Stopwatch t;
+                t.start();
+
                 if(decompress_flag) {
-                    decompress(fis, fos);
+                    decompress(fis, fos, result);
                 } else {
-                    compress(fis, fos);
+                    compress(fis, fos, result);
                 }
+
+                t.stop();
+                result.add("time", (uint64_t)std::round(t.elapsed_time_millis()));
+
+                m.stop();
+                result.add("mem_peak", m.peak());
             }
 
-            std::cout << "n'=" << std::filesystem::file_size(output) << std::endl;
+            result.add("nout", std::filesystem::file_size(output));
+            result.sort();
+            std::cout << result.str() << std::endl;
             return 0;
         } else {
             app.print_usage(*this);

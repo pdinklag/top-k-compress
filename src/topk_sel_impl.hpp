@@ -12,11 +12,8 @@ constexpr uint64_t MAGIC =
     ((uint64_t)'#');
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size) {
+void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     using namespace tdc::code;
-
-    pm::MallocCounter malloc_counter;
-    malloc_counter.start();
 
     // write header
     TopkHeader header(k, window_size, num_sketches, sketch_rows, sketch_columns, false);
@@ -141,18 +138,14 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
     }
 
     writer.flush();
-    malloc_counter.stop();
 
     topk.print_debug_info();
-    std::cout << "mem_peak=" << malloc_counter.peak() << std::endl;
-    std::cout << "parse"
-        << " n=" << (i - window_size + 1)
-        << ": num_frequent=" << num_frequent
-        << ", num_literal=" << num_literal
-        << " -> total phrases: " << (num_frequent + num_literal)
-        << ", longest_ref=" << max_freq_len
-        << ", avg_ref_len=" << ((double)total_freq_len / (double)num_frequent)
-        << std::endl;
+    
+    result.add("phrases_total", num_frequent + num_literal);
+    result.add("phrases_frequent", num_frequent);
+    result.add("phrases_literal", num_literal);
+    result.add("phrases_longest", max_freq_len);
+    result.add("phrases_avg_len", std::round(100.0 * ((double)total_freq_len / (double)num_frequent)) / 100.0);
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
@@ -227,18 +220,4 @@ void topk_decompress_sel(In in, Out out) {
             handle(c);
         }
     }
-
-    // debug
-    std::cout << "decompress"
-        << " k=" << k
-        << " w=" << window_size
-        << " s=" << num_sketches
-        << " c=" << sketch_columns
-        << " r=" << sketch_rows
-        << " huffman=" << huffman_coding
-        << ": n=" << n
-        << ", num_frequent=" << num_frequent
-        << ", num_literal=" << num_literal
-        << " -> total phrases: " << (num_frequent + num_literal)
-        << std::endl;
 }

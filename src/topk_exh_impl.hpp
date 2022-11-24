@@ -1,4 +1,5 @@
 #include "topk_common.hpp"
+#include <tlx/container/ring_buffer.hpp>
 
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
@@ -14,11 +15,8 @@ constexpr bool DEBUG = false;
 constexpr bool PROTOCOL = false;
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_exh(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size) {
+void topk_compress_exh(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     using namespace tdc::code;
-
-    pm::MallocCounter malloc_counter;
-    malloc_counter.start();
 
     TopkHeader header(k, window_size, num_sketches, sketch_rows, sketch_columns, false);
     header.encode(out, MAGIC);
@@ -35,7 +33,7 @@ void topk_compress_exh(In begin, In const& end, Out out, size_t const k, size_t 
         size_t index;
         size_t pos;
     };
-    std::list<NewNode> new_nodes;
+    tlx::RingBuffer<NewNode> new_nodes((window_size * (window_size + 1)) / 2); // w(w+1)/2 is the maximum number of nodes we can possibly create within a window
 
     Topk::StringState s[window_size];
     Topk::StringState match[window_size];
@@ -86,7 +84,8 @@ void topk_compress_exh(In begin, In const& end, Out out, size_t const k, size_t 
 
                 if(phrase_len >= 1) {
                     // check if the phrase node was only recently created
-                    for(auto& recent : new_nodes) {
+                    for(size_t j = 0; j < new_nodes.size(); j++) {
+                        auto const& recent = new_nodes[j];
                         if(recent.index == phrase_index) {
                             // it has - determine the maximum possible length for the phrase
                             size_t const max_len = next_phrase - recent.pos;
@@ -165,18 +164,13 @@ void topk_compress_exh(In begin, In const& end, Out out, size_t const k, size_t 
     }
 
     writer.flush();
-    malloc_counter.stop();
 
     topk.print_debug_info();
-    std::cout << "mem_peak=" << malloc_counter.peak() << std::endl;
-    std::cout << "parse"
-        << " n=" << (i - window_size + 1)
-        << ": num_frequent=" << num_frequent
-        << ", num_literal=" << num_literal
-        << " -> total phrases: " << (num_frequent + num_literal)
-        << ", longest_ref=" << max_freq_len
-        << ", avg_ref_len=" << ((double)total_freq_len / (double)num_frequent)
-        << std::endl;
+    result.add("phrases_total", num_frequent + num_literal);
+    result.add("phrases_frequent", num_frequent);
+    result.add("phrases_literal", num_literal);
+    result.add("phrases_longest", max_freq_len);
+    result.add("phrases_avg_len", std::round(100.0 * ((double)total_freq_len / (double)num_frequent)) / 100.0);
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
@@ -266,18 +260,4 @@ void topk_decompress_exh(In in, Out out) {
             handle(c);
         }
     }
-
-    // debug
-    std::cout << "decompress"
-        << " k=" << k
-        << " w=" << window_size
-        << " s=" << num_sketches
-        << " c=" << sketch_columns
-        << " r=" << sketch_rows
-        << " huffman=" << huffman_coding
-        << ": n=" << n
-        << ", num_frequent=" << num_frequent
-        << ", num_literal=" << num_literal
-        << " -> total phrases: " << (num_frequent + num_literal)
-        << std::endl;
 }

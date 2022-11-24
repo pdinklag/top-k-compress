@@ -32,7 +32,7 @@ requires requires {
 }
 class TopKSubstrings {
 private:
-    static constexpr bool gather_stats_ = true;
+    static constexpr bool gather_stats_ = false;
     static constexpr bool measure_time_ = false;
     static constexpr bool DEBUG = false;
 
@@ -368,6 +368,8 @@ public:
     }
 
     void print_debug_info() const {
+        if constexpr(!gather_stats_) return;
+
         std::cout << "top-k info"
                   << ": num_strings_total=" << stats_.num_strings_total
                   << ", num_filter_inc=" << stats_.num_filter_inc
