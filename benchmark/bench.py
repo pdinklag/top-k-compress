@@ -38,7 +38,7 @@ class TopkTask(Task):
         global project_path
 
         bin = os.path.join(project_path, "build", "src", compressor)
-        super().__init__([bin, f"-w={str(w)}", "-k", k, "-c", "8M", "-s", "2K", filename], max_time)
+        super().__init__([bin, f"--window={str(w)}", "-k", k, "-c", "8M", "-s", "2K", filename], max_time)
 
 class TopkLz78Task(TopkTask):
     def __init__(self, filename: str, k: str):
