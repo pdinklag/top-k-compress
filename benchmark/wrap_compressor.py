@@ -16,12 +16,13 @@ cmdline = [args.compressor, "-9", "-kf", args.filename]
 
 t0 = time.time()
 
-p = subprocess.Popen(cmdline, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-pout, perr = p.communicate()
+outfilename = ".".join([args.filename, args.ext])
+with open(outfilename, "wb") as f:
+    p = subprocess.Popen(cmdline, stdout=f)
+    p.wait()
+    f.flush()
 
 dt = time.time() - t0
-
-outfilename = ".".join([args.filename, args.ext])
 
 n = os.path.getsize(args.filename)
 nout = os.path.getsize(outfilename)
