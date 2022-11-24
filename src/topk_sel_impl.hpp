@@ -146,7 +146,8 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
 
         // discard outdated entries in new_nodes
         if(i + 1 >= 2 * window_size) {
-            while(!new_nodes.empty() && new_nodes.front().pos < i + 1 - 2 * window_size) {
+            auto const first_pos = i + 1 - 2 * window_size;
+            while(!new_nodes.empty() && new_nodes.front().pos < first_pos) {
                 new_nodes.pop_front();
             }
         }
