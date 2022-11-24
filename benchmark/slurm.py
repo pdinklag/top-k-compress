@@ -18,4 +18,4 @@ class SlurmJob(Job):
 
 class LidoShortStd01Job(SlurmJob):
     def __init__(self):
-        super().__init__(["-c", "cstd01", "-p", "short", "--exclusive"], 7200)
+        super().__init__(["-C", "cstd01", "-p", "short", "--exclusive"], 7200)
