@@ -12,7 +12,7 @@ parser.add_argument("filename")
 
 args = parser.parse_args()
 
-cmdline = [args.compressor, "-9", "-kf", args.filename]
+cmdline = [args.compressor, "-9", "-f", "-c", args.filename]
 
 t0 = time.time()
 
