@@ -16,7 +16,7 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
     using namespace tdc::code;
 
     // write header
-    TopkHeader header(k, window_size, num_sketches, sketch_rows, sketch_columns, false);
+    TopkHeader header(k, window_size, num_sketches, sketch_rows, sketch_columns);
     header.encode(out, MAGIC);
 
     // initialize compression
@@ -159,7 +159,6 @@ void topk_decompress_sel(In in, Out out) {
     auto const num_sketches = header.num_sketches;
     auto const sketch_rows = header.sketch_rows;
     auto const sketch_columns = header.sketch_columns;
-    auto const huffman_coding = header.huffman_coding;
 
     // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character

@@ -16,7 +16,7 @@ template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     using namespace tdc::code;
 
-    TopkHeader header(k, 0 /* indicator for LZ78 compression :-) */, num_sketches, sketch_rows, sketch_columns, false);
+    TopkHeader header(k, 0 /* indicator for LZ78 compression :-) */, num_sketches, sketch_rows, sketch_columns);
     header.encode(out, MAGIC);
 
     // initialize compression
@@ -83,7 +83,6 @@ void topk_decompress_lz78(In in, Out out) {
     auto const num_sketches = header.num_sketches;
     auto const sketch_rows = header.sketch_rows;
     auto const sketch_columns = header.sketch_columns;
-    auto const huffman_coding = header.huffman_coding;
 
     // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character
