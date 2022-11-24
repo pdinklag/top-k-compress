@@ -38,7 +38,7 @@ class TopkTask(Task):
         global project_path
 
         bin = os.path.join(project_path, "build", "src", compressor)
-        super().__init__([bin, "-w", str(w), "-k", k, "-c", "8M", "-s", "2K", filename], max_time)
+        super().__init__([bin, f"-w={str(w)}", "-k", k, "-c", "8M", "-s", "2K", filename], max_time)
 
 class TopkLz78Task(TopkTask):
     def __init__(self, filename: str, k: str):
@@ -54,7 +54,7 @@ class TopkLz77FastTask(TopkTask):
 
 class TopkSelTask(TopkTask):
     def __init__(self, filename: str, w: int, k: str):
-        super().__init__("topk-lz77-sel", w, k, filename, 240)
+        super().__init__("topk-sel", w, k, filename, 240)
 
 def create_job():
     global cp_task
