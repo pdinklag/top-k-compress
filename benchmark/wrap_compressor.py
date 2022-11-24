@@ -22,7 +22,7 @@ with open(outfilename, "wb") as f:
     p.wait()
     f.flush()
 
-dt = time.time() - t0
+dt = round(1000.0 * (time.time() - t0))
 
 n = os.path.getsize(args.filename)
 nout = os.path.getsize(outfilename)
