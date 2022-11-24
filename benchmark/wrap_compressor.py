@@ -5,7 +5,7 @@ import os
 import subprocess
 import time
 
-parser = argparse.ArgumentParser(description='top-k compression benchmark')
+parser = argparse.ArgumentParser(description='compressor execution wrapper')
 parser.add_argument("compressor")
 parser.add_argument("ext")
 parser.add_argument("filename")

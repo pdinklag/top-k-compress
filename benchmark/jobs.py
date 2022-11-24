@@ -22,9 +22,9 @@ class Job:
     def add(self, task: Task):
         self.tasks.append(task);
 
-    def script(self) -> str:
+    def script(self) -> list[str]:
         f : Callable[[Task], str] = lambda x: x.cmd()
-        return "\n".join(map(f, self.tasks))
+        return list(map(f, self.tasks))
 
 def generate(tasks: list[Task], new_job: Callable[[], Job]) -> list[Job]:
     job = new_job()
