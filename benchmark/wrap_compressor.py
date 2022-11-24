@@ -27,4 +27,4 @@ dt = round(1000.0 * (time.time() - t0))
 n = os.path.getsize(args.filename)
 nout = os.path.getsize(outfilename)
 
-print(f"RESULT algo={args.compressor} n={str(n)} nout={str(nout)} time={str(dt)}")
+print(f"RESULT algo={args.compressor} file={os.path.basename(args.filename)} n={str(n)} nout={str(nout)} time={str(dt)}")
