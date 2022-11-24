@@ -1,134 +1,51 @@
 #!/usr/bin/env python3
 
-import argparse
+from jobs import *
+
 import os
-import subprocess
-import sys
-import time
 
-import config
+project_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir))
 
-def bench(cmd, brief, filename, ext):
-    #global logf
+class WrapCompressorTask(Task):
+    def __init__(self, compressor: str, ext: str, filename: str, max_time: int):
+        global project_path
 
-    # run command
-    t0 = time.time()
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    pout, perr = p.communicate()
-    dt = time.time() - t0
+        wrap_cmd = os.path.join(project_path, "benchmark", "wrap_compressor.py")
+        super().__init__([wrap_cmd, compressor, ext, filename], max_time)
 
-    # get output stats
-    n = os.path.getsize(filename)
-    ncomp = os.path.getsize(filename + ext)
-    ratio = float(ncomp) / float(n)
+class GzipTask(WrapCompressorTask):
+    def __init__(self, filename: str):
+        super().__init__("gzip", "gz", filename, 60)
 
-    # cleanup output file
-    os.remove(filename + ext)
+class Bzip2Task(WrapCompressorTask):
+    def __init__(self, filename: str):
+        super().__init__("bzip2", "bz2", filename, 60)
 
-    # print stats to logfile
-    logf.write("\n".join([
-        "------------------------------------------",
-        " ".join(cmd),
-        pout.decode("utf-8"),
-        f"time:  {dt}s",
-        f"in:    {n}",
-        f"out:   {ncomp}",
-        f"ratio: {ratio}"
-    ]))
-    logf.write("\n\n")
-    logf.flush()
+class XzTask(WrapCompressorTask):
+    def __init__(self, filename: str):
+        super().__init__("xz", "xz", filename, 360)
 
-    # print brief result to stdout
-    print(f"{brief}\t{n}\t{ncomp}\t{dt}")
-    sys.stdout.flush()
+class TopkTask(Task):
+    def __init__(self, compressor: str, w: int, k: str, filename: str, max_time: int):
+        global project_path
 
-def gzip(filename):
-    bench(
-        [config.gzip_bin, "-9", "-k", filename],
-        "gzip",
-        filename,
-        ".gz")
+        bin = os.path.join(project_path, "build", "src", compressor)
+        super().__init__([bin, "-w", str(w), "-k", k, "-c", "8M", "-s", "2K", filename], max_time)
 
-def bzip2(filename):
-    bench(
-        [config.bzip2_bin, "-9", "-k", filename],
-        "bzip2",
-        filename,
-        ".bz2")
+class TopkLz78Task(TopkTask):
+    def __init__(self, filename: str, k: str, max_time: int):
+        super().__init__("topk-lz78", 0, k, filename, max_time)
 
-def topk_exh(filename, k, w):
-    bench(
-        [config.topk_bin, "-k", str(k), "-w", str(w), filename] + config.options + [filename],
-        f"topk-exh-k{k}_w{w}",
-        filename,
-        ".exh")
+class TopkLz77Task(TopkTask):
+    def __init__(self, filename: str, w: int, k: str, max_time: int):
+        super().__init__("topk-lz77", w, k, filename, max_time)
 
-def topk_exh_huff(filename, k, w):
-    bench(
-        [config.topk_bin, "-k", str(k), "-w", str(w), "--huff"] + config.options + [filename],
-        f"topk-exh-huff-k{k}_w{w}",
-        filename,
-        ".exhh")
+class TopkLz77FastTask(TopkTask):
+    def __init__(self, filename: str, w: int, k: str, max_time: int):
+        super().__init__("topk-lz77-fast", w, k, filename, max_time)
 
-def topk_sel(filename, k, w):
-    bench(
-        [config.topk_bin, "-x", "-k", str(k), "-w", str(w), filename] + config.options + [filename],
-        f"topk-sel-k{k}_w{w}",
-        filename,
-        ".sel")
+class TopkSelTask(TopkTask):
+    def __init__(self, filename: str, w: int, k: str, max_time: int):
+        super().__init__("topk-lz77-sel", w, k, filename, max_time)
 
-def topk_sel_huff(filename, k, w):
-    bench(
-        [config.topk_bin, "-x", "-k", str(k), "-w", str(w), "--huff"] + config.options + [filename],
-        f"topk-sel-huff-k{k}_w{w}",
-        filename,
-        ".selh")
-
-def topk_lz78(filename, k, w):
-    bench(
-        [config.topk_bin, "-z", "-k", str(k), "-w", str(w), filename] + config.options + [filename],
-        f"topk-lz78-k{k}_w{w}",
-        filename,
-        ".lz78")
-
-def topk_lz78_huff(filename, k, w):
-    bench(
-        [config.topk_bin, "-z", "-k", str(k), "-w", str(w), "--huff"] + config.options + [filename],
-        f"topk-lz78-huff-k{k}_w{w}",
-        filename,
-        ".lz78h")
-
-# parse args
-parser = argparse.ArgumentParser(description='top-k compression benchmark')
-parser.add_argument("--log", type=str, default="bench.log", help="Output file for detailed logs")
-args = parser.parse_args()
-
-# open logfile
-with open(args.log, "w") as logf:
-    # run
-    for filename in config.files:
-        print(f"Benchmarking for {filename} ...")
-        print()
-        print("algo\tn\tn'\ttime")
-        sys.stdout.flush()
-
-        #gzip(filename)
-        #bzip2(filename)
-        for w in config.windows:
-            for k in config.ks:
-                pass
-                #topk_exh(filename, k, w)
-                #topk_exh_huff(filename, k, w)
-                
-        for w in config.windows:
-            for k in config.ks:
-                pass
-                #topk_lz78(filename, k, w)
-                #topk_lz78_huff(filename, k, w)
-                
-        for w in config.windows + config.sel_add_windows:
-            for k in config.ks:
-                topk_sel(filename, k, w)
-                topk_sel_huff(filename, k, w)
-        
-        print()
+tasks = []
