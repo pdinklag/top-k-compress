@@ -21,6 +21,7 @@ int main(int argc, char** argv) {
             iopp::FileInputStream fis2(app.args()[1]);
 
             size_t i = 0;
+            size_t line = 1;
 
             auto it1 = fis1.begin();
             auto it2 = fis2.begin();
@@ -28,6 +29,8 @@ int main(int argc, char** argv) {
                 if(*it1 != *it2) {
                     break;
                 }
+
+                if(*it1 == '\n') ++line;
 
                 ++i;
                 ++it1;
@@ -37,7 +40,7 @@ int main(int argc, char** argv) {
             if(it1 == fis1.end() && it2 == fis2.end()) {
                 std::cout << "the input files are equal" << std::endl;
             } else {
-                std::cout << "the input files first differ at position i=" << (options.one_based ? (i+1) : i) << " (" << (options.one_based ? "one-based" : "zero-based") << ")" << std::endl;
+                std::cout << "the input files first differ at position i=" << (options.one_based ? (i+1) : i) << " (" << (options.one_based ? "one-based" : "zero-based") << ") (text line " << line << ")" << std::endl;
             }
             return 0;
         } else {
