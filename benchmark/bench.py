@@ -93,7 +93,7 @@ for file in config.files:
         with open(os.path.join(args.outdir, jobfile), "w") as f:
             f.write("\n".join([shebang] + job.script()))
 
-        master.append(job.cmd(jobfile))
+        master.append(job.cmd(os.path.abspath(jobfile)))
         number += 1
 
 with open(os.path.join(args.outdir, "benchmark.sh"), "w") as f:
