@@ -1,16 +1,7 @@
 #include "topk_common.hpp"
+#include "lzlike_decompress.hpp"
 
 #include <tlx/container/ring_buffer.hpp>
-
-constexpr uint64_t MAGIC =
-    ((uint64_t)'L') << 56 |
-    ((uint64_t)'Z') << 48 |
-    ((uint64_t)'7') << 40 |
-    ((uint64_t)'7') << 32 |
-    ((uint64_t)'L') << 24 |
-    ((uint64_t)'I') << 16 |
-    ((uint64_t)'K') << 8 |
-    ((uint64_t)'E');
 
 constexpr bool PROTOCOL = false;
 constexpr bool DEBUG = false;
@@ -40,7 +31,7 @@ template<bool fast, tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, size_t const threshold, pm::Result& result) {
     using namespace tdc::code;
 
-    out.write(MAGIC, 64);
+    out.write(LZLIKE_MAGIC, 64);
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
@@ -322,47 +313,4 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     result.add("phrases_furthest", furthest);
     result.add("phrases_avg_len", std::round(100.0 * ((double)total_ref_len / (double)num_ref)) / 100.0);
     result.add("phrases_avg_dist", (uint64_t)std::round((double)total_ref_dist / (double)num_ref));
-}
-
-template<iopp::BitSource In, std::output_iterator<char> Out>
-void lz77like_decompress(In in, Out out) {
-    uint64_t const magic = in.read(64);
-    if(magic != MAGIC) {
-        std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << MAGIC << ")" << std::endl;
-        std::abort();
-    }
-
-    std::string dec; // yes, we do it in RAM...
-
-    size_t num_ref = 0;
-    size_t num_literal = 0;
-
-    PhraseBlockReader reader(in, true);
-    while(in) {
-        auto len = reader.read_len();
-        if(len > 0) {
-            ++num_ref;
-
-            auto const src = reader.read_ref();
-            assert(src > 0);
-
-            if constexpr(DEBUG) std::cout << dec.length() << ": REFERENCE (" << src << ", " << len << ")" << std::endl;            
-
-            auto const i = dec.length();
-            assert(i >= src);
-
-            auto j = i - src;
-            while(len--) dec.push_back(dec[j++]);
-        } else {
-            ++num_literal;
-
-            auto const c = reader.read_literal();
-            if constexpr(DEBUG) std::cout << dec.length() << ": LITERAL " << display(c) << std::endl;
-
-            dec.push_back(c);
-        }
-    }
-
-    // output
-    std::copy(dec.begin(), dec.end(), out);
 }

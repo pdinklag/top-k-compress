@@ -12,3 +12,9 @@ target_link_libraries(topk-lz78 topk)
 
 add_executable(topk-sel topk_sel.cpp)
 target_link_libraries(topk-sel topk)
+
+add_executable(lz77-lpf lz77_lpf.cpp)
+target_link_libraries(lz77-lpf topk)
+
+add_executable(gzip-tdc gzip_tdc.cpp)
+target_link_libraries(gzip-tdc topk)
