@@ -33,12 +33,24 @@ class XzTask(WrapCompressorTask):
     def __init__(self, filename: str):
         super().__init__("xz", "xz", filename, 360)
 
-class TopkTask(Task):
-    def __init__(self, compressor: str, w: int, k: str, xcmd: list[str], filename: str, max_time: int):
+class ProjectTask(Task):
+    def __init__(self, compressor: str, xcmd: list[str], filename: str, max_time: int):
         global project_path
 
         bin = os.path.join(project_path, "build", "src", compressor)
-        super().__init__([bin, f"--window={str(w)}", "-k", k, "-c", "8M", "-s", "2K"] + xcmd + [filename], max_time)
+        super().__init__([bin] + xcmd + [filename], max_time)
+
+class Lz77LpfTask(ProjectTask):
+    def __init__(self, filename: str):
+        super().__init__("lz77-lpf", ["-t", "4"], filename, 60)
+
+class GzipTdcTask(ProjectTask):
+    def __init__(self, filename: str):
+        super().__init__("gzip-tdc", [], filename, 120)
+
+class TopkTask(ProjectTask):
+    def __init__(self, compressor: str, w: int, k: str, xcmd: list[str], filename: str, max_time: int):
+        super().__init__(compressor, [f"--window={str(w)}", "-k", k, "-c", "8M", "-s", "2K"] + xcmd, filename, max_time)
 
 class TopkLz78Task(TopkTask):
     def __init__(self, filename: str, k: str):
@@ -74,7 +86,9 @@ for file in config.files:
     tasks = [
         GzipTask(workfile),
         Bzip2Task(workfile),
-        XzTask(workfile)
+        XzTask(workfile),
+        GzipTdcTask(workfile),
+        Lz77LpfTask(workfile)
     ]
 
     for k in config.ks:
