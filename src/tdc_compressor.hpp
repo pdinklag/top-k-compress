@@ -53,11 +53,27 @@ struct TdcCompressor : public CompressorBase {
         bitout.write(LZLIKE_MAGIC, 64);
         PhraseBlockWriter writer(bitout, block_size, true);
 
+        size_t num_ref = 0;
+        size_t num_literal = 0;
+        size_t longest = 0;
+        size_t total_ref_len = 0;
+        size_t furthest = 0;
+        size_t total_ref_dist = 0;
+
         FactorWriter factor_writer([&](Factor f){
             if(f.is_literal()) {
+                ++num_literal;
+
                 writer.write_len(0);
                 writer.write_literal(f.literal());
             } else {
+                ++num_ref;
+
+                total_ref_dist += f.src;
+                furthest = std::max(furthest, (size_t)f.src);
+                total_ref_len += f.len;
+                longest = std::max(longest, (size_t)f.len);
+
                 writer.write_len(f.len);
                 writer.write_ref(f.src);
             }
@@ -65,6 +81,14 @@ struct TdcCompressor : public CompressorBase {
 
         factorize(in, factor_writer);
         writer.flush();
+
+        result.add("phrases_total", num_ref + num_literal);
+        result.add("phrases_ref", num_ref);
+        result.add("phrases_literal", num_literal);
+        result.add("phrases_longest", longest);
+        result.add("phrases_furthest", furthest);
+        result.add("phrases_avg_len", std::round(100.0 * ((double)total_ref_len / (double)num_ref)) / 100.0);
+        result.add("phrases_avg_dist", (uint64_t)std::round((double)total_ref_dist / (double)num_ref));
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
