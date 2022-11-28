@@ -23,11 +23,11 @@ class WrapCompressorTask(Task):
 
 class GzipTask(WrapCompressorTask):
     def __init__(self, filename: str):
-        super().__init__("gzip", "gz", filename, 60)
+        super().__init__("gzip", "gz", filename, 120)
 
 class Bzip2Task(WrapCompressorTask):
     def __init__(self, filename: str):
-        super().__init__("bzip2", "bz2", filename, 60)
+        super().__init__("bzip2", "bz2", filename, 120)
 
 class XzTask(WrapCompressorTask):
     def __init__(self, filename: str):
@@ -46,7 +46,7 @@ class TopkLz78Task(TopkTask):
 
 class TopkLz77Task(TopkTask):
     def __init__(self, filename: str, w: int, k: str):
-        super().__init__("topk-lz77", w, k, ["-t", "4"], filename, 240)
+        super().__init__("topk-lz77", w, k, ["-t", "4"], filename, 600)
 
 class TopkLz77FastTask(TopkTask):
     def __init__(self, filename: str, w: int, k: str):
@@ -54,12 +54,12 @@ class TopkLz77FastTask(TopkTask):
 
 class TopkSelTask(TopkTask):
     def __init__(self, filename: str, w: int, k: str):
-        super().__init__("topk-sel", w, k, [], filename, 240)
+        super().__init__("topk-sel", w, k, [], filename, 480)
 
 def create_job():
     global cp_task
 
-    job = LidoShortStd01Job()
+    job = LidoMedStd01Job()
     job.add(cp_task)
     return job
 

@@ -18,4 +18,8 @@ class SlurmJob(Job):
 
 class LidoShortStd01Job(SlurmJob):
     def __init__(self):
-        super().__init__(["-C", "cstd01", "-p", "short", "--exclusive"], 7200)
+        super().__init__(["-C", "cstd01", "-p", "short", "--exclusive"], 6900) # 5 buffer minutes
+
+class LidoMedStd01Job(SlurmJob):
+    def __init__(self):
+        super().__init__(["-C", "cstd01", "-p", "med", "--exclusive"], 28500) # 5 buffer minutes
