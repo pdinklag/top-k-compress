@@ -18,3 +18,6 @@ target_link_libraries(lz77-lpf topk)
 
 add_executable(gzip-tdc gzip_tdc.cpp)
 target_link_libraries(gzip-tdc topk)
+
+add_executable(lz78 lz78.cpp)
+target_link_libraries(lz78 topk)
