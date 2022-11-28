@@ -19,16 +19,14 @@ struct Compressor : public TdcCompressor {
         return ".lpf";
     }
 
-    virtual std::vector<tdc::lz::Factor> factorize(iopp::FileInputStream& in) override {
+    virtual void factorize(iopp::FileInputStream& in, FactorWriter& out) override {
         // fully read file into RAM
         std::string s;
         std::copy(in.begin(), in.end(), std::back_inserter(s));
 
-        std::vector<tdc::lz::Factor> factors;
         tdc::lz::LPFFactorizer factorizer;
         factorizer.min_reference_length(threshold);
-        factorizer.factorize(s.begin(), s.end(), std::back_inserter(factors));
-        return factors;
+        factorizer.factorize(s.begin(), s.end(), out);
     }
 };
 

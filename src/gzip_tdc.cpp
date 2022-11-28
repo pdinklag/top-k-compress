@@ -15,11 +15,9 @@ struct Compressor : public TdcCompressor {
         return ".gzip";
     }
 
-    virtual std::vector<tdc::lz::Factor> factorize(iopp::FileInputStream& in) override {
-        std::vector<tdc::lz::Factor> factors;
+    virtual void factorize(iopp::FileInputStream& in, FactorWriter& out) override {
         tdc::lz::Gzip9Factorizer factorizer;
-        factorizer.factorize(in.begin(), in.end(), std::back_inserter(factors));
-        return factors;
+        factorizer.factorize(in.begin(), in.end(), out);
     }
 };
 
