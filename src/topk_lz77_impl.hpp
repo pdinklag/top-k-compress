@@ -56,6 +56,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     size_t total_ref_len = 0;
     size_t total_ref_dist = 0;
     size_t longest = 0;
+    size_t furthest = 0;
 
     // callbacks
     topk.on_filter_node_inserted = [&](FilterIndex const v){
@@ -186,6 +187,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
         xbegin += len;
 
         longest = std::max(longest, len);
+        furthest = std::max(furthest, src);
         total_ref_len += len;
         total_ref_dist += src;
     };
@@ -317,6 +319,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     result.add("phrases_ref", num_ref);
     result.add("phrases_literal", num_literal);
     result.add("phrases_longest", longest);
+    result.add("phrases_furthest", furthest);
     result.add("phrases_avg_len", std::round(100.0 * ((double)total_ref_len / (double)num_ref)) / 100.0);
     result.add("phrases_avg_dist", (uint64_t)std::round((double)total_ref_dist / (double)num_ref));
 }

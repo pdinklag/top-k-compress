@@ -27,6 +27,8 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
     size_t num_phrases = 0;
     size_t longest = 0;
     size_t total_len = 0;
+    size_t furthest = 0;
+    size_t total_ref = 0;
 
     // initialize encoding
     PhraseBlockWriter writer(out, block_size);
@@ -37,6 +39,8 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
         if(!next.frequent) {
             longest = std::max(longest, size_t(next.len));
             total_len += next.len;
+            furthest = std::max(furthest, size_t(s.node));
+            total_ref += s.node;
             writer.write_ref(s.node);
             writer.write_literal(c);
 
@@ -69,7 +73,9 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
     
     result.add("phrases_total", num_phrases);
     result.add("phrases_longest", longest);
+    result.add("phrases_furthest", furthest);
     result.add("phrases_avg_len", std::round(100.0 * ((double)total_len / (double)num_phrases)) / 100.0);
+    result.add("phrases_avg_dist", std::round(100.0 * ((double)total_ref / (double)num_phrases)) / 100.0);
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>

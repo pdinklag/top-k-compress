@@ -48,7 +48,9 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
     size_t num_literal = 0;
 
     size_t max_freq_len = 0;
+    size_t max_freq_val = 0;
     size_t total_freq_len = 0;
+    size_t total_freq_val = 0;
 
     size_t i = 0;
     size_t next_phrase = 0;
@@ -119,6 +121,9 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
 
                     total_freq_len += phrase_len;
                     max_freq_len = std::max(max_freq_len, (size_t)phrase_len);
+
+                    total_freq_val += phrase_index;
+                    max_freq_val = std::max(max_freq_val, (size_t)phrase_index);
                 } else {
                     auto const x = s[longest].first;
 
@@ -171,10 +176,12 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
     topk.print_debug_info();
     
     result.add("phrases_total", num_frequent + num_literal);
-    result.add("phrases_frequent", num_frequent);
+    result.add("phrases_ref", num_frequent);
     result.add("phrases_literal", num_literal);
     result.add("phrases_longest", max_freq_len);
+    result.add("phrases_furthest", max_freq_val);
     result.add("phrases_avg_len", std::round(100.0 * ((double)total_freq_len / (double)num_frequent)) / 100.0);
+    result.add("phrases_avg_dist", std::round(100.0 * ((double)total_freq_val / (double)num_frequent)) / 100.0);
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
