@@ -21,3 +21,6 @@ target_link_libraries(gzip-tdc topk)
 
 add_executable(lz78 lz78.cpp)
 target_link_libraries(lz78 topk)
+
+add_executable(lzend lzend.cpp)
+target_link_libraries(lzend topk word-packing rmq)

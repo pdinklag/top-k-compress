@@ -9,7 +9,7 @@
 
 #include "wavelet_tree.hpp"
 
-template <std::integral Char>
+template <std::integral Char = char>
 class BackwardSearch {
 private:
     using UChar = std::make_unsigned_t<Char>;
