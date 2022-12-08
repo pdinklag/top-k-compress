@@ -2,6 +2,7 @@
 
 #include <array>
 #include <bit>
+#include <cassert>
 #include <concepts>
 #include <cstddef>
 #include <iterator>
@@ -14,7 +15,7 @@
 
 #include "binary_rank.hpp"
 
-template <std::integral Char>
+template <std::integral Char = char>
 class WaveletTree {
 private:
     using UChar = std::make_unsigned_t<Char>;
@@ -52,21 +53,23 @@ public:
             }
 
             // compute effective alphabet
-            ea_ = {{0, 0}};
             for (size_t c = 0; c < sigma_max_; c++)
             {
                 if (ea_[c].occ > 0) ea_[c].mapped = UChar(sigma++);
             }
         }
+        
+        if(sigma == 0) return;
 
         // allocate bit vectors
         num_levels_ = std::bit_width(sigma - 1);
-        auto bit_vectors = std::make_unique<std::unique_ptr<Block[]>[]>(num_levels_);
+        std::unique_ptr<Block[]> bit_vectors[num_levels_];
 
         // construct bottom-up
         {
             // initialize histogram and borders
             auto const sigma2 = 1ULL << num_levels_;
+            assert(sigma2 >= sigma);
             auto h = std::make_unique<size_t[]>(sigma2);
             auto borders = std::make_unique<size_t[]>(sigma2);
             {
@@ -103,7 +106,7 @@ public:
                     auto const c = ea_[UChar(*begin++)].mapped;
                     auto const v = c >> rsh;
                     auto const pos = borders[v]++;
-                    bits[pos] = (v & 1);
+                    bits[pos] = (c >> (rsh-1)) & 0b1;
                 }
             }
         }
@@ -112,7 +115,7 @@ public:
         levels_ = std::make_unique<Level[]>(num_levels_);
         for (size_t l = 0; l < num_levels_; l++)
         {
-            levels_[l] = Level(std::move(bit_vectors[l]));
+            levels_[l] = Level(std::move(bit_vectors[l]), n_);
         }
     }
 
@@ -127,7 +130,7 @@ public:
                 auto const &level = levels_[l];
                 size_t const left_child_size = b ? level.rank0(a, b - 1) : 0;
 
-                bool const bit = (x >> (num_levels_ - 1 - l)) & 1;
+                bool const bit = (x >> (num_levels_ - 1 - l)) & 0b1;
                 if (bit)
                 {
                     // 1-bit, navigate right
@@ -140,8 +143,11 @@ public:
                     i = level.rank0(a, a + i);
                     b = a + left_child_size;
                 }
+                
+                if(i == 0) return 0; // nb: there can be no occurrence of x
+                --i;
             }
-            return i + 1 - a;
+            return i + 1;
         } else {
             return 0;
         }
