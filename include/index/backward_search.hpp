@@ -31,14 +31,14 @@ public:
 
     inline Interval init(Char const c) const {
         auto const x = UChar(c);
-        return { c_array_[c], c < sigma_max_ ? c_array_[c+1] : wt_.length(); }
+        return { c_array_[c], c < sigma_max_ ? c_array_[c+1] : wt_.length() };
     }
 
     inline Interval step(Interval const x, Char const c) const {
         auto const off = c_array_[c];
         return {
-            off + (start > 0 ? wt_.rank(c, start-1) : 0),
-            off + (end > 0 ? wt_.rank(c, end-1) : 0)
+            off + (x.first  > 0 ? wt_.rank(c, x.first-1 ) : 0),
+            off + (x.second > 0 ? wt_.rank(c, x.second-1) : 0)
         };
     }
 };
