@@ -53,7 +53,7 @@ public:
 
             // compute effective alphabet
             ea_ = {{0, 0}};
-            for (size_t c = 0; c < sigma_max; c++)
+            for (size_t c = 0; c < sigma_max_; c++)
             {
                 if (ea_[c].occ > 0) ea_[c].mapped = UChar(sigma++);
             }
@@ -95,7 +95,7 @@ public:
                 }
 
                 // build level
-                bit_vectors[l] = std::make_unique<Block>[](word_packing::num_packs_required<Block>(n_, 1));
+                bit_vectors[l] = std::make_unique<Block[]>(word_packing::num_packs_required<Block>(n_, 1));
                 auto bits = word_packing::accessor<1, Block>(bit_vectors[l].get());
                 auto const rsh = num_levels_ - l;
                 begin = rewind;
