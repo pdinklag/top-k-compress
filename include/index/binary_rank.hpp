@@ -45,6 +45,7 @@ private:
     std::unique_ptr<Pack[]> block_ranks_;
     std::unique_ptr<uintmax_t[]> superblock_ranks_;
 
+public:
     inline BinaryRank(std::unique_ptr<Block[]> &&bits, size_t const n) : bits_(std::move(bits)) {
         size_t const num_blocks = tdc::idiv_ceil(n, block_size_);
         block_ranks_ = std::make_unique<Pack[]>(word_packing::num_packs_required<Pack>(num_blocks, superblock_bit_exp_));
