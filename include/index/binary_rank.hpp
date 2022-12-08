@@ -54,7 +54,7 @@ private:
 
         // construct
         {
-            auto block_ranks = word_packing::accessor<superblock_bit_exp_, Pack>(block_ranks_.get());
+            auto block_ranks = word_packing::accessor<superblock_bit_exp_>(block_ranks_.get());
 
             size_t rank_bv = 0; // 1-bits in whole bit vector
             size_t rank_sb = 0; // 1-bits in current superblock
@@ -85,7 +85,7 @@ private:
     BinaryRank& operator=(BinaryRank&& other) = default;
 
     inline size_t rank1(size_t const i) const {
-        auto block_ranks = word_packing::accessor<superblock_bit_exp_, Pack>(block_ranks_.get());
+        auto block_ranks = word_packing::accessor<superblock_bit_exp_>(block_ranks_.get());
 
         const size_t r_sb = superblock_ranks_[i / superblock_size_];
         const size_t j   = i / block_size_;

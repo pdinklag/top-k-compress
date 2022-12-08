@@ -96,7 +96,7 @@ public:
 
                 // build level
                 bit_vectors[l] = std::make_unique<Block[]>(word_packing::num_packs_required<Block>(n_, 1));
-                auto bits = word_packing::accessor<1, Block>(bit_vectors[l].get());
+                auto bits = word_packing::bit_accessor(bit_vectors[l].get());
                 auto const rsh = num_levels_ - l;
                 begin = rewind;
                 while(begin != end) {
