@@ -4,3 +4,6 @@
 [submodule "extlib/unordered_dense"]
 	path = extlib/unordered_dense
 	url = https://github.com/martinus/unordered_dense.git
+[submodule "extlib/word-packing"]
+	path = extlib/word-packing
+	url = https://github.com/pdinklag/word-packing
