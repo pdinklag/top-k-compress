@@ -54,7 +54,7 @@ public:
         if(x > keys_[size_-1]) [[unlikely]] return { false, 0 };
         
         size_t i = 1;
-        while(keys_[i] <= x) ++i;
+        while(keys_[i] < x) ++i;
         return { true, i };
     }
 
