@@ -30,7 +30,7 @@ public:
     }
 
     inline Interval step(Interval const x, Char const c) const {
-        auto const off = c_array_[c];
+        auto const off = c_array_[UChar(c)];
         auto const s = off + (x.first > 0 ? wt_.rank(c, x.first-1) : 0);
         auto const e = off + wt_.rank(c, x.second) - 1;
         return { s, e };
