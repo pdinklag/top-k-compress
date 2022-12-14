@@ -84,7 +84,7 @@ public:
             for (size_t j = 0; j < num_levels_; j++)
             {
                 auto const l = num_levels_ - 1 - j;
-                auto const num_level_nodes = (1ULL << l) - 1;
+                auto const num_level_nodes = (1ULL << l);
 
                 // update borders
                 for (size_t v = 0; v < num_level_nodes; v++)
