@@ -119,8 +119,8 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
             if(j < n) factors.insert({p, isa[n-j-1]});
 
             writer.write_ref(q);
-            writer.write_len(j-i);
-            writer.write_literal(s[j]);
+            if(q > 0) writer.write_len(j-i);
+            if(j < n) writer.write_literal(s[j]);
             
             i = j + 1;
             ++p;
@@ -138,4 +138,28 @@ void lzend_decompress(In in, Out out) {
         std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << MAGIC << ")" << std::endl;
         std::abort();
     }
+    
+    std::string dec;
+    std::vector<size_t> factors;
+    
+    PhraseBlockReader reader(in, true);
+    while(in) {
+        auto const q = reader.read_ref();
+        if(q > 0) {
+            auto const len = reader.read_len();
+            auto p = factors[q-1] + 1 - len;
+            for(size_t i = 0; i < len; i++) {
+                dec.push_back(dec[p++]);
+            }
+        }
+        
+        if(in) {
+            auto const c = reader.read_literal();
+            factors.push_back(dec.length());
+            dec.push_back(c);
+        }
+    }
+
+    // output
+    std::copy(dec.begin(), dec.end(), out);
 }
