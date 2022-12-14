@@ -118,11 +118,6 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
             
             if(j < n) factors.insert({p, isa[n-j-1]});
 
-            std::cout
-                << "Factor " << p
-                << ": (" << q << ", " << j-i << ", " << display(s[j]) << ")"
-                << " -> n=" << n << ", j=" << j
-                << std::endl;
             writer.write_ref(q);
             writer.write_len(j-i);
             writer.write_literal(s[j]);
