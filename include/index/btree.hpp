@@ -25,7 +25,7 @@ public:
     private:
         friend class BTree;
     
-        BTreeSortedNodeLS impl_;
+        BTreeSortedNodeLS<Key, max_node_keys_> impl_;
         ChildCount num_children_;
         Node** children_;
     
@@ -56,13 +56,13 @@ public:
 
         inline void allocate_children() {
             if(children_ == nullptr) {
-                children_ = new Node*[m_degree];
+                children_ = new Node*[degree_];
             }
         }
 
         void insert_child(size_t const i, Node* node) {
             assert(i <= num_children_);
-            assert(num_children_ < m_degree);
+            assert(num_children_ < degree_);
             allocate_children();
             
             // insert
@@ -99,7 +99,7 @@ public:
             Node* z = new Node();
 
             // get the middle value
-            Key const m = y->impl_[m_split_mid];
+            Key const m = y->impl_[split_mid_];
 
             // move the keys larger than middle from y to z and remove the middle
             {
@@ -156,7 +156,7 @@ public:
                 }
 
                 // descend into non-full child
-                children_[i]->insert(key, obs);
+                children_[i]->insert(key);
             }
         }
 
@@ -173,14 +173,14 @@ public:
                 
                 if(r.exists && impl_[r.pos] == key) {
                     // key is contained in this internal node
-                    assert(i < m_degree);
+                    assert(i < degree_);
 
                     Node* y = children_[i-1];
                     const size_t ysize = y->size();
                     Node* z = children_[i];
                     const size_t zsize = z->size();
                     
-                    if(ysize >= m_deletion_threshold) {
+                    if(ysize >= deletion_threshold_) {
                         // find predecessor of key in y's subtree - i.e., the maximum
                         Node* c = y;
                         while(!c->is_leaf()) {
@@ -193,7 +193,7 @@ public:
                         impl_.insert(key_pred);
 
                         // recursively delete key_pred from y
-                        y->remove(key_pred, obs);
+                        y->remove(key_pred);
                     } else if(zsize >= deletion_threshold_) {
                         // find successor of key in z's subtree - i.e., its minimum
                         Node* c = z;
@@ -207,7 +207,7 @@ public:
                         impl_.insert(key_succ);
 
                         // recursively delete key_succ from z
-                        z->remove(key_succ, obs);
+                        z->remove(key_succ);
                     } else {
                         // assert balance
                         assert(ysize == deletion_threshold_ - 1);
@@ -242,7 +242,7 @@ public:
                         delete z;
 
                         // recursively delete key from y
-                        y->remove(key, obs);
+                        y->remove(key);
                     }
                     return true;
                 } else {
@@ -376,7 +376,7 @@ public:
                     }
                     
                     // remove from subtree
-                    return c->remove(key, obs);
+                    return c->remove(key);
                 }
             }
         }
@@ -399,14 +399,14 @@ public:
         Key key;
         
         inline operator bool() const { return exists; }
-        inline operator key_t() const { return key; }
+        inline operator Key() const { return key; }
     };
 
     KeyResult predecessor(Key const x) const {
         Node* node = root_;
         
         bool exists = false;
-        key_t value;
+        Key value;
         
         auto r = node->impl_.predecessor(x);
         while(!node->is_leaf()) {
@@ -430,10 +430,10 @@ public:
     }
 
     KeyResult successor(Key const x) const {
-        Node* node = m_root;
+        Node* node = root_;
         
         bool exists = false;
-        key_t value;
+        Key value;
         
         auto r = node->impl_.successor(x);
         while(!node->is_leaf()) {
