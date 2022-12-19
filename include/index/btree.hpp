@@ -414,7 +414,7 @@ public:
             if(r.exists) {
                 value = node->impl_[r.pos];
                 if(value == x) {
-                    return { true, x };
+                    return { true, value };
                 }
             }
                
@@ -441,7 +441,7 @@ public:
             if(r.exists) {
                 value = node->impl_[r.pos];
                 if(value == x) {
-                    return { true, x };
+                    return { true, value };
                 }
             }
 
