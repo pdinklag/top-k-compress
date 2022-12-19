@@ -90,6 +90,11 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
     out.write(MAGIC, 64);
     PhraseBlockWriter writer(out, block_size, true);
     
+    // translate a position in the text to the corresponding position in the reverse text (which has a sentinel!)
+    auto pos_to_reverse = [&](size_t const i) {
+        return n - (i+1);
+    };
+
     // LZEnd algorithm
     {
         using Interval = BackwardSearch<>::Interval;
@@ -106,7 +111,7 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
                 x = bws.step(x, s[i_]);
                 auto const mpos = (x.first <= x.second) ? rMq.queryRMQ(x.first, x.second) : 0;
                 
-                if(sa[mpos] <= n-1-i) break;
+                if(sa[mpos] <= pos_to_reverse(i)) break;
                 ++i_;
                 
                 auto const f = factors.successor({0, (Index)x.first}).key;
@@ -116,7 +121,7 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
                 }
             }
             
-            if(j < n) factors.insert({p, isa[n-j-1]});
+            if(j < n) factors.insert({p, isa[pos_to_reverse(j)]});
 
             writer.write_ref(q);
             if(q > 0) writer.write_len(j-i);
