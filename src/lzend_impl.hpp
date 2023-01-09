@@ -76,7 +76,6 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
     // Ferrada's RMQ library only allows range MINIMUM queries, but we need range MAXIMUM
     // to resolve this, we create a temporary copy of the suffix array with all values negated
     if constexpr(TIME_PHASES) sw.start();
-    size_t const log_n = std::bit_width(n); // n+1 - 1
     auto sa_neg = std::make_unique<SIndex[]>(n+1);
     for(size_t i = 0; i < n+1; i++) sa_neg[i] = -SIndex(sa[i]);
     RMQRMM64 rMq(sa_neg.get(), n+1);
