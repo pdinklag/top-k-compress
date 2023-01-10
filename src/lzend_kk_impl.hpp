@@ -6,6 +6,7 @@
 
 #include <tdc/text/util.hpp>
 #include <RMQRMM64.h>
+#include <ankerl/unordered_dense.h>
 
 #include <pm/stopwatch.hpp>
 
@@ -83,6 +84,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
 
     // TODO: compute lhash array
 
+    /*
     struct PhraseEnding {
         Index num; // the phrase number
         Index end; // the text position at which the phrase ends
@@ -99,6 +101,14 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
     // initialize predecessor data structure on phrase end positions
     // -> P contains text positions
     BTree<PhraseEnding, 65> P;
+    */
+    ankerl::unordered_dense::map<Index, Index> P;
+
+    // initialize a mapping from position to the number of the phrase that ends at that position
+    // nb: in the paper, this is a predecessor data structure
+    //     however, the predecessor must always equal the queried position, such that a simple associative data structure suffices
+    //     I assume that the authors used a predecessor structure because O(log l) time suffices for them, but there is no real explanation
+    
 
     // initialize "marked binary tree" (a.k.a. predessor + successor data structure)
     // nb: position j is marked iff a phrase ends at position SA[j]
@@ -123,15 +133,15 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
     auto register_phrase = [&](Index const m, Index const num){
         // register that phrase num ends at text position m
         if constexpr(DEBUG) std::cout << "\tregister phrase " << num << " ending at " << m << std::endl;
-        P.insert({num, m});
+        P.emplace(m, num);
         mark_leaf(isa[pos_to_reverse(m)]);
     };
 
     auto unregister_phrase = [&](Index const m){
         // unregister phrase that ends at text position m
         if constexpr(DEBUG) std::cout << "\tunregister phrase ending at " << m << std::endl;
-        assert(P.contains({0, m}));
-        P.remove({0, Index(m)});
+        assert(P.contains(m));
+        P.erase(m);
 
         assert(is_marked(isa[pos_to_reverse(m)]));
         unmark_leaf(isa[pos_to_reverse(m)]);
@@ -153,19 +163,23 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
         // successor search for a marked LCP
         auto const r2 = M.successor(isa_q + 1);
 
-        if(!r1.exists && !r2.exists) {
-            // there is no suitable marked LCP
-            // this case is not considered in the paper, but does occur early in the algorithm
-            return MarkedLCPResult{ 0, Index(-1) };
-        } else {
-            // compute LCE between q and the marked positions (if available)
-            Index const lce1 = r1.exists ? lcp[rmq.queryRMQ(r1.key + 1, isa_q)] : 0;
-            Index const lce2 = r2.exists ? lcp[rmq.queryRMQ(isa_q + 1, r2.key)] : 0;
+        // compute LCE between q and the marked positions (if available)
+        Index const lce1 = r1.exists ? lcp[rmq.queryRMQ(r1.key + 1, isa_q)] : 0;
+        Index const lce2 = r2.exists ? lcp[rmq.queryRMQ(isa_q + 1, r2.key)] : 0;
 
-            // select the maximum of the two
-            return (lce1 > lce2)
-                ? MarkedLCPResult { lce1, pos_to_reverse(sa[r1.key]) }
-                : MarkedLCPResult { lce2, pos_to_reverse(sa[r2.key]) };
+        // select the maximum of the two
+        if(lce1 == 0 && lce2 == 0) {
+            // there is no suitable marked LCP, or the LCE is 0 in both cases
+            // this border case is not considered in the paper
+            return MarkedLCPResult{ 0, Index(-1) };
+        } else if(lce1 > lce2) {
+            auto const r1lex = r1.key;
+            auto const sa_r1 = sa[r1lex];
+            return MarkedLCPResult { lce1, pos_to_reverse(sa_r1) };
+        } else {
+            auto const r2lex = r2.key;
+            auto const sa_r2 = sa[r2lex];
+            return MarkedLCPResult { lce2, pos_to_reverse(sa_r2) };
         }
     };
 
@@ -186,13 +200,11 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
             return CheckResult { false, 0 };
         } else {
             // the LCE with the closest marked LCP is at least the given length
-            // find the phrase pertaining to its position
-            auto const r = P.predecessor({0, pos});
-            assert(r.exists); // nb: it must exist
-            assert(r.key.end == pos); // nb: is this right?
+            // find the phrase number pertaining to its position
+            assert(P.contains(pos));
 
             // return positive with the corresponding phrase number
-            return CheckResult { true, r.key.num };
+            return CheckResult { true, P[pos] };
         }
     };
 
