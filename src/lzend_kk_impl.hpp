@@ -228,6 +228,8 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
     size_t total_len = 0;
     size_t furthest = 0;
     size_t total_ref = 0;
+    size_t max_consecutive_merges = 0;
+    size_t num_consecutive_merges = 0;
 
     if constexpr(TIME_PHASES) sw.start();
     {
@@ -259,6 +261,8 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
                 // merge phrases
                 phrs[z].len = len + 1;
                 p = x.phrase_num;
+                ++num_consecutive_merges;
+                max_consecutive_merges = std::max(max_consecutive_merges, num_consecutive_merges);
             } else if(m > 0 && phrs[z].len < l && (x = absorbOne2(m)).exists) {
                 // extend the current phrase by one
                 if constexpr(DEBUG) std::cout << "\tEXTEND phrase " << z << " to length " << (phrs[z].len+1) << std::endl;
@@ -268,6 +272,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
 
                 ++phrs[z].len;
                 p = x.phrase_num;
+                num_consecutive_merges = 0;
             } else {
                 // this introduces a new phrase of length one
                 if constexpr(DEBUG) std::cout << "\tNEW phrase " << (z+1) << " of length 1" << std::endl;
@@ -276,6 +281,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
                 assert(z < phrs.size());
 
                 phrs[z].len = 1;
+                num_consecutive_merges = 0;
             }
 
             phrs[z].c = s[m];
@@ -338,6 +344,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
     result.add("phrases_furthest", furthest);
     result.add("phrases_avg_len", std::round(100.0 * ((double)total_len / (double)num_phrases)) / 100.0);
     result.add("phrases_avg_dist", std::round(100.0 * ((double)total_ref / (double)num_phrases)) / 100.0);
+    result.add("max_consecutive_merges", max_consecutive_merges);
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
