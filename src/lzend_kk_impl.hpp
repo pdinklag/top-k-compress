@@ -299,7 +299,27 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
         for(size_t j = 1; j <= z; j++) {
             if constexpr(PROTOCOL) std::cout << "factor #" << j << ": i=" << i << ", (" << phrs[j].lnk << ", " << (phrs[j].lnk ? phrs[j].len-1 : 0) << ", " << display(phrs[j].c) << ")" << std::endl;
             i += phrs[j].len;
+
             ++num_phrases;
+            if(phrs[j].len > 1) {
+                // referencing phrase
+                writer.write_ref(phrs[j].lnk);
+                writer.write_len(phrs[j].len - 1);
+                writer.write_literal(phrs[j].c);
+
+                ++num_ref;
+
+            } else {
+                // literal phrase
+                ++num_literal;
+                writer.write_ref(0);
+                writer.write_literal(phrs[j].c);
+            }
+            
+            longest = std::max(longest, size_t(phrs[j].len));
+            total_len += phrs[j].len;
+            furthest = std::max(furthest, size_t(phrs[j].lnk));
+            total_ref += phrs[j].lnk;
         }
     }
 
@@ -321,7 +341,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
-void lzend_decompress(In in, Out out) {
+void lzend_kk_decompress(In in, Out out) {
     uint64_t const magic = in.read(64);
     if(magic != MAGIC) {
         std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << MAGIC << ")" << std::endl;

@@ -19,7 +19,7 @@ struct Compressor : public CompressorBase {
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        // TODO
+        lzend_kk_decompress(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
     }
 };
 
