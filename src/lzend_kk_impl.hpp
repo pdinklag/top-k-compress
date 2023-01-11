@@ -154,14 +154,21 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
 
     // find marked LCP closest to text position q using a predecessor and successor query
     // if either is found, compute the LCEs and return the larger one
-    auto marked_lcp = [&](Index const q) {
+    // if isa_ignore (suffix array position!) is found, a subsequent query will be performed to skip the ignored entry
+    auto marked_lcp = [&](Index const q, Index const isa_ignore) {
         auto const isa_q = isa[pos_to_reverse(q)];
 
         // predecessor search for a marked LCP
-        auto const r1 = (isa_q > 0) ? M.predecessor(isa_q - 1) : decltype(M)::KeyResult{ false, Index(-1) };
+        auto r1 = (isa_q > 0) ? M.predecessor(isa_q - 1) : decltype(M)::KeyResult{ false, Index(-1) };
+        if(r1.exists && r1.key == isa_ignore) {
+            r1 = (isa_ignore > 0) ? M.predecessor(isa_ignore - 1) : decltype(M)::KeyResult{ false, Index(-1) };
+        }
 
         // successor search for a marked LCP
-        auto const r2 = M.successor(isa_q + 1);
+        auto r2 = M.successor(isa_q + 1);
+        if(r2.exists && r2.key == isa_ignore) {
+            r2 = M.successor(isa_ignore + 1);
+        }
 
         // compute LCE between q and the marked positions (if available)
         Index const lce1 = r1.exists ? lcp[rmq.queryRMQ(r1.key + 1, isa_q)] : 0;
@@ -189,11 +196,11 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
     };
 
     // check whether a phrase that ends at position m-1 and whether that phrase is longer than the given length
-    auto phrase_ends_at = [&](Index const m, Index const len) {
+    auto phrase_ends_at = [&](Index const m, Index const len, Index const isa_ignore) {
         assert(m > 0);
 
         // find the closest marked LCP text position and the LCE with the current position
-        auto [lce, pos] = marked_lcp(m - 1);
+        auto [lce, pos] = marked_lcp(m - 1, isa_ignore);
         if constexpr(DEBUG) std::cout << "\tmarked_lcp(" << (m-1) << ") -> lce=" << lce << ", pos=" << pos << std::endl;
         if(lce < len) {
             // the LCE with the closest marked LCP (if any) is less than the given length, return negative
@@ -210,7 +217,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
 
     // test whether a phrase ends at position m-1 and whether that phrase is at least as long as the current phrase
     auto absorbOne2 = [&](Index const m) {
-        auto const r = phrase_ends_at(m, phrs[z].len);
+        auto const r = phrase_ends_at(m, phrs[z].len, 0);
         if constexpr(DEBUG) std::cout << "\tabsorbOne2(" << m << ") -> exists=" << r.exists << ", phrase_num=" << r.phrase_num << std::endl;
         return r;
     };
@@ -218,17 +225,10 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
     // test whether a phrase ends at position m-1 and whether that phrase is longer than the two current phrases
     auto absorbTwo2 = [&](Index const m) {
         assert(m > phrs[z].len);
-        auto const isa_prev_phrase_end = isa[pos_to_reverse(m - phrs[z].len - 1)];
-
-        // temporarily unmark previous phrase ending
-        assert(is_marked(isa_prev_phrase_end)); // nb: make sure the end position of the previous phrase is marked
-        unmark_leaf(isa_prev_phrase_end);
 
         // test whether a phrase - excluding the previous phrase - exists with length at least as long as the two current phrases
-        auto const r = phrase_ends_at(m, phrs[z-1].len + phrs[z].len);
+        auto const r = phrase_ends_at(m, phrs[z-1].len + phrs[z].len, isa[pos_to_reverse(m - phrs[z].len - 1)]);
 
-        // re-mark previous phrase ending
-        mark_leaf(isa_prev_phrase_end);
         if constexpr(DEBUG) std::cout << "\tabsorbTwo2(" << m << ") -> exists=" << r.exists << ", phrase_num=" << r.phrase_num << std::endl;
         return r;
     };
