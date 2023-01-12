@@ -103,6 +103,8 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
     // nb: the "balanced tree" P is also simulated by this data structure, which we modified to mark positions along with the corresponding phrase number
     BTree<MarkedLCP, 65> M;
 
+    using MResult = decltype(M)::KeyResult;
+
     // local LZEnd algorithm by Kempa & Kosolobov
     struct Phrase {
         char     c;
@@ -114,99 +116,24 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
     std::vector<Phrase> phrs;
     Index z = 0;
     
-    auto mark_leaf = [&](MarkedLCP const x) { M.insert(x); };
-    auto unmark_leaf = [&](Index const x) { M.remove(MarkedLCP{x,0}); };
-    auto is_marked = [&](Index const x) { return M.contains(MarkedLCP{x,0}); };
-
     auto register_phrase = [&](Index const m, Index const num){
         // register that phrase num ends at text position m
         if constexpr(DEBUG) std::cout << "\tregister phrase " << num << " ending at " << m << std::endl;
-        mark_leaf(MarkedLCP{isa[pos_to_reverse(m)], num});
+        auto const isa_m = isa[pos_to_reverse(m)];
+        M.insert(MarkedLCP{isa_m, num});
     };
 
     auto unregister_phrase = [&](Index const m){
         // unregister phrase that ends at text position m
         if constexpr(DEBUG) std::cout << "\tunregister phrase ending at " << m << std::endl;
-        assert(is_marked(isa[pos_to_reverse(m)]));
-        unmark_leaf(isa[pos_to_reverse(m)]);
+        auto const isa_m = isa[pos_to_reverse(m)];
+        assert(M.contains(MarkedLCP{isa_m, 0}));
+        M.remove(MarkedLCP{isa_m, 0});
     };
 
-    struct MarkedLCPResult {
-        Index lce;        // the LCE between the queried text position and the other position
-        Index phrase_num; // the matching LZEnd phrase number
-    };
-
-    // find marked LCP closest to text position q using a predecessor and successor query
-    // if either is found, compute the LCEs and return the larger one
-    // if isa_ignore (suffix array position!) is found, a subsequent query will be performed to skip the ignored entry
-    auto marked_lcp = [&](Index const q, Index const isa_ignore) {
-        auto const isa_q = isa[pos_to_reverse(q)];
-
-        // predecessor search for a marked LCP
-        auto r1 = (isa_q > 0) ? M.predecessor(MarkedLCP{isa_q - 1, 0}) : typename decltype(M)::KeyResult{ false, MarkedLCP{Index(-1), 0} };
-        if(r1.exists && r1.key.sa_pos == isa_ignore) {
-            r1 = (isa_ignore > 0) ? M.predecessor(MarkedLCP{isa_ignore - 1, 0}) : typename decltype(M)::KeyResult{ false, MarkedLCP{Index(-1), 0} };
-        }
-
-        // successor search for a marked LCP
-        auto r2 = M.successor(MarkedLCP{isa_q + 1, 0});
-        if(r2.exists && r2.key.sa_pos == isa_ignore) {
-            r2 = M.successor(MarkedLCP{isa_ignore + 1, 0});
-        }
-
-        // compute LCE between q and the marked positions (if available)
-        Index const lce1 = r1.exists ? lcp[rmq.queryRMQ(r1.key.sa_pos + 1, isa_q)] : 0;
-        Index const lce2 = r2.exists ? lcp[rmq.queryRMQ(isa_q + 1, r2.key.sa_pos)] : 0;
-
-        // select the maximum of the two
-        if(lce1 == 0 && lce2 == 0) {
-            // there is no suitable marked LCP, or the LCE is 0 in both cases
-            // this border case is not considered in the paper
-            return MarkedLCPResult{ 0, Index(-1) };
-        } else if(lce1 > lce2) {
-            return MarkedLCPResult { lce1, r1.key.phrase_num };
-        } else {
-            return MarkedLCPResult { lce2, r2.key.phrase_num };
-        }
-    };
-
-    struct CheckResult {
-        bool  exists;
-        Index phrase_num;
-    };
-
-    // check whether a phrase that ends at position m-1 and whether that phrase is longer than the given length
-    auto phrase_ends_at = [&](Index const m, Index const len, Index const isa_ignore) {
-        assert(m > 0);
-
-        // find the closest marked LCP and the LCE with the current position
-        auto [lce, phrase_num] = marked_lcp(m - 1, isa_ignore);
-        if constexpr(DEBUG) std::cout << "\tmarked_lcp(" << (m-1) << ") -> lce=" << lce << ", phrase_num=" << phrase_num << std::endl;
-        if(lce < len) {
-            // the LCE with the closest marked LCP (if any) is less than the given length, return negative
-            return CheckResult { false, 0 };
-        } else {
-            // return positive with the corresponding phrase number
-            return CheckResult { true, phrase_num };
-        }
-    };
-
-    // test whether a phrase ends at position m-1 and whether that phrase is at least as long as the current phrase
-    auto absorbOne2 = [&](Index const m) {
-        auto const r = phrase_ends_at(m, phrs[z].len, 0);
-        if constexpr(DEBUG) std::cout << "\tabsorbOne2(" << m << ") -> exists=" << r.exists << ", phrase_num=" << r.phrase_num << std::endl;
-        return r;
-    };
-
-    // test whether a phrase ends at position m-1 and whether that phrase is longer than the two current phrases
-    auto absorbTwo2 = [&](Index const m) {
-        assert(m > phrs[z].len);
-
-        // test whether a phrase - excluding the previous phrase - exists with length at least as long as the two current phrases
-        auto const r = phrase_ends_at(m, phrs[z-1].len + phrs[z].len, isa[pos_to_reverse(m - phrs[z].len - 1)]);
-
-        if constexpr(DEBUG) std::cout << "\tabsorbTwo2(" << m << ") -> exists=" << r.exists << ", phrase_num=" << r.phrase_num << std::endl;
-        return r;
+    auto is_marked = [&](Index const m) {
+        auto const isa_m = isa[pos_to_reverse(m)];
+        return M.contains(MarkedLCP{isa_m, 0});
     };
 
     size_t num_phrases = 0;
@@ -227,48 +154,121 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
 
         for(Index m = 0; m < l; m++) {
             if constexpr(DEBUG) std::cout << "m=" << m << ", s[m]=" << display(s[m]) << std::endl;
-            auto const len = phrs[z].len + (z > 0 ? phrs[z-1].len : 0);
-            Index p = 0; // TODO: approxFind in global trie
-            
-            CheckResult x;
-            if(m > phrs[z].len && len < l && (x = absorbTwo2(m)).exists) {
+
+            Index p = 0;
+            auto const len1 = phrs[z].len;                        // length of the current phrase
+            auto const len2 = len1 + (z > 0 ? phrs[z-1].len : 0); // total length of the two current phrases
+
+            // sanity
+            #ifndef NDEBUG
+            if(m > 0) assert(is_marked(m-1));
+            if(m > len1 && z > 1) assert(is_marked(m-1-len1));
+            #endif
+
+            // query the marked LCP data structure for the previous position and compute LCEs
+            Index lce1 = 0;
+            Index lnk1 = 0;
+
+            // additionally, excluding the end position of the previous phrase
+            Index lce2 = 0;
+            Index lnk2 = 0;
+
+            if(m > 0) {
+                auto const isa_cur = isa[pos_to_reverse(m-1)];
+                
+                auto const marked_l1 = (isa_cur > 0) ? M.predecessor(MarkedLCP{isa_cur - 1, 0}) : MResult{ false, 0 };
+                auto const lce_l1 = marked_l1.exists ? lcp[rmq.queryRMQ(marked_l1.key.sa_pos + 1, isa_cur)] : 0;
+                auto const marked_r1 = M.successor(MarkedLCP{isa_cur + 1, 0});
+                auto const lce_r1 = marked_r1.exists ? lcp[rmq.queryRMQ(isa_cur + 1, marked_r1.key.sa_pos)] : 0;
+
+                if(lce_l1 > 0 || lce_r1 > 0) {
+                    // find marked position with larger LCE
+                    if(lce_l1 > lce_r1) {
+                        lnk1 = marked_l1.key.phrase_num;
+                        lce1 = lce_l1;
+                    } else {
+                        lnk1 = marked_r1.key.phrase_num;
+                        lce1 = lce_r1;
+                    }
+
+                    // additionally, perform queries excluding the end position of the previous phrase
+                    if(m > len1) {
+                        auto const exclude = z - 1;
+
+                        auto marked_l2 = marked_l1;
+                        auto lce_l2 = lce_l1;
+                        if(marked_l2.exists && marked_l2.key.phrase_num == exclude) {
+                            // ignore end position of previous phrase
+                            marked_l2 = (marked_l1.key.sa_pos > 0 ? M.predecessor(MarkedLCP{marked_l1.key.sa_pos - 1, 0}) : MResult{ false, 0 });
+                            lce_l2 = marked_l2.exists ? lcp[rmq.queryRMQ(marked_l2.key.sa_pos + 1, isa_cur)] : 0;
+                        }
+
+                        auto marked_r2 = marked_r1;
+                        auto lce_r2 = lce_r1;
+                        if(marked_r2.exists && marked_r2.key.phrase_num == exclude) {
+                            // ignore end position of previous phrase
+                            marked_r2 = M.successor(MarkedLCP{marked_r1.key.sa_pos + 1, 0});
+                            lce_r2 = marked_r2.exists ? lcp[rmq.queryRMQ(isa_cur + 1, marked_r2.key.sa_pos)] : 0;
+                        }
+
+                        // find marked position with larger LCE
+                        if(lce_l2 > 0 || lce_r2 > 0) {
+                            if(lce_l2 > lce_r2) {
+                                lnk2 = marked_l2.key.phrase_num;
+                                lce2 = lce_l2;
+                            } else {
+                                lnk2 = marked_r2.key.phrase_num;
+                                lce2 = lce_r2;
+                            }
+                        }
+                    }
+
+                }
+            }
+
+            if(m > len1 && len1 < l && lce2 >= len2) {
                 // merge the two current phrases and extend their length by one
-                if constexpr(DEBUG) std::cout << "\tMERGE phrases " << z << " and " << z-1 << " to new phrase of length " << (len+1) << std::endl;
+                if constexpr(DEBUG) std::cout << "\tMERGE phrases " << z << " and " << z-1 << " to new phrase of length " << (lce2+1) << std::endl;
 
                 // updateRecent: unregister current phrase
                 unregister_phrase(m - 1);
 
                 // updateRecent: unregister previous phrase
-                assert(m > phrs[z].len);
-                unregister_phrase(m - 1 - phrs[z].len);
+                unregister_phrase(m - 1 - len1);
 
                 // delete current phrase
                 --z;
-                assert(z); // nb: must still have at least one phrase
+                assert(z); // nb: must still have at least phrase 0
 
                 // merge phrases
-                phrs[z].len = len + 1;
-                p = x.phrase_num;
+                phrs[z].len = len2 + 1;
+                p = lnk2;
+
+                // stats
                 ++num_consecutive_merges;
                 max_consecutive_merges = std::max(max_consecutive_merges, num_consecutive_merges);
-            } else if(m > 0 && phrs[z].len < l && (x = absorbOne2(m)).exists) {
-                // extend the current phrase by one
-                if constexpr(DEBUG) std::cout << "\tEXTEND phrase " << z << " to length " << (phrs[z].len+1) << std::endl;
+            } else if(m > 0 && len1 < l && lce1 >= len1) {
+                // extend the current phrase by one character
+                if constexpr(DEBUG) std::cout << "\tEXTEND phrase " << z << " to length " << (len1+1) << std::endl;
 
                 // updateRecent: unregister current phrase
                 unregister_phrase(m - 1);
 
                 ++phrs[z].len;
-                p = x.phrase_num;
+                p = lnk1;
+
+                // stats
                 num_consecutive_merges = 0;
             } else {
-                // this introduces a new phrase of length one
+                // begin a new phrase of initially length one
                 if constexpr(DEBUG) std::cout << "\tNEW phrase " << (z+1) << " of length 1" << std::endl;
                 ++z;
                 if(z >= phrs.size()) phrs.push_back({0,0,0,0});
                 assert(z < phrs.size());
 
                 phrs[z].len = 1;
+
+                // stats
                 num_consecutive_merges = 0;
             }
 
@@ -278,8 +278,9 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
 
             if constexpr(DEBUG) std::cout << "\t-> z=" << z << ", lnk=" << phrs[z].lnk << ", len=" << phrs[z].len << ", c=" << display(phrs[z].c) << std::endl;
 
-            // updateRecent: register new current phrase
+            // updateRecent: register updated current phrase
             register_phrase(m, z);
+            assert(is_marked(m));
         }
     }
 
