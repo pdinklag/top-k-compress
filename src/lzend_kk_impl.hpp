@@ -69,6 +69,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
     if constexpr(TIME_PHASES) sw.start();
     auto [sa, isa, lcp] = tdc::text::sa_isa_lcp_u32(r.begin(), r.end());
     assert(sa[0] == l);
+    sa.reset(); // the suffix array itself is never actually needed and can be discarded
     sw.stop();
     if constexpr(TIME_PHASES) { result.add("t_textds", (uint64_t)sw.elapsed_time_millis()); }
     
