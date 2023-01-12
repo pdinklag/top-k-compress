@@ -174,7 +174,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
             Index lce2 = 0;
             Index lnk2 = 0;
 
-            if(m > 0) {
+            if(m > 0 && len1 < l) {
                 auto const isa_cur = isa[pos_to_reverse(m-1)];
                 
                 auto const marked_l1 = (isa_cur > 0) ? M.predecessor(MarkedLCP{isa_cur - 1, 0}) : MResult{ false, 0 };
@@ -193,7 +193,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
                     }
 
                     // additionally, perform queries excluding the end position of the previous phrase
-                    if(m > len1) {
+                    if(m > len1 && len2 < l) {
                         auto const exclude = z - 1;
 
                         auto marked_l2 = marked_l1;
@@ -227,7 +227,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
                 }
             }
 
-            if(m > len1 && len1 < l && lce2 >= len2) {
+            if(m > len1 && len2 < l && lce2 >= len2) {
                 // merge the two current phrases and extend their length by one
                 if constexpr(DEBUG) std::cout << "\tMERGE phrases " << z << " and " << z-1 << " to new phrase of length " << (lce2+1) << std::endl;
 
