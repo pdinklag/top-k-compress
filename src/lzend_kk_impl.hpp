@@ -74,9 +74,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
     if constexpr(TIME_PHASES) { result.add("t_textds", (uint64_t)sw.elapsed_time_millis()); }
     
     // translate a position in the text to the corresponding position in the reverse text (which has a sentinel!)
-    auto pos_to_reverse = [&](Index const i) {
-        return l - (i+1);
-    };
+    auto pos_to_reverse = [&](Index const i) { return l - (i+1); };
 
     // compute rmq on LCP array
     if constexpr(TIME_PHASES) sw.start();
@@ -114,17 +112,17 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
         Index    lnk;
     };
 
-    std::vector<Phrase> phrs;
+    std::vector<Phrase> phrases;
     Index z = 0;
     
-    auto register_phrase = [&](Index const m, Index const num){
-        // register that phrase num ends at text position m
-        if constexpr(DEBUG) std::cout << "\tregister phrase " << num << " ending at " << m << std::endl;
-        auto const isa_m = isa[pos_to_reverse(m)];
-        M.insert(MarkedLCP{isa_m, num});
+    auto mark = [&](Index const pos, Index const phrase_num){
+        // register that phrase phrase_num ends at text position pos
+        if constexpr(DEBUG) std::cout << "\tregister phrase " << phrase_num << " ending at " << pos << std::endl;
+        auto const isa_m = isa[pos_to_reverse(pos)];
+        M.insert(MarkedLCP{isa_m, phrase_num});
     };
 
-    auto unregister_phrase = [&](Index const m){
+    auto unmark = [&](Index const m){
         // unregister phrase that ends at text position m
         if constexpr(DEBUG) std::cout << "\tunregister phrase ending at " << m << std::endl;
         auto const isa_m = isa[pos_to_reverse(m)];
@@ -132,10 +130,12 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
         M.remove(MarkedLCP{isa_m, 0});
     };
 
+    #ifndef NDEBUG
     auto is_marked = [&](Index const m) {
         auto const isa_m = isa[pos_to_reverse(m)];
         return M.contains(MarkedLCP{isa_m, 0});
     };
+    #endif
 
     size_t num_phrases = 0;
     size_t num_ref = 0;
@@ -150,15 +150,15 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
     if constexpr(TIME_PHASES) sw.start();
     {
         // init phrase to keep code compatible to pseudocode
-        phrs.push_back({0,0,0,0});
+        phrases.push_back({0,0,0,0});
         z = 0;
 
         for(Index m = 0; m < l; m++) {
             if constexpr(DEBUG) std::cout << "m=" << m << ", s[m]=" << display(s[m]) << std::endl;
 
             Index p = 0;
-            auto const len1 = phrs[z].len;                        // length of the current phrase
-            auto const len2 = len1 + (z > 0 ? phrs[z-1].len : 0); // total length of the two current phrases
+            auto const len1 = phrases[z].len;                        // length of the current phrase
+            auto const len2 = len1 + (z > 0 ? phrases[z-1].len : 0); // total length of the two current phrases
 
             // sanity
             #ifndef NDEBUG
@@ -232,17 +232,17 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
                 if constexpr(DEBUG) std::cout << "\tMERGE phrases " << z << " and " << z-1 << " to new phrase of length " << (lce2+1) << std::endl;
 
                 // updateRecent: unregister current phrase
-                unregister_phrase(m - 1);
+                unmark(m - 1);
 
                 // updateRecent: unregister previous phrase
-                unregister_phrase(m - 1 - len1);
+                unmark(m - 1 - len1);
 
                 // delete current phrase
                 --z;
                 assert(z); // nb: must still have at least phrase 0
 
                 // merge phrases
-                phrs[z].len = len2 + 1;
+                phrases[z].len = len2 + 1;
                 p = lnk2;
 
                 // stats
@@ -253,9 +253,9 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
                 if constexpr(DEBUG) std::cout << "\tEXTEND phrase " << z << " to length " << (len1+1) << std::endl;
 
                 // updateRecent: unregister current phrase
-                unregister_phrase(m - 1);
+                unmark(m - 1);
 
-                ++phrs[z].len;
+                ++phrases[z].len;
                 p = lnk1;
 
                 // stats
@@ -264,23 +264,23 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
                 // begin a new phrase of initially length one
                 if constexpr(DEBUG) std::cout << "\tNEW phrase " << (z+1) << " of length 1" << std::endl;
                 ++z;
-                if(z >= phrs.size()) phrs.push_back({0,0,0,0});
-                assert(z < phrs.size());
+                if(z >= phrases.size()) phrases.push_back({0,0,0,0});
+                assert(z < phrases.size());
 
-                phrs[z].len = 1;
+                phrases[z].len = 1;
 
                 // stats
                 num_consecutive_merges = 0;
             }
 
-            phrs[z].c = s[m];
-            phrs[z].lnk = p;
+            phrases[z].c = s[m];
+            phrases[z].lnk = p;
             // TODO: phrs[z].hash
 
-            if constexpr(DEBUG) std::cout << "\t-> z=" << z << ", lnk=" << phrs[z].lnk << ", len=" << phrs[z].len << ", c=" << display(phrs[z].c) << std::endl;
+            if constexpr(DEBUG) std::cout << "\t-> z=" << z << ", lnk=" << phrases[z].lnk << ", len=" << phrases[z].len << ", c=" << display(phrases[z].c) << std::endl;
 
             // updateRecent: register updated current phrase
-            register_phrase(m, z);
+            mark(m, z);
             assert(is_marked(m));
         }
     }
@@ -293,15 +293,15 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
     {
         size_t i = 0;
         for(size_t j = 1; j <= z; j++) {
-            if constexpr(PROTOCOL) std::cout << "factor #" << j << ": i=" << i << ", (" << phrs[j].lnk << ", " << (phrs[j].lnk ? phrs[j].len-1 : 0) << ", " << display(phrs[j].c) << ")" << std::endl;
-            i += phrs[j].len;
+            if constexpr(PROTOCOL) std::cout << "factor #" << j << ": i=" << i << ", (" << phrases[j].lnk << ", " << (phrases[j].lnk ? phrases[j].len-1 : 0) << ", " << display(phrases[j].c) << ")" << std::endl;
+            i += phrases[j].len;
 
             ++num_phrases;
-            if(phrs[j].len > 1) {
+            if(phrases[j].len > 1) {
                 // referencing phrase
-                writer.write_ref(phrs[j].lnk);
-                writer.write_len(phrs[j].len - 1);
-                writer.write_literal(phrs[j].c);
+                writer.write_ref(phrases[j].lnk);
+                writer.write_len(phrases[j].len - 1);
+                writer.write_literal(phrases[j].c);
 
                 ++num_ref;
 
@@ -309,13 +309,13 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const block_size
                 // literal phrase
                 ++num_literal;
                 writer.write_ref(0);
-                writer.write_literal(phrs[j].c);
+                writer.write_literal(phrases[j].c);
             }
             
-            longest = std::max(longest, size_t(phrs[j].len));
-            total_len += phrs[j].len;
-            furthest = std::max(furthest, size_t(phrs[j].lnk));
-            total_ref += phrs[j].lnk;
+            longest = std::max(longest, size_t(phrases[j].len));
+            total_len += phrases[j].len;
+            furthest = std::max(furthest, size_t(phrases[j].lnk));
+            total_ref += phrases[j].lnk;
         }
     }
 
