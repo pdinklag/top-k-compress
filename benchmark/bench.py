@@ -56,6 +56,10 @@ class LzEndTask(ProjectTask):
     def __init__(self, filename: str):
         super().__init__("lzend", [], filename, 600)
 
+class LzEndKKTask(ProjectTask):
+    def __init__(self, filename: str):
+        super().__init__("lzend-kk", [f"--window=200Mi"], filename, 600)
+
 class TopkTask(ProjectTask):
     def __init__(self, compressor: str, w: int, k: str, xcmd: list[str], filename: str, max_time: int):
         super().__init__(compressor, [f"--window={str(w)}", "-k", k, "-c", "8M", "-s", "2K"] + xcmd, filename, max_time)
@@ -99,6 +103,7 @@ for file in config.files:
         Lz77LpfTask(workfile),
         Lz78Task(workfile),
         LzEndTask(workfile),
+        LzEndKKTask(workfile),
     ]
 
     for k in config.ks:
