@@ -3,6 +3,7 @@
 #include <bit>
 #include <concepts>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <random>
 #include <stdexcept>
