@@ -4,13 +4,14 @@
 #include <cassert>
 #include <cstdint>
 #include <limits>
-#include <string_view>
 #include <type_traits>
 #include <vector>
 
 #include <ankerl/unordered_dense.h>
 
 #include <tdc/util/concepts.hpp>
+
+#include <fp_string_view.hpp>
 
 // reset the i least significant bits of x
 template<std::unsigned_integral Index = uint32_t>
@@ -31,6 +32,8 @@ Index max_i_rst(Index const x, Index const y) {
 template<std::integral Char = char, std::unsigned_integral Index = uint32_t>
 class KKTrie {
 public:
+    using StringView = FPStringView<Char>;
+
     // computes a hash for a string with the given length and fingerprint
     static constexpr uint64_t nav_hash(Index const len, uint64_t const fp) {
         return len - fp; // TODO
@@ -77,16 +80,16 @@ private:
         return NodeNumber(i);
     }
 
-    void insert_nav(NodeNumber const v, NodeNumber const parent, std::string_view const& s) {
+    void insert_nav(NodeNumber const v, NodeNumber const parent, StringView const& s) {
         auto const p_v = rst(nodes_[v].len, max_i_rst(nodes_[v].len, nodes_[parent].len));
-        auto const h_v = 0; // TODO: compute fingerprint of s[0..p_v-1]
+        auto const h_v = s.fingerprint(p_v - 1);
         auto const hash = nav_hash(p_v, h_v);
         assert(!nav_.contains(hash));
 
         nav_.emplace(hash, v);
     }
 
-    NodeNumber approx_find(std::string_view const& s) const {
+    NodeNumber approx_find(StringView const& s) const {
         auto const len = s.length();
 
         Index p = 0;
@@ -98,7 +101,7 @@ private:
             if(nodes_[v].len >= p + j) {
                 p += j;
             } else {
-                auto const h = 0; // TODO: computer fingerprint of s[0..p+j-1]
+                auto const h = s.fingerprint(p + j - 1);
                 auto it = nav_.find(nav_hash(p + j, h));
                 if(it != nav_.end()) {
                     p += j;
@@ -136,7 +139,7 @@ public:
         create_node();
     }
 
-    Index approx_find_phr(std::string_view const& s) const {
+    Index approx_find_phr(StringView const& s) const {
         return nodes_[approx_find(s)].phr;
     }
 
@@ -151,7 +154,7 @@ public:
         return nodes_[nca(u, v)].len;
     }
 
-    Index insert_phrase(std::string_view const& s) {
+    Index insert_phrase(StringView const& s) {
         auto const phr = (Index)phrase_leaves_.size();
         auto const len = s.length();
 
