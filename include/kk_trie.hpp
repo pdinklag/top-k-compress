@@ -184,7 +184,15 @@ public:
 
             Index common_prefix_length;
             {
-                // we need to find the exact length of that common prefix
+                // TODO: we need to find the exact length of that common prefix
+                // in the paper [Kempa & Kosolobov, 2017], they extract the relevant portion of an underlying phrase's suffix (via LZEnd's decoding mechanism),
+                // and compare it to the phrase to be inserted
+                // 
+                // OPEN QUESTION:
+                // what do we in a top-k scenario where we no longer store ALL phrases, but only frequent phrases?
+                // -> one could make sure that if a phrase is considered frequent, then the chain of all phrases it indirectly refers to is also considered frequent
+                // -> then, any phrase could always be decoded
+                // -> however, would this not pollute the top-k trie?
                 common_prefix_length = 0; // TODO
             }
             assert(common_prefix_length >= nodes_[v].len);
