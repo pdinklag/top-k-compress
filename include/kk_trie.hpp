@@ -188,11 +188,13 @@ public:
                 // in the paper [Kempa & Kosolobov, 2017], they extract the relevant portion of an underlying phrase's suffix (via LZEnd's decoding mechanism),
                 // and compare it to the phrase to be inserted
                 // 
-                // OPEN QUESTION:
-                // what do we in a top-k scenario where we no longer store ALL phrases, but only frequent phrases?
-                // -> one could make sure that if a phrase is considered frequent, then the chain of all phrases it indirectly refers to is also considered frequent
-                // -> then, any phrase could always be decoded
-                // -> however, would this not pollute the top-k trie?
+                // CAUTION:
+                // - in the top-k scenario, we no longer store ALL phrases, but only frequent phrases
+                // - in order to be able to decode a phrase, if a phrase is frequent, all of its dependencies must be frequent
+                // - this requires a new removal mechanism:
+                //   - not only does a node to be removed have to be a leaf
+                //   - it must furthermore represent a phrase that is not used by any other phrase in the trie
+                // - SOLUTION: only keep unused phrases represented by a leaf in the PQ
                 common_prefix_length = 0; // TODO
             }
             assert(common_prefix_length >= nodes_[v].len);
