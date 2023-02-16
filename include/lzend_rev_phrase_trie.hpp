@@ -72,6 +72,8 @@ private:
     std::vector<Node> nodes_;
     std::vector<NodeNumber> phrase_leaves_;
 
+    std::string extract_buffer_;
+
     NodeNumber create_node() {
         auto const i = nodes_.size();
         nodes_.emplace_back();
@@ -183,30 +185,47 @@ public:
 
             nodes_[x].parent = root_;
         } else {
-            // v is the deepest possible node such that str(v) shares a common prefix with s that is at least |str(v)| (but shorter than |s|)
+            // v is the deepest possible node such that str(v) shares a common prefix with s that is > |str(parent)| and <= |str(v)|
             assert(nodes_[v].len < len);
 
+            // we need to find the exact length of that common prefix
+            // according to [Kempa & Kosolobov, 2017], we extract the relevant portion of an underlying phrase's suffix (via LZEnd's decoding mechanism),
+            // and compare it to the phrase to be inserted
+            // 
+            // CAUTION:
+            // - in the top-k scenario, we no longer store ALL phrases, but only frequent phrases
+            // - in order to be able to decode a phrase, if a phrase is frequent, all of its dependencies must be frequent
+            // - this requires a new removal mechanism:
+            //   - not only does a node to be removed have to be a leaf
+            //   - it must furthermore represent a phrase that is not used by any other phrase in the trie
+            // - SOLUTION: only keep unused phrases represented by a leaf in the PQ
             Index common_prefix_length;
+            auto const extract_len = nodes_[v].len - nodes_[parent].len;
             {
-                // TODO: we need to find the exact length of that common prefix
-                // in the paper [Kempa & Kosolobov, 2017], they extract the relevant portion of an underlying phrase's suffix (via LZEnd's decoding mechanism),
-                // and compare it to the phrase to be inserted
-                // 
-                // CAUTION:
-                // - in the top-k scenario, we no longer store ALL phrases, but only frequent phrases
-                // - in order to be able to decode a phrase, if a phrase is frequent, all of its dependencies must be frequent
-                // - this requires a new removal mechanism:
-                //   - not only does a node to be removed have to be a leaf
-                //   - it must furthermore represent a phrase that is not used by any other phrase in the trie
-                // - SOLUTION: only keep unused phrases represented by a leaf in the PQ
-                common_prefix_length = 0; // TODO
+                // extract suffix of phrase v
+                // TODO: assert that extract_len isn't "too long" -- the paper implies that it shouldn't exceed lg l, but WHY? (by the structure of rst / max_i_rst ?)
+                extract_buffer_.clear();
+                extract_buffer_.reserve(extract_len);
+                lzend_->extract_phrase_suffix(std::back_inserter(extract_buffer_), nodes_[v].phr, extract_len); // TODO: extract more efficiently and only until we mismatch?
+                std::reverse(extract_buffer_.begin(), extract_buffer_.end());
+
+                // compare
+                common_prefix_length = nodes_[parent].len;
+
+                size_t i = 0; // position in extracted phrase (REVERSE)
+                size_t j = 0; // offset position in phrase to be inserted (REVERSE)
+                while(j < extract_len && extract_buffer_[i] == s[common_prefix_length + j]) {
+                    ++j;
+                    ++i;
+                }
+                common_prefix_length += j;
             }
-            assert(common_prefix_length >= nodes_[v].len);
-            assert(common_prefix_length < len);
+            assert(common_prefix_length > nodes_[parent].len);
+            assert(common_prefix_length <= nodes_[v].len);
 
             // determine the node to which to add a child
             NodeNumber u;
-            if(common_prefix_length > nodes_[v].len) {
+            if(common_prefix_length < nodes_[v].len) {
                 // we split the edge from parent to v and create a new inner node
                 u = create_node();
 
@@ -214,6 +233,9 @@ public:
                 nodes_[u].phr = nodes_[v].phr; // propagate any child's phrase number - we might as well use the new phr
 
                 // replace v by u as child of parent
+                // nb: I first thought that the nav entry for v has to be removed and recomputed
+                //     that would be difficult, because we don't have its entire string
+                //     however, by construction of the trie via rst with max_i_rst, this should *never* be necessary!
                 {
                     auto const c = UChar(s[nodes_[parent].len]);
                     assert(nodes_[parent].map.contains(c));
@@ -221,15 +243,15 @@ public:
                     nodes_[parent].map[c] = u;
 
                     nodes_[u].parent = parent;
-                    insert_nav(u, v, s);
+
+                    insert_nav(u, parent, s);
                 }
 
                 // make v a child of new node u
                 {
-                    auto const c = UChar(s[common_prefix_length]);
+                    auto const c = UChar(extract_buffer_[common_prefix_length - nodes_[parent].len]);
                     nodes_[u].map.emplace(c, v);
                     nodes_[v].parent = u;
-                    insert_nav(u, v, s);
                 }
             } else {
                 // we add a new child directly to v

@@ -58,37 +58,78 @@ TEST_SUITE("kempa_kosolobov_2017") {
     }
 
     TEST_CASE("trie") {
+        using String = FPStringView<char>;
+
         LZEndParsing<char, uint32_t> parsing;
-        parsing.emplace_back(0, 1, 'a'); // a
-        parsing.emplace_back(0, 1, 'b'); // b
-        parsing.emplace_back(2, 3, 'b'); // abb
-        parsing.emplace_back(3, 5, 'a'); // babba
-        parsing.emplace_back(4, 8, 'a'); // bbbabbaa
+        parsing.emplace_back(0, 1, 'a'); // 1 - a
+        parsing.emplace_back(0, 1, 'b'); // 2 - b
+        parsing.emplace_back(1, 2, 'b'); // 3 - ab
+        parsing.emplace_back(2, 3, 'b'); // 4 - abb
+        parsing.emplace_back(1, 2, 'a'); // 5 - ba
+        parsing.emplace_back(5, 6, 'a'); // 6 - babbbaa
 
         LZEndRevPhraseTrie<char, uint32_t> trie(parsing);
         
-        // the concatenated phrases, reversed
-        FPStringView<char> f1("a");
+        // insert concatenated phrases, reversed
+        String f1("a");
         REQUIRE(trie.insert(f1) == 1);
-        REQUIRE(trie.approx_find_phr(f1) == 1);
-
-        FPStringView<char> f2("ba");
+        
+        String f2("ba");
         REQUIRE(trie.insert(f2) == 2);
-        REQUIRE(trie.approx_find_phr(f2) == 2);
 
-        FPStringView<char> fx("xxx");
-        REQUIRE(trie.approx_find_phr(fx) == 0);
-
-        /*
-        FPStringView<char> f3("bbaba");
+        String f3("baba");
         REQUIRE(trie.insert(f3) == 3);
 
-        FPStringView<char> f4("abbabbbaba");
+        String f4("bbababa");
         REQUIRE(trie.insert(f4) == 4);
 
-        FPStringView<char> f5("aabbabbbabbabbbaba");
+        String f5("abbbababa");
         REQUIRE(trie.insert(f5) == 5);
-        */
+
+        String f6("aabbbababbbababa");
+        REQUIRE(trie.insert(f6) == 6);
+
+        // ensure that we don't find any bogus
+        {
+            String fx("xxx");
+            REQUIRE(trie.approx_find_phr(fx) == 0);
+        }
+
+        // try to find reverse phrases back
+        REQUIRE(trie.approx_find_phr(f1) == 1);
+        REQUIRE(trie.approx_find_phr(f2) == 2);
+        REQUIRE(trie.approx_find_phr(f3) == 3);
+        REQUIRE(trie.approx_find_phr(f4) == 4);
+        REQUIRE(trie.approx_find_phr(f5) == 5);
+        REQUIRE(trie.approx_find_phr(f6) == 6);
+
+        // try to find suffixes
+        {
+            String rsuf("bab");
+            REQUIRE(trie.approx_find_phr(rsuf) == 3);
+        }
+        {
+            String rsuf("bb");
+            REQUIRE(trie.approx_find_phr(rsuf) == 4);
+        }
+        {
+            String rsuf("ab");
+            REQUIRE(trie.approx_find_phr(rsuf) == 5);
+        }
+        {
+            String rsuf("aa");
+            REQUIRE(trie.approx_find_phr(rsuf) == 6);
+        }
+        {
+            String rsuf("a");
+            auto const p = trie.approx_find_phr(rsuf);
+            REQUIRE((p == 1 || p == 5 || p == 6));
+        }
+        {
+            String rsuf("b");
+            auto const p = trie.approx_find_phr(rsuf);
+            REQUIRE((p == 2 || p == 3 || p == 4));
+        }
     }
 
     TEST_CASE("rst") {

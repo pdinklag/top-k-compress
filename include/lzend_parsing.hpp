@@ -89,6 +89,12 @@ public:
         extract(out, phrases_[i].end - len + 1, len);
     }
 
+    // extracts the suffix of the given length of the i-th phrase
+    template<std::output_iterator<Char> Out>
+    void extract_phrase_suffix(Out out, Index const i, Index const len) const {
+        extract(out, phrases_[i].end - len + 1, len);
+    }
+
     // gets the number of the phrase (1-based) that the given text position (0-based) lies in
     Index phrase_at(Index const text_pos) const {
         auto const r = ends_.successor({text_pos,0});
