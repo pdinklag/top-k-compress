@@ -1,8 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
 
-#include <kk_trie.hpp>
 #include <lzend_parsing.hpp>
+#include <lzend_rev_phrase_trie.hpp>
 
 TEST_SUITE("kempa_kosolobov_2017") {
     TEST_CASE("lzend") {
@@ -55,6 +55,40 @@ TEST_SUITE("kempa_kosolobov_2017") {
             parsing.extract_phrase(std::back_inserter(s), 5);
             REQUIRE(s == "bbbabbaa");
         }
+    }
+
+    TEST_CASE("trie") {
+        LZEndParsing<char, uint32_t> parsing;
+        parsing.emplace_back(0, 1, 'a'); // a
+        parsing.emplace_back(0, 1, 'b'); // b
+        parsing.emplace_back(2, 3, 'b'); // abb
+        parsing.emplace_back(3, 5, 'a'); // babba
+        parsing.emplace_back(4, 8, 'a'); // bbbabbaa
+
+        LZEndRevPhraseTrie<char, uint32_t> trie(parsing);
+        
+        // the concatenated phrases, reversed
+        FPStringView<char> f1("a");
+        REQUIRE(trie.insert(f1) == 1);
+        REQUIRE(trie.approx_find_phr(f1) == 1);
+
+        FPStringView<char> f2("ba");
+        REQUIRE(trie.insert(f2) == 2);
+        REQUIRE(trie.approx_find_phr(f2) == 2);
+
+        FPStringView<char> fx("xxx");
+        REQUIRE(trie.approx_find_phr(fx) == 0);
+
+        /*
+        FPStringView<char> f3("bbaba");
+        REQUIRE(trie.insert(f3) == 3);
+
+        FPStringView<char> f4("abbabbbaba");
+        REQUIRE(trie.insert(f4) == 4);
+
+        FPStringView<char> f5("aabbabbbabbabbbaba");
+        REQUIRE(trie.insert(f5) == 5);
+        */
     }
 
     TEST_CASE("rst") {

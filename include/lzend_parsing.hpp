@@ -8,6 +8,7 @@
 #include <display.hpp>
 #include <index/btree.hpp>
 
+// represents a dynamically growing LZ-End parsing
 template<std::integral Char, std::unsigned_integral Index>
 class LZEndParsing {
 public:
@@ -41,7 +42,7 @@ public:
         phrases_.emplace_back(0, 0, -1, 0);
     }
 
-    // inserts a new LZ-End phrase at the end
+    // appends a new LZ-End phrase
     void emplace_back(Index const link, Index const len, Char const last) {
         assert(len);
 
@@ -101,5 +102,5 @@ public:
     auto size() const { return phrases_.size() - 1; }
 
     // gets the i-th phrase (1-based)
-    Phrase operator[](Index const i) const { assert(i > 0); return phrases_[i]; }
+    Phrase const& operator[](Index const i) const { assert(i > 0); return phrases_[i]; }
 };

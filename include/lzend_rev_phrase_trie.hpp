@@ -12,6 +12,7 @@
 #include <tdc/util/concepts.hpp>
 
 #include <fp_string_view.hpp>
+#include <lzend_parsing.hpp>
 
 // reset the i least significant bits of x
 template<std::unsigned_integral Index = uint32_t>
@@ -30,7 +31,7 @@ Index max_i_rst(Index const x, Index const y) {
 
 /// Implements the compact trie described in [Kempa & Koslobov, 2017]
 template<std::integral Char = char, std::unsigned_integral Index = uint32_t>
-class KKTrie {
+class LZEndRevPhraseTrie {
 public:
     using StringView = FPStringView<Char>;
 
@@ -57,7 +58,7 @@ private:
         bool try_get(UChar const c, NodeNumber& out) const {
             auto it = map.find(c);
             if(it != map.end()) {
-                out = it.second;
+                out = it->second;
                 return true;
             } else {
                 return false;
@@ -65,12 +66,9 @@ private:
         }
     };
 
-    struct NavKey {
-        Index    len;
-        uint64_t hash; 
-    } __attribute__((__packed__));
+    LZEndParsing<Char, Index> const* lzend_;
 
-    ankerl::unordered_dense::map<NavKey, NodeNumber> nav_;
+    ankerl::unordered_dense::map<uint64_t, NodeNumber> nav_;
     std::vector<Node> nodes_;
     std::vector<NodeNumber> phrase_leaves_;
 
@@ -105,7 +103,7 @@ private:
                 auto it = nav_.find(nav_hash(p + j, h));
                 if(it != nav_.end()) {
                     p += j;
-                    v = it.second;
+                    v = it->second;
                 }
             }
             j /= 2;
@@ -115,7 +113,7 @@ private:
         {
             auto it = nodes_[v].map.find(s[nodes_[v].len]);
             if(it != nodes_[v].map.end()) {
-                v = it.second;
+                v = it->second;
             }
         }
 
@@ -134,9 +132,12 @@ private:
     }
 
 public:
-    KKTrie() {
+    LZEndRevPhraseTrie(LZEndParsing<Char, Index> const& lzend) : lzend_(&lzend) {
         // ensure root
         create_node();
+
+        // empty phrase 0 to offset phrase numbers
+        phrase_leaves_.push_back(root_);
     }
 
     Index approx_find_phr(StringView const& s) const {
@@ -154,13 +155,13 @@ public:
         return nodes_[nca(u, v)].len;
     }
 
-    Index insert_phrase(StringView const& s) {
+    Index insert(StringView const& s) {
         auto const phr = (Index)phrase_leaves_.size();
         auto const len = s.length();
 
         auto v = root_;
         NodeNumber parent = -1;
-        size_t d = v.len;
+        size_t d = nodes_[v].len;
 
         NodeNumber found;
         while(d < len && nodes_[v].try_get(UChar(s[d]), found)) {
@@ -170,6 +171,9 @@ public:
         }
 
         auto const x = create_node();
+        nodes_[x].len = len;
+        nodes_[x].phr = phr;
+
         if(v == root_) {
             // v is the root, which means that no prefix of s is contained in the trie
             assert(d == 0);
@@ -241,8 +245,6 @@ public:
             insert_nav(x, u, s);
         }
 
-        nodes_[x].len = len;
-        nodes_[x].phr = phr;
         phrase_leaves_.push_back(x);
         assert(phrase_leaves_[phr] == x);
         
