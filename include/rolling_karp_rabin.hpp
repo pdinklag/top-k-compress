@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <bit>
 #include <concepts>
 #include <cstdint>
@@ -51,10 +52,14 @@ private:
     }
 
     uint64_t const base_;
-    uint64_t const max_exponent_exclusive_; // base ^ window_size
+    std::array<uint128_t, 256> pop_left_precomp_;
 
 public:
-    RollingKarpRabin(uint64_t const window, uint64_t const base) : base_(modulo(base)), max_exponent_exclusive_(power(base_, window)) {
+    RollingKarpRabin(uint64_t const window, uint64_t const base) : base_(modulo(base)) {
+        auto const max_exponent_exclusive = power(base_, window);
+        for(uint64_t c = 0; c < 256; c++) {
+            pop_left_precomp_[c] = MERSENNE61_SQUARE - mult(max_exponent_exclusive, c);
+        }
     }
 
     RollingKarpRabin(uint64_t const window) : RollingKarpRabin(window, random_base()) {
@@ -65,15 +70,15 @@ public:
     RollingKarpRabin& operator=(const RollingKarpRabin&) = default;
     RollingKarpRabin& operator=(RollingKarpRabin&&) = default;
     
-    inline uint64_t roll(uint64_t const fp, uint64_t const pop_left, uint64_t const push_right) {
+    inline uint64_t roll(uint64_t const fp, uint8_t const pop_left, uint8_t const push_right) {
         const uint128_t shifted_fingerprint = mult(base_, fp);
-        const uint128_t pop = MERSENNE61_SQUARE - mult(max_exponent_exclusive_, pop_left);
-        return modulo(shifted_fingerprint + pop + push_right);
+        const uint128_t pop = pop_left_precomp_[pop_left];
+        return modulo(shifted_fingerprint + pop + (uint64_t)push_right);
     }
 
-    inline uint64_t push(uint64_t const fp, uint64_t const push_right) {
+    inline uint64_t push(uint64_t const fp, uint8_t const push_right) {
         const uint128_t shifted_fingerprint = mult(base_, fp);
         const uint128_t pop = MERSENNE61_SQUARE;
-        return modulo(shifted_fingerprint + pop + push_right);
+        return modulo(shifted_fingerprint + pop + (uint64_t)push_right);
     }
 };
