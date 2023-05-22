@@ -16,6 +16,8 @@
 #include <phrase_block_writer.hpp>
 #include <phrase_block_reader.hpp>
 
+#include <lzend_parsing.hpp>
+
 constexpr bool DEBUG = false;
 constexpr bool PROTOCOL = false;
 
@@ -44,22 +46,14 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
     size_t max_consecutive_merges = 0;
     size_t num_consecutive_merges = 0;
 
-    // initialize phrase buffer
-    struct Phrase {
-        char     c;
-        Index    len;
-        uint64_t hash;
-        Index    lnk;
-    };
-
-    std::vector<Phrase> phrases;
-    phrases.push_back({0,0,0,0}); // ensure that there is a phrase 0
+    // initialize buffer for LZ-End parsing
+    LZEndParsing<char, Index> phrases;
 
     Index z = 0;
 
     // prepare working memory
     std::string window;
-    window.reserve(max_window);
+    window.reserve(max_window); // TODO: we actually want 3 blocks in here?
 
     // global LZEnd algorithm
     size_t phase = 0;
@@ -219,6 +213,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
                 }
             }
 
+            char const last_char = window[m];
             if(m > len1 && len2 < window_size && lce2 >= len2) {
                 // merge the two current phrases and extend their length by one
                 if constexpr(DEBUG) std::cout << "\tMERGE phrases " << z << " and " << z-1 << " to new phrase of length " << (lce2+1) << std::endl;
@@ -230,12 +225,13 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
                 unmark(m - 1 - len1);
 
                 // delete current phrase
+                phrases.pop_back();
                 --z;
                 assert(z); // nb: must still have at least phrase 0
 
                 // merge phrases
-                phrases[z].len = len2 + 1;
                 p = lnk2;
+                phrases.replace_back(p, len2 + 1, last_char);
 
                 // stats
                 ++num_consecutive_merges;
@@ -247,29 +243,23 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
                 // updateRecent: unregister current phrase
                 unmark(m - 1);
 
-                ++phrases[z].len;
                 p = lnk1;
+                phrases.replace_back(p, len1 + 1, last_char);
 
                 // stats
                 num_consecutive_merges = 0;
             } else {
                 // begin a new phrase of initially length one
                 if constexpr(DEBUG) std::cout << "\tNEW phrase " << (z+1) << " of length 1" << std::endl;
+                
                 ++z;
-                if(z >= phrases.size()) phrases.push_back({0,0,0,0});
-                assert(z < phrases.size());
-
-                phrases[z].len = 1;
+                phrases.emplace_back(p, 1, last_char);
 
                 // stats
                 num_consecutive_merges = 0;
             }
 
-            phrases[z].c = window[m];
-            phrases[z].lnk = p;
-            // TODO: phrs[z].hash
-
-            if constexpr(DEBUG) std::cout << "\t-> z=" << z << ", lnk=" << phrases[z].lnk << ", len=" << phrases[z].len << ", c=" << display(phrases[z].c) << std::endl;
+            if constexpr(DEBUG) std::cout << "\t-> z=" << z << ", link=" << phrases[z].link << ", len=" << phrases[z].len << ", last=" << display(phrases[z].last) << std::endl;
 
             // updateRecent: register updated current phrase
             mark(m, z);
@@ -288,15 +278,15 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
     {
         size_t i = 0;
         for(size_t j = 1; j <= z; j++) {
-            if constexpr(PROTOCOL) std::cout << "factor #" << j << ": i=" << i << ", (" << phrases[j].lnk << ", " << (phrases[j].lnk ? phrases[j].len-1 : 0) << ", " << display(phrases[j].c) << ")" << std::endl;
+            if constexpr(PROTOCOL) std::cout << "factor #" << j << ": i=" << i << ", (" << phrases[j].link << ", " << (phrases[j].link ? phrases[j].len-1 : 0) << ", " << display(phrases[j].last) << ")" << std::endl;
             i += phrases[j].len;
 
             ++num_phrases;
             if(phrases[j].len > 1) {
                 // referencing phrase
-                writer.write_ref(phrases[j].lnk);
+                writer.write_ref(phrases[j].link);
                 writer.write_len(phrases[j].len - 1);
-                writer.write_literal(phrases[j].c);
+                writer.write_literal(phrases[j].last);
 
                 ++num_ref;
 
@@ -304,13 +294,13 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
                 // literal phrase
                 ++num_literal;
                 writer.write_ref(0);
-                writer.write_literal(phrases[j].c);
+                writer.write_literal(phrases[j].last);
             }
             
             longest = std::max(longest, size_t(phrases[j].len));
             total_len += phrases[j].len;
-            furthest = std::max(furthest, size_t(phrases[j].lnk));
-            total_ref += phrases[j].lnk;
+            furthest = std::max(furthest, size_t(phrases[j].link));
+            total_ref += phrases[j].link;
         }
     }
 

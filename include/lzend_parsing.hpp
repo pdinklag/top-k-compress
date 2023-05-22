@@ -42,6 +42,9 @@ public:
         phrases_.emplace_back(0, 0, -1, 0);
     }
 
+    // accesses the i-th phrase (1-based, read-only)
+    Phrase const& operator[](Index const i) const { return phrases_[i]; }
+
     // appends a new LZ-End phrase
     void emplace_back(Index const link, Index const len, Char const last) {
         assert(len);
@@ -50,6 +53,35 @@ public:
         len_ += len;
         phrases_.emplace_back(link, len, len_ - 1, last);
         ends_.insert({len_ - 1, p});
+    }
+
+    // appends a new LZ-End phrase
+    void push_back(Phrase const& phrase) {
+        assert(phrase.len);
+
+        auto const p = (Index)phrases_.size();
+        len_ += phrase.len;
+        phrases_.push_back(phrase);
+        ends_.insert({len_ - 1, p});
+    }
+
+    // pops the last LZ-End phrase
+    Phrase pop_back() {
+        assert(size() > 0);
+
+        auto const last = phrases_.back();
+        assert(len_ >= last.len);
+
+        phrases_.pop_back();
+        ends_.remove({len_ - 1, 0});
+        len_ -= last.len;
+        return last;
+    }
+
+    // replaces the last LZ-End phrase
+    void replace_back(Index const link, Index const len, Char const last) {
+        pop_back();
+        emplace_back(link, len, last);
     }
 
     // extracts the substring of the text of given length and starting at the given position
@@ -106,7 +138,4 @@ public:
 
     // gets the number of phrases
     auto size() const { return phrases_.size() - 1; }
-
-    // gets the i-th phrase (1-based)
-    Phrase const& operator[](Index const i) const { assert(i > 0); return phrases_[i]; }
 };
