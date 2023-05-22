@@ -62,7 +62,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
     window.reserve(max_window);
 
     // global LZEnd algorithm
-    size_t step = 0;
+    size_t phase = 0;
     while(begin != end) {
         // read next window into RAM
         window.clear();
@@ -116,6 +116,8 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
             bool operator>=(MarkedLCP const& x) const { return sa_pos >= x.sa_pos; }
         } __attribute__((__packed__));
 
+        constexpr Index DONTCARE = 0; // used for querying M for a certain suffix array position (key); the phrase number then doesn't matter
+
         BTree<MarkedLCP, 65> marked;
         using MResult = decltype(marked)::KeyResult;
 
@@ -130,20 +132,20 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
             // unregister phrase that ends at text position m
             if constexpr(DEBUG) std::cout << "\tunregister phrase ending at " << m << std::endl;
             auto const isa_m = isa[pos_to_reverse(m)];
-            assert(marked.contains(MarkedLCP{isa_m, 0}));
-            marked.remove(MarkedLCP{isa_m, 0});
+            assert(marked.contains(MarkedLCP{isa_m, DONTCARE}));
+            marked.remove(MarkedLCP{isa_m, DONTCARE});
         };
 
         #ifndef NDEBUG
         auto is_marked = [&](Index const m) {
             auto const isa_m = isa[pos_to_reverse(m)];
-            return marked.contains(MarkedLCP{isa_m, 0});
+            return marked.contains(MarkedLCP{isa_m, DONTCARE});
         };
         #endif
 
         // begin LZEnd algorithm by [Kempa & Kosolobov, 2017]
         for(Index m = 0; m < window_size; m++) {
-            auto const mglob = step * max_window + m;
+            auto const mglob = phase * max_window + m;
             if constexpr(DEBUG) std::cout << "mglob=" << mglob << ", m=" << m << ", window[m]=" << display(window[m]) << std::endl;
 
             Index p = 0;
@@ -167,9 +169,9 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
             if(m > 0 && len1 < window_size) {
                 auto const isa_cur = isa[pos_to_reverse(m-1)];
                 
-                auto const marked_l1 = (isa_cur > 0) ? marked.predecessor(MarkedLCP{isa_cur - 1, 0}) : MResult{ false, 0 };
+                auto const marked_l1 = (isa_cur > 0) ? marked.predecessor(MarkedLCP{isa_cur - 1, DONTCARE}) : MResult{ false, 0 };
                 auto const lce_l1 = marked_l1.exists ? lcp[rmq.queryRMQ(marked_l1.key.sa_pos + 1, isa_cur)] : 0;
-                auto const marked_r1 = marked.successor(MarkedLCP{isa_cur + 1, 0});
+                auto const marked_r1 = marked.successor(MarkedLCP{isa_cur + 1, DONTCARE});
                 auto const lce_r1 = marked_r1.exists ? lcp[rmq.queryRMQ(isa_cur + 1, marked_r1.key.sa_pos)] : 0;
 
                 if(lce_l1 > 0 || lce_r1 > 0) {
@@ -190,7 +192,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
                         auto lce_l2 = lce_l1;
                         if(marked_l2.exists && marked_l2.key.phrase_num == exclude) {
                             // ignore end position of previous phrase
-                            marked_l2 = (marked_l1.key.sa_pos > 0 ? marked.predecessor(MarkedLCP{marked_l1.key.sa_pos - 1, 0}) : MResult{ false, 0 });
+                            marked_l2 = (marked_l1.key.sa_pos > 0 ? marked.predecessor(MarkedLCP{marked_l1.key.sa_pos - 1, DONTCARE}) : MResult{ false, 0 });
                             lce_l2 = marked_l2.exists ? lcp[rmq.queryRMQ(marked_l2.key.sa_pos + 1, isa_cur)] : 0;
                         }
 
@@ -198,7 +200,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
                         auto lce_r2 = lce_r1;
                         if(marked_r2.exists && marked_r2.key.phrase_num == exclude) {
                             // ignore end position of previous phrase
-                            marked_r2 = marked.successor(MarkedLCP{marked_r1.key.sa_pos + 1, 0});
+                            marked_r2 = marked.successor(MarkedLCP{marked_r1.key.sa_pos + 1, DONTCARE});
                             lce_r2 = marked_r2.exists ? lcp[rmq.queryRMQ(isa_cur + 1, marked_r2.key.sa_pos)] : 0;
                         }
 
@@ -274,8 +276,8 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
             assert(is_marked(m));
         }
 
-        // advance to next step
-        ++step;
+        // advance to next phase
+        ++phase;
     }
 
     // initialize encoding
