@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -8,7 +9,7 @@
 
 #include <tlx/container/ring_buffer.hpp>
 
-#include <rolling_karp_rabin.hpp>
+#include <mersenne61.hpp>
 
 // represents a string view enhanced by Karp-Rabin fingerprints
 template<std::integral Char>
@@ -16,48 +17,23 @@ class FPStringView {
 private:
     using UChar = std::make_unsigned_t<Char>;
 
-    static constexpr size_t fp_window_ = 512;
-    static constexpr size_t fp_base_ = 512 - 9;
+    static constexpr size_t BASE = 256;
 
     std::string_view view_;
-    std::shared_ptr<std::vector<uint64_t>> fp_;
-
-    tlx::RingBuffer<UChar> buffer_;
-    RollingKarpRabin rolling_hash_;
-
-    void ensure_buffer() {
-        if(buffer_.max_size() == 0) {
-            buffer_ = tlx::RingBuffer<UChar>(fp_window_);
-        }
-    }
+    std::vector<uint64_t> fp_;
+    std::vector<uint64_t> pow_base_;
 
 public:
-    FPStringView(std::string_view const& s)
-        : view_(s),
-          fp_(std::make_shared<std::vector<uint64_t>>(s.length())),
-          buffer_(fp_window_),
-          rolling_hash_(fp_window_, fp_base_) {
-        
-        (*fp_)[0] = rolling_hash_.roll(0, 0, s[0]);
+    FPStringView(std::string_view const& s) : view_(s), fp_(s.length()), pow_base_(s.length()) { 
+        fp_[0] = s[0];
+        pow_base_[0] = 1;
+
         for(size_t i = 1; i < s.length(); i++) {
-            bool const roll = (buffer_.size() == buffer_.max_size());
             UChar const c = UChar(s[i]);
-            UChar const pop_left = roll ? buffer_.front() : 0;
 
-            (*fp_)[i] = rolling_hash_.roll((*fp_)[i-1], pop_left, c);
-
-            if(roll) buffer_.pop_front();
-            buffer_.push_back(c);
+            fp_[i] = Mersenne61::mod(uint128_t(fp_[i-1]) * uint128_t(BASE) + uint128_t(c));
+            pow_base_[i] = Mersenne61::mulmod(pow_base_[i-1], BASE);
         }
-    }
-
-    FPStringView(FPStringView const& s, size_t const len)
-        : view_(s.view_.begin(), s.view_.at(len)),
-          fp_(s.fp_),
-          buffer_(),
-          rolling_hash_(s.rolling_hash_)
-    {
-        assert(len < s.length());
     }
 
     std::string_view string_view() const { return view_; }
@@ -69,5 +45,21 @@ public:
     size_t length() const { return view_.length(); }
 
     // returns the fingerprint of the string from its beginning up to position (including) i
-    uint64_t const fingerprint(size_t const i) const { return (*fp_)[i]; }
+    uint64_t const fingerprint(size_t const i) const { return fp_[i]; }
+
+    // returns the fingerprint of the substring starting at i and ending at j (both included)
+    uint64_t const fingerprint(size_t const i, size_t const j) const {
+        assert(i <= j);
+        if(i) {
+            auto const fp_j = fingerprint(j);
+            auto const fp_i_shifted = Mersenne61::mulmod(pow_base_[j-i+1], fingerprint(i-1));
+            if (fp_j >= fp_i_shifted) {
+                return fp_j - fp_i_shifted;
+            } else {
+                return Mersenne61::PRIME - (fp_i_shifted - fp_j);
+            }
+        } else {
+            return fingerprint(j);
+        }
+    }
 };

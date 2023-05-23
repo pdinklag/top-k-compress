@@ -61,14 +61,20 @@ TEST_SUITE("kempa_kosolobov_2017") {
         using String = FPStringView<char>;
 
         LZEndParsing<char, uint32_t> parsing;
+        LZEndRevPhraseTrie<char, uint32_t> trie(parsing);
+
+        // ensure that we don't find any bogus in an empty trie
+        {
+            String fx("xxx");
+            REQUIRE(trie.approx_find_phr(fx) == 0);
+        }
+
         parsing.emplace_back(0, 1, 'a'); // 1 - a
         parsing.emplace_back(0, 1, 'b'); // 2 - b
         parsing.emplace_back(1, 2, 'b'); // 3 - ab
         parsing.emplace_back(2, 3, 'b'); // 4 - abb
         parsing.emplace_back(1, 2, 'a'); // 5 - ba
         parsing.emplace_back(5, 6, 'a'); // 6 - babbbaa
-
-        LZEndRevPhraseTrie<char, uint32_t> trie(parsing);
         
         // insert concatenated phrases, reversed
         String f1("a");
@@ -148,6 +154,32 @@ TEST_SUITE("kempa_kosolobov_2017") {
                 auto const p2 = rst(x, i+1);
                 REQUIRE(p2 <= y);
             }
+        }
+    }
+
+    TEST_CASE("fp") {
+        using String = FPStringView<char>;
+
+        String s("abaaababaaab");
+
+        {
+            String x("aba");
+            auto const fp_x = x.fingerprint(x.length() - 1);
+            REQUIRE(s.fingerprint(0,2) == fp_x);
+            REQUIRE(s.fingerprint(1,3) != fp_x);
+            REQUIRE(s.fingerprint(2,4) != fp_x);
+            REQUIRE(s.fingerprint(3,5) != fp_x);
+            REQUIRE(s.fingerprint(4,6) == fp_x);
+            REQUIRE(s.fingerprint(5,7) != fp_x);
+            REQUIRE(s.fingerprint(6,8) == fp_x);
+        }
+
+        {
+            String y("abaaab");
+            auto const fp_y = y.fingerprint(y.length() - 1);
+            REQUIRE(s.fingerprint(0,5) == fp_y);
+            REQUIRE(s.fingerprint(1,5) != fp_y);
+            REQUIRE(s.fingerprint(6,11) == fp_y);
         }
     }
 }

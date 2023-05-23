@@ -9,14 +9,11 @@
 #include <random>
 #include <stdexcept>
 
+#include <mersenne61.hpp>
+
 class RollingKarpRabin {
 private:
-    // implementation by Jonas Ellert, stripped down to what we need here
-    using uint128_t = __uint128_t;
-
-    static constexpr uint64_t MERSENNE61 = (((uint64_t)1ULL) << 61) - 1;
-    static constexpr uint64_t MERSENNE61_SHIFT = 61;
-    static constexpr uint128_t MERSENNE61_SQUARE = (uint128_t)MERSENNE61 * MERSENNE61;
+    static constexpr uint128_t MERSENNE61_SQUARE = (uint128_t)Mersenne61::PRIME * Mersenne61::PRIME;
 
     inline static uint128_t mult(uint64_t const a, uint64_t const b) {
         return ((uint128_t)a) * b;
@@ -25,16 +22,8 @@ private:
     inline static uint64_t modulo(uint128_t const value) {
         // this assumes value < (2^61)^2 = 2^122
         uint128_t const v = value + 1;
-        uint64_t const z = ((v >> MERSENNE61_SHIFT) + v) >> MERSENNE61_SHIFT;
-        return (value + z) & MERSENNE61;
-    }
-
-    inline static uint64_t random_base() {
-        constexpr static uint64_t max = MERSENNE61 - 2;
-        static std::random_device seed;
-        static std::mt19937_64 g(seed());
-        static std::uniform_int_distribution<uint64_t> d(0, max);
-        return 1 + d(g); // avoid returning 0
+        uint64_t const z = ((v >> Mersenne61::EXPONENT) + v) >> Mersenne61::EXPONENT;
+        return (value + z) & Mersenne61::PRIME;
     }
 
     inline static uint128_t square(const uint64_t a) {
@@ -62,9 +51,6 @@ public:
         }
     }
 
-    RollingKarpRabin(uint64_t const window) : RollingKarpRabin(window, random_base()) {
-    }
-    
     RollingKarpRabin(const RollingKarpRabin&) = default;
     RollingKarpRabin(RollingKarpRabin&&) = default;
     RollingKarpRabin& operator=(const RollingKarpRabin&) = default;
