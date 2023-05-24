@@ -33,12 +33,12 @@ private:
         bool operator>=(PhraseEnd const& x) const { return pos >= x.pos; }
     } __attribute__((packed));
 
-    Index len_;
+    Index text_len_;
     std::vector<Phrase> phrases_;
     BTree<PhraseEnd, 65> ends_;
 
 public:
-    LZEndParsing() : len_(0) {
+    LZEndParsing() : text_len_(0) {
         phrases_.emplace_back(0, 0, -1, 0);
     }
 
@@ -50,9 +50,9 @@ public:
         assert(len);
 
         auto const p = (Index)phrases_.size();
-        len_ += len;
-        phrases_.emplace_back(link, len, len_ - 1, last);
-        ends_.insert({len_ - 1, p});
+        text_len_ += len;
+        phrases_.emplace_back(link, len, text_len_ - 1, last);
+        ends_.insert({text_len_ - 1, p});
     }
 
     // appends a new LZ-End phrase
@@ -60,9 +60,9 @@ public:
         assert(phrase.len);
 
         auto const p = (Index)phrases_.size();
-        len_ += phrase.len;
+        text_len_ += phrase.len;
         phrases_.push_back(phrase);
-        ends_.insert({len_ - 1, p});
+        ends_.insert({text_len_ - 1, p});
     }
 
     // pops the last LZ-End phrase
@@ -70,11 +70,11 @@ public:
         assert(size() > 0);
 
         auto const last = phrases_.back();
-        assert(len_ >= last.len);
+        assert(text_len_ >= last.len);
 
         phrases_.pop_back();
-        ends_.remove({len_ - 1, 0});
-        len_ -= last.len;
+        ends_.remove({text_len_ - 1, 0});
+        text_len_ -= last.len;
         return last;
     }
 
@@ -134,7 +134,7 @@ public:
     }
 
     // gets the length of the represented text
-    Index length() const { return len_; }
+    Index length() const { return text_len_; }
 
     // gets the number of phrases
     auto size() const { return phrases_.size() - 1; }
