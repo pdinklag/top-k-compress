@@ -1,4 +1,6 @@
 #include <cassert>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include <tdc/code/concepts.hpp>
@@ -17,6 +19,7 @@
 #include <phrase_block_reader.hpp>
 
 #include <lzend_parsing.hpp>
+#include <lzend_rev_phrase_trie.hpp>
 
 constexpr bool DEBUG = false;
 constexpr bool PROTOCOL = false;
@@ -34,7 +37,7 @@ constexpr uint64_t MAGIC =
 using Index = uint32_t;
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
-void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window, size_t const block_size, pm::Result& result) {
+void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block, size_t const block_size, pm::Result& result) {
     // init stats
     size_t num_phrases = 0;
     size_t num_ref = 0;
@@ -51,45 +54,84 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
 
     Index z = 0;
 
+    // initialize the compact trie
+    LZEndRevPhraseTrie<char, Index> trie(phrases);
+
     // prepare working memory
-    std::string window;
-    window.reserve(max_window); // TODO: we actually want 3 blocks in here?
+    std::string buffer(3 * max_block, 0); // contains the 3 most recent blocks
+
+    std::string_view window;   // the entire current window of 3 blocks (or less at the beginning)
 
     // global LZEnd algorithm
     size_t phase = 0;
     while(begin != end) {
-        // read next window into RAM
-        window.clear();
-        while(begin != end && window.size() < max_window) {
-            window.push_back(*begin++);
+        // slide previous two blocks
+        for(size_t i = 0; i < 2 * max_block; i++) {
+            buffer[i] = buffer[max_block + i];
+        }
+
+        // read next block
+        Index const curblock_buffer_offs = 2 * max_block;
+        Index curblock_size = 0;
+        {
+            while(begin != end && curblock_size < max_block) {
+                buffer[curblock_buffer_offs + curblock_size] = *begin++;
+                ++curblock_size;
+            }
+
+            // window = std::string_view(buffer.at(offs), buffer.at(offs + num_read));
+        }
+
+        // determine window and block boundaries
+        Index window_begin_glob;
+        Index curblock_window_offs;
+        switch(phase) {
+            case 0:
+                // in the very first phase, we only deal with a single block
+                window = std::string_view(buffer.data() + 2 * max_block, curblock_size);
+                window_begin_glob = 0;
+                curblock_window_offs = 0;
+                break;
+            
+            case 1:
+                // in the second phase, we additionally deal with one previous block
+                window = std::string_view(buffer.data() + max_block, max_block + curblock_size);
+                window_begin_glob = 0;
+                curblock_window_offs = max_block;
+                break;
+            
+            default:
+                // in subsequent phases, the window spans all 3 blocks
+                window = std::string_view(buffer.data(), 2 * max_block + curblock_size);
+                window_begin_glob = (phase - 2) * max_block;
+                curblock_window_offs = 2 * max_block;
+                break;
         }
         
-        Index const window_size = window.size();
-
         // compute inverse suffix array and LCP array of reverse window
         std::unique_ptr<uint32_t[]> lcp;
         std::unique_ptr<uint32_t[]> isa;
         {
             // reverse window
             std::string r;
-            r.reserve(window_size+1);
+            r.reserve(window.size()+1);
             std::copy(window.rbegin(), window.rend(), std::back_inserter(r));
             r.push_back(0); // make sure that the last suffix is the lexicographically smallest
 
             // compute inverse suffix array and LCP array of reverse window
             auto [_sa, _isa, _lcp] = tdc::text::sa_isa_lcp_u32(r.begin(), r.end());
-            assert(_sa[0] == window_size);
+            assert(_sa[0] == window.size());
 
             // keep inverse suffix array and LCP array, discard suffix array and reversed window
             lcp = std::move(_lcp);
             isa = std::move(_isa);
         }
 
-        // translate a position in the text to the corresponding position in the reverse text (which has a sentinel!)
-        auto pos_to_reverse = [&](Index const i) { return window_size - (i+1); };
+        // translate a position in the block to the corresponding position in the reverse block (which has a sentinel!)
+        auto pos_to_reverse = [&](Index const i) { return window.size() - (i+1); };
 
         // compute rmq on LCP array
-        RMQRMM64 rmq((std::make_signed_t<Index>*)lcp.get(), window_size+1); // argh... the RMQ constructor wants signed integers
+        RMQRMM64 rmq((std::make_signed_t<Index>*)lcp.get(), window.size()+1); // argh... the RMQ constructor wants signed integers
 
         // initialize "marked binary tree" (a.k.a. predessor + successor data structure)
         // position j is marked iff a phrase ends at position SA[j]
@@ -137,10 +179,22 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
         };
         #endif
 
+        // preprocess: mark positions of phrases that end in the previous two blocks within the window
+        {
+            Index x = z;
+            while(x > 0 && phrases[x].end >= window_begin_glob) {
+                assert(phrases[x].end < phase * max_block); // previously computed phrases cannot end in the new block that we just read from the input
+                mark(phrases[x].end - window_begin_glob, x);
+                --x;
+            }
+        }
+
         // begin LZEnd algorithm by [Kempa & Kosolobov, 2017]
-        for(Index m = 0; m < window_size; m++) {
-            auto const mglob = phase * max_window + m;
-            if constexpr(DEBUG) std::cout << "mglob=" << mglob << ", m=" << m << ", window[m]=" << display(window[m]) << std::endl;
+        for(Index mblock = 0; mblock < curblock_size; mblock++) {
+            auto const m = curblock_window_offs + mblock;  // the current position within the window
+            auto const mglob = phase * max_block + mblock; // the current global position in the input
+
+            if constexpr(DEBUG) std::cout << "mglob=" << mglob << ", mblock=" << mblock << ", m=" << m << ", window[m]=" << display(window[mblock]) << std::endl;
 
             Index p = 0;
             auto const len1 = phrases[z].len;                        // length of the current phrase
@@ -152,15 +206,15 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
             if(m > len1 && z > 1) assert(is_marked(m-1-len1));
             #endif
 
-            // query the marked LCP data structure for the previous position and compute LCEs
+            // query the marked LCP data structure for the previous position and compute LCEs (corresponds to absorbOne2 in [KK, 2017])
             Index lce1 = 0;
             Index lnk1 = 0;
 
-            // additionally, excluding the end position of the previous phrase
+            // additionally, excluding the end position of the previous phrase (corresponds to absorbTwo2 in [KK, 2017])
             Index lce2 = 0;
             Index lnk2 = 0;
 
-            if(m > 0 && len1 < window_size) {
+            if(m > 0 && len1 < window.size()) {
                 auto const isa_cur = isa[pos_to_reverse(m-1)];
                 
                 auto const marked_l1 = (isa_cur > 0) ? marked.predecessor(MarkedLCP{isa_cur - 1, DONTCARE}) : MResult{ false, 0 };
@@ -179,7 +233,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
                     }
 
                     // additionally, perform queries excluding the end position of the previous phrase
-                    if(m > len1 && len2 < window_size) {
+                    if(m > len1 && len2 < window.size()) {
                         auto const exclude = z - 1;
 
                         auto marked_l2 = marked_l1;
@@ -214,7 +268,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
             }
 
             char const last_char = window[m];
-            if(m > len1 && len2 < window_size && lce2 >= len2) {
+            if(m > len1 && len2 < window.size() && lce2 >= len2) {
                 // merge the two current phrases and extend their length by one
                 if constexpr(DEBUG) std::cout << "\tMERGE phrases " << z << " and " << z-1 << " to new phrase of length " << (lce2+1) << std::endl;
 
@@ -236,7 +290,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
                 // stats
                 ++num_consecutive_merges;
                 max_consecutive_merges = std::max(max_consecutive_merges, num_consecutive_merges);
-            } else if(m > 0 && len1 < window_size && lce1 >= len1) {
+            } else if(m > 0 && len1 < window.size() && lce1 >= len1) {
                 // extend the current phrase by one character
                 if constexpr(DEBUG) std::cout << "\tEXTEND phrase " << z << " to length " << (len1+1) << std::endl;
 
@@ -264,6 +318,10 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_window
             // updateRecent: register updated current phrase
             mark(m, z);
             assert(is_marked(m));
+        }
+
+        if(phase >= 2 && begin != end) {
+            // TODO: enter phrases that end in the first block within the window into the trie
         }
 
         // advance to next phase
