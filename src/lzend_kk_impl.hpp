@@ -342,8 +342,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                     assert(rwindow[rend] == phrases[ztrie].last); // sanity check
                     assert(len < window.size()); // Lemma 9 of [KK, 2017] implies this
 
-                    Index const new_phr = trie.insert(rwindow_fp, rend, rwindow.size() - 1 - rend);
-                    assert(new_phr == ztrie);
+                    trie.insert(rwindow_fp, rend, rwindow.size() - 1 - rend);
                     ++ztrie;
                 }
             }

@@ -81,6 +81,10 @@ private:
         return NodeNumber(i);
     }
 
+    void remove_last_node() {
+        nodes_.pop_back();
+    }
+
     void insert_nav(NodeNumber const v, NodeNumber const parent, StringView const& s, Index const pos) {
         auto const p_v = rst(nodes_[v].len, max_i_rst(nodes_[v].len, nodes_[parent].len));
         auto const h_v = s.fingerprint(pos, pos + p_v - 1);
@@ -91,19 +95,18 @@ private:
         nav_[hash] = v;
     }
 
-    NodeNumber approx_find(StringView const& s) const {
-        auto const len = s.length();
-
+    NodeNumber approx_find(StringView const& s, Index const pos, Index const len) const {
         Index p = 0;
         auto v = root_;
 
         // fat binary search for deepest node v such that str(v) is a prefix of s
-        auto j = std::bit_floor(s.length()); // j will be a power of two
+        auto j = std::bit_floor(len); // j will be a power of two
         while(j) {
             if(nodes_[v].len >= p + j) {
                 p += j;
-            } else {
-                auto const h = s.fingerprint(p + j - 1);
+            } else if(p + j < len) {
+                assert(pos + p + j - 1 < s.length());
+                auto const h = s.fingerprint(pos, pos + p + j - 1);
                 auto it = nav_.find(nav_hash(p + j, h));
                 if(it != nav_.end()) {
                     p += j;
@@ -115,7 +118,7 @@ private:
 
         // potentially follow next edge
         {
-            auto it = nodes_[v].map.find(s[nodes_[v].len]);
+            auto it = nodes_[v].map.find(s[pos + nodes_[v].len]);
             if(it != nodes_[v].map.end()) {
                 v = it->second;
             }
@@ -144,22 +147,25 @@ public:
         phrase_leaves_.push_back(root_);
     }
 
-    Index approx_find_phr(StringView const& s) const {
-        return nodes_[approx_find(s)].phr;
+    Index approx_find_phr(StringView const& s, Index const pos, Index const len) const {
+        return nodes_[approx_find(s, pos, len)].phr;
     }
 
     Index nca_len(Index const p, Index const q) const {
+        assert(p < phrase_leaves_.size());
+        assert(q < phrase_leaves_.size());
+
         // translate phrase numbers to corresponding leaves
         auto const u = phrase_leaves_[p];
         auto const v = phrase_leaves_[q];
 
-        assert(u != root_);
-        assert(v != root_);
+        assert(p == 0 || u != root_);
+        assert(q == 0 || v != root_);
 
         return nodes_[nca(u, v)].len;
     }
 
-    Index insert(StringView const& s, Index const pos, Index const len) {
+    void insert(StringView const& s, Index const pos, Index const len) {
         auto const phr = (Index)phrase_leaves_.size();
 
         auto v = root_;
@@ -186,7 +192,8 @@ public:
 
             nodes_[x].parent = root_;
         } else {
-            // v is the deepest possible node such that str(v) shares a common prefix with s that is > |str(parent)| and <= |str(v)|
+            // v is the deepest possible node such that str(v) shares a common prefix with s that <= |str(v)|
+            assert(s[pos] == (*lzend_)[nodes_[v].phr].last); // if these don't match, something is seriously off
 
             // we need to find the exact length of that common prefix
             // according to [Kempa & Kosolobov, 2017], we extract the relevant portion of an underlying phrase's suffix (via LZEnd's decoding mechanism),
@@ -216,14 +223,14 @@ public:
                 while(common_suffix_length < extract_len && extract_buffer_[common_suffix_length] == s[pos + common_suffix_length]) {
                     ++common_suffix_length;
                 }
+                assert(common_suffix_length >= 1); // we must have matched the first character in the root, otherwise we wouldn't be here
 
                 // navigate back up in the trie until the depth matches
                 while(v != root_ && nodes_[parent].len >= common_suffix_length) {
                     v = parent;
                     parent = nodes_[parent].parent;
                 }
-
-                assert(v != root_); // we cannot really reach the root, because we did navigate from it at first, which means the first character MUST match
+                assert(v != root_);
             }
             assert(common_suffix_length > nodes_[parent].len);
             assert(common_suffix_length <= nodes_[v].len);
@@ -260,18 +267,25 @@ public:
                 u = v;
             }
 
-            // make x a child of u
-            auto const c = UChar(s[pos + common_suffix_length]);
-            assert(!nodes_[u].map.contains(c));
-            nodes_[u].map.emplace(c, x);
+            if(len > nodes_[u].len) {
+                // make x a child of u
+                auto const c = UChar(s[pos + common_suffix_length]);
+                assert(!nodes_[u].map.contains(c));
+                nodes_[u].map.emplace(c, x);
 
-            nodes_[x].parent = u;
-            insert_nav(x, u, s, pos);
+                nodes_[x].parent = u;
+                insert_nav(x, u, s, pos);
+            } else {
+                assert(len == nodes_[u].len);
+
+                // the string is already contained in the trie!
+                remove_last_node();
+                phrase_leaves_.push_back(u);
+                return;
+            }
         }
 
         phrase_leaves_.push_back(x);
         assert(phrase_leaves_[phr] == x);
-        
-        return phr;
     }
 };

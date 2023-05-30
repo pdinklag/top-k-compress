@@ -66,7 +66,7 @@ TEST_SUITE("kempa_kosolobov_2017") {
         // ensure that we don't find any bogus in an empty trie
         {
             FPString fx("xxx");
-            REQUIRE(trie.approx_find_phr(fx) == 0);
+            REQUIRE(trie.approx_find_phr(fx, 0, fx.length()) == 0);
         }
 
         parsing.emplace_back(0, 1, 'a'); // 1 - a
@@ -78,63 +78,86 @@ TEST_SUITE("kempa_kosolobov_2017") {
         
         // insert concatenated phrases, reversed
         FPString f1("a");
-        REQUIRE(trie.insert(f1, 0, f1.length()) == 1);
+        trie.insert(f1, 0, f1.length());
         
         FPString f2("ba");
-        REQUIRE(trie.insert(f2, 0, f2.length()) == 2);
+        trie.insert(f2, 0, f2.length());
 
         FPString f3("baba");
-        REQUIRE(trie.insert(f3, 0, f3.length()) == 3);
+        trie.insert(f3, 0, f3.length());
 
         FPString f4("bbababa");
-        REQUIRE(trie.insert(f4, 0, f4.length()) == 4);
+        trie.insert(f4, 0, f4.length());
 
         FPString f5("abbbababa");
-        REQUIRE(trie.insert(f5, 0, f5.length()) == 5);
+        trie.insert(f5, 0, f5.length());
 
         FPString f6("aabbbababbbababa");
-        REQUIRE(trie.insert(f6, 0, f6.length()) == 6);
+        trie.insert(f6, 0, f6.length());
 
         // ensure that we don't find any bogus
         {
             FPString fx("xxx");
-            REQUIRE(trie.approx_find_phr(fx) == 0);
+            REQUIRE(trie.approx_find_phr(fx, 0, fx.length()) == 0);
         }
 
         // try to find reverse phrases back
-        REQUIRE(trie.approx_find_phr(f1) == 1);
-        REQUIRE(trie.approx_find_phr(f2) == 2);
-        REQUIRE(trie.approx_find_phr(f3) == 3);
-        REQUIRE(trie.approx_find_phr(f4) == 4);
-        REQUIRE(trie.approx_find_phr(f5) == 5);
-        REQUIRE(trie.approx_find_phr(f6) == 6);
+        REQUIRE(trie.approx_find_phr(f1, 0, f1.length()) == 1);
+        REQUIRE(trie.approx_find_phr(f2, 0, f2.length()) == 2);
+        REQUIRE(trie.approx_find_phr(f3, 0, f3.length()) == 3);
+        REQUIRE(trie.approx_find_phr(f4, 0, f4.length()) == 4);
+        REQUIRE(trie.approx_find_phr(f5, 0, f5.length()) == 5);
+        REQUIRE(trie.approx_find_phr(f6, 0, f6.length()) == 6);
+
+        // substring variants
+        REQUIRE(trie.approx_find_phr(f6, f6.length() - f1.length(), f1.length()) == 1);
+        REQUIRE(trie.approx_find_phr(f6, f6.length() - f2.length(), f2.length()) == 2);
+        REQUIRE(trie.approx_find_phr(f6, f6.length() - f3.length(), f3.length()) == 3);
+        REQUIRE(trie.approx_find_phr(f6, f6.length() - f4.length(), f4.length()) == 4);
+        REQUIRE(trie.approx_find_phr(f6, f6.length() - f5.length(), f5.length()) == 5);
 
         // try to find suffixes
         {
             FPString rsuf("bab");
-            REQUIRE(trie.approx_find_phr(rsuf) == 3);
+            REQUIRE(trie.approx_find_phr(rsuf, 0, rsuf.length()) == 3);
         }
         {
             FPString rsuf("bb");
-            REQUIRE(trie.approx_find_phr(rsuf) == 4);
+            REQUIRE(trie.approx_find_phr(rsuf, 0, rsuf.length()) == 4);
         }
         {
             FPString rsuf("ab");
-            REQUIRE(trie.approx_find_phr(rsuf) == 5);
+            REQUIRE(trie.approx_find_phr(rsuf, 0, rsuf.length()) == 5);
         }
         {
             FPString rsuf("aa");
-            REQUIRE(trie.approx_find_phr(rsuf) == 6);
+            REQUIRE(trie.approx_find_phr(rsuf, 0, rsuf.length()) == 6);
         }
         {
             FPString rsuf("a");
-            auto const p = trie.approx_find_phr(rsuf);
+            auto const p = trie.approx_find_phr(rsuf, 0, rsuf.length());
             REQUIRE((p == 1 || p == 5 || p == 6));
         }
         {
             FPString rsuf("b");
-            auto const p = trie.approx_find_phr(rsuf);
+            auto const p = trie.approx_find_phr(rsuf, 0, rsuf.length());
             REQUIRE((p == 2 || p == 3 || p == 4));
+        }
+        {
+            // substring variants
+            REQUIRE(trie.approx_find_phr(f6, 4, 3) == 3); // substring "bab"
+            REQUIRE(trie.approx_find_phr(f6, 10, 3) == 3); // substring "bab"
+            REQUIRE(trie.approx_find_phr(f6, 12, 3) == 3); // substring "bab"
+            REQUIRE(trie.approx_find_phr(f6, 2, 2) == 4); // substring "bb"
+            REQUIRE(trie.approx_find_phr(f6, 3, 2) == 4); // substring "bb"
+            REQUIRE(trie.approx_find_phr(f6, 8, 2) == 4); // substring "bb"
+            REQUIRE(trie.approx_find_phr(f6, 9, 2) == 4); // substring "bb"
+            REQUIRE(trie.approx_find_phr(f6, 1, 2) == 5); // substring "ab"
+            REQUIRE(trie.approx_find_phr(f6, 5, 2) == 5); // substring "ab"
+            REQUIRE(trie.approx_find_phr(f6, 7, 2) == 5); // substring "ab"
+            REQUIRE(trie.approx_find_phr(f6, 11, 2) == 5); // substring "ab"
+            REQUIRE(trie.approx_find_phr(f6, 13, 2) == 5); // substring "ab"
+            REQUIRE(trie.approx_find_phr(f6, 0, 2) == 6); // substring "aa"
         }
     }
 
