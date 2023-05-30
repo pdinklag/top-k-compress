@@ -58,14 +58,14 @@ TEST_SUITE("kempa_kosolobov_2017") {
     }
 
     TEST_CASE("trie") {
-        using String = FPStringView<char>;
+        using FPString = FPStringView<char>;
 
         LZEndParsing<char, uint32_t> parsing;
         LZEndRevPhraseTrie<char, uint32_t> trie(parsing);
 
         // ensure that we don't find any bogus in an empty trie
         {
-            String fx("xxx");
+            FPString fx("xxx");
             REQUIRE(trie.approx_find_phr(fx) == 0);
         }
 
@@ -77,27 +77,27 @@ TEST_SUITE("kempa_kosolobov_2017") {
         parsing.emplace_back(5, 6, 'a'); // 6 - babbbaa
         
         // insert concatenated phrases, reversed
-        String f1("a");
+        FPString f1("a");
         REQUIRE(trie.insert(f1, 0, f1.length()) == 1);
         
-        String f2("ba");
+        FPString f2("ba");
         REQUIRE(trie.insert(f2, 0, f2.length()) == 2);
 
-        String f3("baba");
+        FPString f3("baba");
         REQUIRE(trie.insert(f3, 0, f3.length()) == 3);
 
-        String f4("bbababa");
+        FPString f4("bbababa");
         REQUIRE(trie.insert(f4, 0, f4.length()) == 4);
 
-        String f5("abbbababa");
+        FPString f5("abbbababa");
         REQUIRE(trie.insert(f5, 0, f5.length()) == 5);
 
-        String f6("aabbbababbbababa");
+        FPString f6("aabbbababbbababa");
         REQUIRE(trie.insert(f6, 0, f6.length()) == 6);
 
         // ensure that we don't find any bogus
         {
-            String fx("xxx");
+            FPString fx("xxx");
             REQUIRE(trie.approx_find_phr(fx) == 0);
         }
 
@@ -111,28 +111,28 @@ TEST_SUITE("kempa_kosolobov_2017") {
 
         // try to find suffixes
         {
-            String rsuf("bab");
+            FPString rsuf("bab");
             REQUIRE(trie.approx_find_phr(rsuf) == 3);
         }
         {
-            String rsuf("bb");
+            FPString rsuf("bb");
             REQUIRE(trie.approx_find_phr(rsuf) == 4);
         }
         {
-            String rsuf("ab");
+            FPString rsuf("ab");
             REQUIRE(trie.approx_find_phr(rsuf) == 5);
         }
         {
-            String rsuf("aa");
+            FPString rsuf("aa");
             REQUIRE(trie.approx_find_phr(rsuf) == 6);
         }
         {
-            String rsuf("a");
+            FPString rsuf("a");
             auto const p = trie.approx_find_phr(rsuf);
             REQUIRE((p == 1 || p == 5 || p == 6));
         }
         {
-            String rsuf("b");
+            FPString rsuf("b");
             auto const p = trie.approx_find_phr(rsuf);
             REQUIRE((p == 2 || p == 3 || p == 4));
         }
@@ -158,28 +158,53 @@ TEST_SUITE("kempa_kosolobov_2017") {
     }
 
     TEST_CASE("fp") {
-        using String = FPStringView<char>;
+        using FPString = FPStringView<char>;
 
-        String s("abaaababaaab");
+        SUBCASE("substrings") {
+            FPString s("abaaababaaab");
+            {
+                FPString x("aba");
+                auto const fp_x = x.fingerprint(x.length() - 1);
+                REQUIRE(s.fingerprint(0,2) == fp_x);
+                REQUIRE(s.fingerprint(1,3) != fp_x);
+                REQUIRE(s.fingerprint(2,4) != fp_x);
+                REQUIRE(s.fingerprint(3,5) != fp_x);
+                REQUIRE(s.fingerprint(4,6) == fp_x);
+                REQUIRE(s.fingerprint(5,7) != fp_x);
+                REQUIRE(s.fingerprint(6,8) == fp_x);
+            }
 
-        {
-            String x("aba");
-            auto const fp_x = x.fingerprint(x.length() - 1);
-            REQUIRE(s.fingerprint(0,2) == fp_x);
-            REQUIRE(s.fingerprint(1,3) != fp_x);
-            REQUIRE(s.fingerprint(2,4) != fp_x);
-            REQUIRE(s.fingerprint(3,5) != fp_x);
-            REQUIRE(s.fingerprint(4,6) == fp_x);
-            REQUIRE(s.fingerprint(5,7) != fp_x);
-            REQUIRE(s.fingerprint(6,8) == fp_x);
+            {
+                FPString y("abaaab");
+                auto const fp_y = y.fingerprint(y.length() - 1);
+                REQUIRE(s.fingerprint(0,5) == fp_y);
+                REQUIRE(s.fingerprint(1,5) != fp_y);
+                REQUIRE(s.fingerprint(6,11) == fp_y);
+            }
         }
+        
+        SUBCASE("append") {
+            std::string const s = "asdfb??3227ZabfewajeAAFFfjfb32j3b1baQPbabaf__as+a+aewf#2fajwsfwqejfgbharea";
 
-        {
-            String y("abaaab");
-            auto const fp_y = y.fingerprint(y.length() - 1);
-            REQUIRE(s.fingerprint(0,5) == fp_y);
-            REQUIRE(s.fingerprint(1,5) != fp_y);
-            REQUIRE(s.fingerprint(6,11) == fp_y);
+            // compute fingerprint of s using single character appending
+            uint64_t fp_single = 0;
+            for(size_t i = 0; i < s.length(); i++) {
+                fp_single = FPString::append(fp_single, s[i]);
+            }
+
+            // now compute it using two substrings of half the size
+            uint64_t fp_prefix = 0;
+            for(size_t i = 0; i < s.length() / 2; i++) {
+                fp_prefix = FPString::append(fp_prefix, s[i]);
+            }
+
+            uint64_t fp_suffix = 0;
+            for(size_t i = s.length() / 2; i < s.length(); i++) {
+                fp_suffix = FPString::append(fp_suffix, s[i]);
+            }
+
+            uint64_t fp_combined = FPString::append(fp_prefix, fp_suffix, s.length() - s.length() / 2);
+            REQUIRE(fp_combined == fp_single);
         }
     }
 }

@@ -131,7 +131,8 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             isa = std::move(_isa);
         }
 
-        FPStringView<char> rwindow_fp(rwindow);
+        using FPString = FPStringView<char>;
+        FPString rwindow_fp(rwindow);
 
         // translate a position in the block to the corresponding position in the reverse block (which has a sentinel!)
         auto pos_to_reverse = [&](Index const i) { return window.size() - (i+1); };

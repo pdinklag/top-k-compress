@@ -19,6 +19,21 @@ private:
 
     static constexpr size_t BASE = 256;
 
+public:
+    // append the given character to a given fingerprint
+    inline static uint64_t append(uint64_t const fp, Char const c) {
+        return Mersenne61::mod(uint128_t(fp) * uint128_t(BASE) + uint128_t(c));
+    }
+
+    // append the given string (defined by fingerprint and length) to a given fingerprint
+    inline static uint64_t append(uint64_t fp, uint64_t const fp_s, size_t const len_s) {
+        for(size_t i = 0; i < len_s; i++) {
+            fp = Mersenne61::mod(uint128_t(fp) * uint128_t(BASE));
+        }
+        return Mersenne61::mod(fp + fp_s);
+    }
+
+private:
     std::string_view view_;
     std::vector<uint64_t> fp_;
     std::vector<uint64_t> pow_base_;
@@ -29,9 +44,7 @@ public:
         pow_base_[0] = 1;
 
         for(size_t i = 1; i < s.length(); i++) {
-            UChar const c = UChar(s[i]);
-
-            fp_[i] = Mersenne61::mod(uint128_t(fp_[i-1]) * uint128_t(BASE) + uint128_t(c));
+            fp_[i] = append(fp_[i-1], s[i]);
             pow_base_[i] = Mersenne61::mulmod(pow_base_[i-1], BASE);
         }
     }
