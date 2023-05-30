@@ -37,11 +37,12 @@ public:
 
     // computes a hash for a string with the given length and fingerprint
     static constexpr uint64_t nav_hash(Index const len, uint64_t const fp) {
-        return len - fp; // TODO
+        return 963ULL * len - fp;
     }
 
-private:
     using NodeNumber = Index;
+
+private:
     using UChar = std::make_unsigned_t<Char>;
 
     static constexpr NodeNumber root_ = 0;
@@ -80,13 +81,14 @@ private:
         return NodeNumber(i);
     }
 
-    void insert_nav(NodeNumber const v, NodeNumber const parent, StringView const& s) {
+    void insert_nav(NodeNumber const v, NodeNumber const parent, StringView const& s, Index const pos) {
         auto const p_v = rst(nodes_[v].len, max_i_rst(nodes_[v].len, nodes_[parent].len));
-        auto const h_v = s.fingerprint(p_v - 1);
+        auto const h_v = s.fingerprint(pos, pos + p_v - 1);
         auto const hash = nav_hash(p_v, h_v);
-        assert(!nav_.contains(hash));
 
-        nav_.emplace(hash, v);
+        // assert(!nav_.contains(hash));
+        // nav_.emplace(hash, v);
+        nav_[hash] = v;
     }
 
     NodeNumber approx_find(StringView const& s) const {
@@ -157,16 +159,15 @@ public:
         return nodes_[nca(u, v)].len;
     }
 
-    Index insert(StringView const& s) {
+    Index insert(StringView const& s, Index const pos, Index const len) {
         auto const phr = (Index)phrase_leaves_.size();
-        auto const len = s.length();
 
         auto v = root_;
         NodeNumber parent = -1;
-        size_t d = nodes_[v].len;
+        size_t d = 0;
 
         NodeNumber found;
-        while(d < len && nodes_[v].try_get(UChar(s[d]), found)) {
+        while(d < len && nodes_[v].try_get(UChar(s[pos + d]), found)) {
             parent = v;
             v = found;
             d = nodes_[v].len;
@@ -180,13 +181,12 @@ public:
             // v is the root, which means that no prefix of s is contained in the trie
             assert(d == 0);
 
-            nodes_[root_].map.emplace(UChar(s[0]), x);
-            insert_nav(x, 0, s);
+            nodes_[root_].map.emplace(UChar(s[pos]), x);
+            insert_nav(x, 0, s, pos);
 
             nodes_[x].parent = root_;
         } else {
             // v is the deepest possible node such that str(v) shares a common prefix with s that is > |str(parent)| and <= |str(v)|
-            assert(nodes_[v].len < len);
 
             // we need to find the exact length of that common prefix
             // according to [Kempa & Kosolobov, 2017], we extract the relevant portion of an underlying phrase's suffix (via LZEnd's decoding mechanism),
@@ -199,57 +199,59 @@ public:
             //   - not only does a node to be removed have to be a leaf
             //   - it must furthermore represent a phrase that is not used by any other phrase in the trie
             // - SOLUTION: only keep unused phrases represented by a leaf in the PQ
-            Index common_prefix_length;
-            auto const extract_len = nodes_[v].len - nodes_[parent].len;
+            Index common_suffix_length;
+            char mismatch;
+            auto const extract_len = std::min(len, nodes_[v].len);
             {
                 // extract suffix of phrase v
-                // TODO: assert that extract_len isn't "too long" -- the paper implies that it shouldn't exceed lg l, but WHY? (by the structure of rst / max_i_rst ?)
+                // FIXME: compare more efficiently -- it can be done WHILE extracting the suffix and only until a mismatch
                 extract_buffer_.clear();
-                extract_buffer_.reserve(extract_len);
+                extract_buffer_.reserve(len);
                 lzend_->extract_phrase_suffix(std::back_inserter(extract_buffer_), nodes_[v].phr, extract_len); // TODO: extract more efficiently and only until we mismatch?
                 std::reverse(extract_buffer_.begin(), extract_buffer_.end());
 
                 // compare
-                common_prefix_length = nodes_[parent].len;
+                common_suffix_length = 0;
 
-                size_t i = 0; // position in extracted phrase (REVERSE)
-                size_t j = 0; // offset position in phrase to be inserted (REVERSE)
-                while(j < extract_len && extract_buffer_[i] == s[common_prefix_length + j]) {
-                    ++j;
-                    ++i;
+                while(common_suffix_length < extract_len && extract_buffer_[common_suffix_length] == s[pos + common_suffix_length]) {
+                    ++common_suffix_length;
                 }
-                common_prefix_length += j;
+
+                // navigate back up in the trie until the depth matches
+                while(v != root_ && nodes_[parent].len >= common_suffix_length) {
+                    v = parent;
+                    parent = nodes_[parent].parent;
+                }
+
+                assert(v != root_); // we cannot really reach the root, because we did navigate from it at first, which means the first character MUST match
             }
-            assert(common_prefix_length > nodes_[parent].len);
-            assert(common_prefix_length <= nodes_[v].len);
+            assert(common_suffix_length > nodes_[parent].len);
+            assert(common_suffix_length <= nodes_[v].len);
 
             // determine the node to which to add a child
             NodeNumber u;
-            if(common_prefix_length < nodes_[v].len) {
+            if(common_suffix_length < nodes_[v].len) {
                 // we split the edge from parent to v and create a new inner node
-                u = create_node();
 
-                nodes_[u].len = common_prefix_length;
+                u = create_node();
+                nodes_[u].len = common_suffix_length;
                 nodes_[u].phr = nodes_[v].phr; // propagate any child's phrase number - we might as well use the new phr
 
                 // replace v by u as child of parent
-                // nb: I first thought that the nav entry for v has to be removed and recomputed
-                //     that would be difficult, because we don't have its entire string
-                //     however, by construction of the trie via rst with max_i_rst, this should *never* be necessary!
                 {
-                    auto const c = UChar(s[nodes_[parent].len]);
+                    auto const c = UChar(s[pos + nodes_[parent].len]);
                     assert(nodes_[parent].map.contains(c));
                     assert(nodes_[parent].map[c] == v);
                     nodes_[parent].map[c] = u;
 
                     nodes_[u].parent = parent;
 
-                    insert_nav(u, parent, s);
+                    insert_nav(u, parent, s, pos);
                 }
 
                 // make v a child of new node u
                 {
-                    auto const c = UChar(extract_buffer_[common_prefix_length - nodes_[parent].len]);
+                    auto const c = UChar(extract_buffer_[common_suffix_length]);
                     nodes_[u].map.emplace(c, v);
                     nodes_[v].parent = u;
                 }
@@ -259,12 +261,12 @@ public:
             }
 
             // make x a child of u
-            auto const c = UChar(s[common_prefix_length]);
+            auto const c = UChar(s[pos + common_suffix_length]);
             assert(!nodes_[u].map.contains(c));
             nodes_[u].map.emplace(c, x);
 
             nodes_[x].parent = u;
-            insert_nav(x, u, s);
+            insert_nav(x, u, s, pos);
         }
 
         phrase_leaves_.push_back(x);

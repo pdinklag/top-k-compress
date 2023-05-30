@@ -53,9 +53,13 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     LZEndParsing<char, Index> phrases;
 
     Index z = 0;
+    Index ztrie = 1; // the first phrase that has not yet been entered into the trie
 
     // initialize the compact trie
-    LZEndRevPhraseTrie<char, Index> trie(phrases);
+    using Trie = LZEndRevPhraseTrie<char, Index>;
+    using NodeNumber = Trie::NodeNumber;
+
+    Trie trie(phrases);
 
     // prepare working memory
     std::string buffer(3 * max_block, 0); // contains the 3 most recent blocks
@@ -111,21 +115,23 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
         // compute inverse suffix array and LCP array of reverse window
         std::unique_ptr<uint32_t[]> lcp;
         std::unique_ptr<uint32_t[]> isa;
+        std::string rwindow;
         {
             // reverse window
-            std::string r;
-            r.reserve(window.size()+1);
-            std::copy(window.rbegin(), window.rend(), std::back_inserter(r));
-            r.push_back(0); // make sure that the last suffix is the lexicographically smallest
+            rwindow.reserve(window.size()+1);
+            std::copy(window.rbegin(), window.rend(), std::back_inserter(rwindow));
+            rwindow.push_back(0); // make sure that the last suffix is the lexicographically smallest
 
             // compute inverse suffix array and LCP array of reverse window
-            auto [_sa, _isa, _lcp] = tdc::text::sa_isa_lcp_u32(r.begin(), r.end());
+            auto [_sa, _isa, _lcp] = tdc::text::sa_isa_lcp_u32(rwindow.begin(), rwindow.end());
             assert(_sa[0] == window.size());
 
             // keep inverse suffix array and LCP array, discard suffix array and reversed window
             lcp = std::move(_lcp);
             isa = std::move(_isa);
         }
+
+        FPStringView<char> rwindow_fp(rwindow);
 
         // translate a position in the block to the corresponding position in the reverse block (which has a sentinel!)
         auto pos_to_reverse = [&](Index const i) { return window.size() - (i+1); };
@@ -321,7 +327,22 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
         }
 
         if(phase >= 2 && begin != end) {
-            // TODO: enter phrases that end in the first block within the window into the trie
+            // insert phrases that end in the first block within the window into the trie
+            // FIXME: for testing, we only consider the very first block of the text -- once the trie is properly queried and duplicate phrases can be avoided, this MUST be removed
+            if(phase == 2) {
+                Index const border = window_begin_glob + max_block;
+                while(ztrie <= z && phrases[ztrie].end < border) {
+                    // insert phrases[ztrie]
+                    Index const rend = pos_to_reverse(phrases[ztrie].end - window_begin_glob);
+                    Index const len = phrases[ztrie].len;
+                    assert(rwindow[rend] == phrases[ztrie].last); // sanity check
+                    assert(len < window.size()); // Lemma 9 of [KK, 2017] implies this
+
+                    Index const new_phr = trie.insert(rwindow_fp, rend, rwindow.size() - 1 - rend);
+                    assert(new_phr == ztrie);
+                    ++ztrie;
+                }
+            }
         }
 
         // advance to next phase

@@ -78,22 +78,22 @@ TEST_SUITE("kempa_kosolobov_2017") {
         
         // insert concatenated phrases, reversed
         String f1("a");
-        REQUIRE(trie.insert(f1) == 1);
+        REQUIRE(trie.insert(f1, 0, f1.length()) == 1);
         
         String f2("ba");
-        REQUIRE(trie.insert(f2) == 2);
+        REQUIRE(trie.insert(f2, 0, f2.length()) == 2);
 
         String f3("baba");
-        REQUIRE(trie.insert(f3) == 3);
+        REQUIRE(trie.insert(f3, 0, f3.length()) == 3);
 
         String f4("bbababa");
-        REQUIRE(trie.insert(f4) == 4);
+        REQUIRE(trie.insert(f4, 0, f4.length()) == 4);
 
         String f5("abbbababa");
-        REQUIRE(trie.insert(f5) == 5);
+        REQUIRE(trie.insert(f5, 0, f5.length()) == 5);
 
         String f6("aabbbababbbababa");
-        REQUIRE(trie.insert(f6) == 6);
+        REQUIRE(trie.insert(f6, 0, f6.length()) == 6);
 
         // ensure that we don't find any bogus
         {
