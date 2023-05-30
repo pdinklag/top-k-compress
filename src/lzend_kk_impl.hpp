@@ -8,7 +8,7 @@
 #include <tdc/util/concepts.hpp>
 
 #include <tdc/text/util.hpp>
-#include <RMQRMM64.h>
+#include <alx_rmq.hpp>
 #include <ankerl/unordered_dense.h>
 
 #include <display.hpp>
@@ -153,7 +153,8 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
         auto pos_to_reverse = [&](Index const i) { return window.size() - (i+1); };
 
         // compute rmq on LCP array
-        RMQRMM64 rmq((std::make_signed_t<Index>*)lcp.get(), window.size()+1); // argh... the RMQ constructor wants signed integers
+        alx::rmq::rmq_n rmq(lcp.get(), window.size() + 1);
+        // RMQRMM64 rmq((std::make_signed_t<Index>*)lcp.get(), window.size()+1); // argh... the RMQ constructor wants signed integers
 
         // initialize "marked binary tree" (a.k.a. predessor + successor data structure)
         // position j is marked iff a phrase ends at position SA[j]
@@ -209,9 +210,9 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
             // look for the marked LCPs sorrounding the suffix array position of q
             auto const marked_l = (isa_q > 0) ? marked.predecessor(MarkedLCP{isa_q - 1, DONTCARE}) : MResult{ false, 0 };
-            auto const lce_l = marked_l.exists ? lcp[rmq.queryRMQ(marked_l.key.sa_pos + 1, isa_q)] : 0;
+            auto const lce_l = marked_l.exists ? lcp[rmq.rmq(marked_l.key.sa_pos + 1, isa_q)] : 0;
             auto const marked_r = marked.successor(MarkedLCP{isa_q + 1, DONTCARE});
-            auto const lce_r = marked_r.exists ? lcp[rmq.queryRMQ(isa_q + 1, marked_r.key.sa_pos)] : 0;
+            auto const lce_r = marked_r.exists ? lcp[rmq.rmq(isa_q + 1, marked_r.key.sa_pos)] : 0;
 
             // select the longer LCP and return it along with the corresponding phrase number
             return (lce_l > lce_r) ? std::pair(lce_l, marked_l.key.phrase_num) : std::pair(lce_r, marked_r.key.phrase_num);
