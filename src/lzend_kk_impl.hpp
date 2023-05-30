@@ -52,6 +52,9 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     // initialize buffer for LZ-End parsing
     LZEndParsing<char, Index> phrases;
 
+    std::vector<uint64_t> phrase_hashes;
+    phrase_hashes.emplace_back(0); // phrase 0
+
     Index z = 0;
     Index ztrie = 1; // the first phrase that has not yet been entered into the trie
 
@@ -287,12 +290,15 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
                 // delete current phrase
                 phrases.pop_back();
+                uint64_t const suffix_hash = phrase_hashes[z];
+                phrase_hashes.pop_back();
                 --z;
                 assert(z); // nb: must still have at least phrase 0
 
                 // merge phrases
                 p = lnk2;
                 phrases.replace_back(p, len2 + 1, last_char);
+                phrase_hashes[z] = FPString::append(FPString::append(phrase_hashes[z], suffix_hash, len1), last_char);
 
                 // stats
                 ++num_consecutive_merges;
@@ -306,6 +312,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
                 p = lnk1;
                 phrases.replace_back(p, len1 + 1, last_char);
+                phrase_hashes[z] = FPString::append(phrase_hashes[z], last_char);
 
                 // stats
                 num_consecutive_merges = 0;
@@ -315,6 +322,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 
                 ++z;
                 phrases.emplace_back(p, 1, last_char);
+                phrase_hashes.emplace_back(FPString::append(0, last_char));
 
                 // stats
                 num_consecutive_merges = 0;
@@ -358,7 +366,12 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     {
         size_t i = 0;
         for(size_t j = 1; j <= z; j++) {
-            if constexpr(PROTOCOL) std::cout << "factor #" << j << ": i=" << i << ", (" << phrases[j].link << ", " << (phrases[j].link ? phrases[j].len-1 : 0) << ", " << display(phrases[j].last) << ")" << std::endl;
+            if constexpr(PROTOCOL) {
+                std::cout << "phrase #" << j << ": i=" << i <<
+                    ", (" << phrases[j].link << ", " << (phrases[j].link ? phrases[j].len-1 : 0) << ", " << display(phrases[j].last) <<
+                    "), hash=0x" << std::hex << phrase_hashes[j] << std::dec << std::endl;
+            }
+            
             i += phrases[j].len;
 
             ++num_phrases;
