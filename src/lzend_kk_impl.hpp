@@ -463,7 +463,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 // updateRecent: unregister current phrase
                 unmark(m - 1);
 
-                if(localTwo) {
+                if(localOne) {
                     // we are here because of absorbTwo2 (local index)
                     p = ptr;
                 } else {
