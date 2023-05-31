@@ -256,7 +256,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             if constexpr(DEBUG) {
                 std::cout << std::endl;
                 std::cout << "--- mblock=" << mblock << " -> mglob=" << mglob << " ---" << std::endl;
-                std::cout << "next character:  " << display(window[mblock]) << std::endl;
+                std::cout << "next character: " << display(window[mblock]) << std::endl;
             }
 
             Index p = 0;
@@ -280,7 +280,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 auto const plen = phrases[p].len;
                 if(p > 0 && m > plen) {
                     if constexpr(DEBUG) {
-                        std::cout << "\ttesting whether phrases " << p << " and " << (p-1) << " have a common suffix of length " << len << " with current input suffix" << std::endl;
+                        std::cout << "\ttesting whether trie phrases " << p << " and " << (p-1) << " have a common suffix of length " << len << " with current input suffix" << std::endl;
                     }
                     assert(plen > 0);
 
@@ -292,11 +292,10 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                                 if(lnks[pos] != NIL) {
                                     auto const nca_len = trie.nca_len(lnks[pos], p-1);
                                     if(nca_len + plen >= len) {
-                                        std::cout << "\t\tTRUE" << std::endl;
+                                        std::cout << "\t\tTRUE - combined length of NCA and phrase matches" << std::endl;
                                         return true;
                                     } else {
                                         std::cout << "\t\tFALSE - combined length of NCA and phrase do not match" << std::endl;
-                                        return true;
                                     }
                                 } else {
                                     if constexpr(DEBUG) {
@@ -307,22 +306,67 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                             } else {
                                 if constexpr(DEBUG) {
                                     auto const posglob = window_begin_glob + pos;                         
-                                    std::cout << "\t\tFALSE - combined length of phrase " << p << " (" << plen << ") and lens[" << posglob << "]=" << lens[pos] << " minus 1 does not match" << std::endl;
+                                    std::cout << "\t\tFALSE - combined length of trie phrase " << p << " (" << plen << ") and lens[" << posglob << "]=" << lens[pos] << " minus 1 does not match" << std::endl;
                                 }
                             }
                         } else {
                             if constexpr(DEBUG) {
-                                std::cout << "\t\tFALSE - phrase hash (0x" << std::hex << phrase_hashes[p] << " does not match current suffix hash (0x" << lhash << std::dec << ")" << std::endl;
+                                std::cout << "\t\tFALSE - trie phrase hash (0x" << std::hex << phrase_hashes[p] << " does not match current suffix hash (0x" << lhash << std::dec << ")" << std::endl;
                             }
                         }
                     } else {
                         if constexpr(DEBUG) {
-                            std::cout << "\t\tFALSE - phrase " << p << " is already too long by itself" << std::endl;
+                            std::cout << "\t\tFALSE - trie phrase " << p << " is already too long by itself" << std::endl;
                         }
                     }
                 }
                 return false;
-                // if(phrases[p].len >= len || phrase_hashes[p] != )
+            };
+
+            auto absorbOne = [&](){
+                if(p > 0 && m > 0) {
+                    if constexpr(DEBUG) {
+                        std::cout << "\ttesting whether trie phrase " << p << " has a common suffix with current phrase of length " << len1 << std::endl;
+                    }
+                    auto const plen = phrases[p].len;
+                    if(plen < len1) {
+                        std::cout << "\t\ttrie phrase " << p << " is shorter than current phrase, delegating" << std::endl;
+                        if(commonPart(len1)) {
+                            if constexpr(DEBUG) {
+                                std::cout << "\tabsorbOne returned true" << std::endl;
+                            }
+                            return true;
+                        }
+                    } else {
+                        if(phrases[p].last == phrases[z].last) {
+                            if(len1 > 1 && lnks[m-1] == NIL) {
+                                if constexpr(DEBUG) {
+                                    std::cout << "\t\tFALSE - a phrase ends at the previous position, but the trie link is NIL" << std::endl;
+                                }
+                            } else {
+                                if(len1 == 1) {
+                                    std::cout << "\t\tTRUE - last character matches for length-1 phrase" << std::endl;
+                                    std::cout << "\tabsorbOne returned true" << std::endl;
+                                    return true;
+                                } else {
+                                    auto const nca_len = trie.nca_len(lnks[m-1], phrases[p].link);
+                                    if(nca_len + 1 >= len1) {
+                                        std::cout << "\t\tTRUE - NCA length plus 1 exceeds current phrase length" << std::endl;
+                                        std::cout << "\tabsorbOne returned true" << std::endl;
+                                        return true;
+                                    } else  {
+                                        std::cout << "\t\tFALSE - the NCA length plus 1 is too short" << std::endl;
+                                    }
+                                }
+                            }
+                        } else {
+                            if constexpr(DEBUG) {
+                                std::cout << "\t\tFALSE: end characters do not match" << std::endl;
+                            }
+                        }
+                    }
+                }
+                return false;
             };
 
             // query the marked LCP data structure for the previous position and compute LCE
@@ -341,7 +385,14 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
             // query the trie for a suffix matching the two current phrases
             auto absorbTwo = [&](){
-                return commonPart(len2);
+                if(commonPart(len2)) {
+                    if constexpr(DEBUG) {
+                        std::cout << "\tabsorbTwo returned true" << std::endl;
+                    }
+                    return true;
+                } else {
+                    return false;
+                }
             };
 
             // query the marked LCP data structure for the previous position, excluding the most current phrase, and compute LCE
@@ -372,8 +423,9 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             char const next_char = window[m];
 
             Index ptr;
-            bool local = false;
-            if(absorbTwo() || (local = absorbTwo2(ptr))) {
+            bool localTwo = false;
+            bool localOne = false;
+            if(absorbTwo() || (localTwo = absorbTwo2(ptr))) {
                 // merge the two current phrases and extend their length by one
                 if constexpr(DEBUG) std::cout << "\tMERGE phrases " << z << " and " << z-1 << " to new phrase of length " << (len2+1) << std::endl;
 
@@ -389,8 +441,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 --z;
                 assert(z); // nb: must still have at least phrase 0
 
-                // merge phrases
-                if(local) {
+                if(localTwo) {
                     // we are here because of absorbTwo2 (local index)
                     p = ptr;
                 } else {
@@ -399,19 +450,29 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                     if constexpr(DEBUG) std::cout << "\tsetting lnks[" << mglob << "] := " << p << std::endl;
                 }
 
+                // merge phrases
                 phrases.replace_back(p, len2 + 1, next_char);
 
                 // stats
                 ++num_consecutive_merges;
                 max_consecutive_merges = std::max(max_consecutive_merges, num_consecutive_merges);
-            } else if(absorbOne2(ptr)) {
+            } else if(absorbOne() || (localOne = absorbOne2(ptr))) {
                 // extend the current phrase by one character
                 if constexpr(DEBUG) std::cout << "\tEXTEND phrase " << z << " to length " << (len1+1) << std::endl;
 
                 // updateRecent: unregister current phrase
                 unmark(m - 1);
 
-                p = ptr;
+                if(localTwo) {
+                    // we are here because of absorbTwo2 (local index)
+                    p = ptr;
+                } else {
+                    // we are here because of absorbTwo (trie)
+                    lnks[m] = p;
+                    if constexpr(DEBUG) std::cout << "\tsetting lnks[" << mglob << "] := " << p << std::endl;
+                }
+
+                // extend phrase
                 phrases.replace_back(p, len1 + 1, next_char);
 
                 // stats
