@@ -276,6 +276,55 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             if(m > len1 && z > 1) assert(is_marked(m-1-len1));
             #endif
 
+            auto commonPart = [&](Index const len){
+                auto const plen = phrases[p].len;
+                if(p > 0 && m > plen) {
+                    if constexpr(DEBUG) {
+                        std::cout << "\ttesting whether phrase " << p << " of length " << plen << " has a common suffix of length " << len << " with current input suffix" << std::endl;
+                    }
+                    assert(plen > 0);
+
+                    if(plen < len) {
+                        auto const pos = m - plen;
+                        auto const lhash = rwindow_fp.fingerprint(pos_to_reverse(m-1), pos_to_reverse(pos));
+                        if(phrase_hashes[p] == lhash) {
+                            if(lens[pos] - 1 + plen == len) {
+                                if(lnks[pos] != NIL) {
+                                    auto const nca_len = trie.nca_len(lnks[pos], p-1);
+                                    if(nca_len + plen >= len) {
+                                        std::cout << "\t\tTRUE" << std::endl;
+                                        return true;
+                                    } else {
+                                        std::cout << "\t\tFALSE - combined length of NCA and phrase do not match" << std::endl;
+                                        return true;
+                                    }
+                                } else {
+                                    if constexpr(DEBUG) {
+                                        auto const posglob = window_begin_glob + pos;                         
+                                        std::cout << "\t\tFALSE - lnks[" << posglob << "] is NIL" << std::endl;
+                                    }
+                                }
+                            } else {
+                                if constexpr(DEBUG) {
+                                    auto const posglob = window_begin_glob + pos;                         
+                                    std::cout << "\t\tFALSE - combined length of phrase and lens does not match: lens[" << posglob << "]=" << lens[pos] << std::endl;
+                                }
+                            }
+                        } else {
+                            if constexpr(DEBUG) {
+                                std::cout << "\t\tFALSE - phrase hash (0x" << std::hex << phrase_hashes[p] << " does not match current suffix hash (0x" << lhash << std::dec << ")" << std::endl;
+                            }
+                        }
+                    } else {
+                        if constexpr(DEBUG) {
+                            std::cout << "\t\tFALSE - phrase is too long" << std::endl;
+                        }
+                    }
+                }
+                return false;
+                // if(phrases[p].len >= len || phrase_hashes[p] != )
+            };
+
             // query the marked LCP data structure for the previous position and compute LCE
             auto absorbOne2 = [&](Index& out_lnk){
                 if(m > 0 && len1 < window.size()) {
@@ -288,6 +337,11 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                     return lce >= len1;
                 }
                 return false;
+            };
+
+            // query the trie for a suffix matching the two current phrases
+            auto absorbTwo = [&](){
+                return commonPart(len2);
             };
 
             // query the marked LCP data structure for the previous position, excluding the most current phrase, and compute LCE
@@ -315,10 +369,11 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 return false;
             };
 
-            Index ptr;
+            char const next_char = window[m];
 
-            char const last_char = window[m];
-            if(absorbTwo2(ptr)) {
+            Index ptr;
+            bool local = false;
+            if(absorbTwo() || (local = absorbTwo2(ptr))) {
                 // merge the two current phrases and extend their length by one
                 if constexpr(DEBUG) std::cout << "\tMERGE phrases " << z << " and " << z-1 << " to new phrase of length " << (len2+1) << std::endl;
 
@@ -337,8 +392,8 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
                 // merge phrases
                 p = ptr;
-                phrases.replace_back(p, len2 + 1, last_char);
-                phrase_hashes[z] = FPString::append(FPString::append(phrase_hashes[z], suffix_hash, len1), last_char);
+                phrases.replace_back(p, len2 + 1, next_char);
+                phrase_hashes[z] = FPString::append(FPString::append(phrase_hashes[z], suffix_hash, len1), next_char);
 
                 // stats
                 ++num_consecutive_merges;
@@ -351,8 +406,8 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 unmark(m - 1);
 
                 p = ptr;
-                phrases.replace_back(p, len1 + 1, last_char);
-                phrase_hashes[z] = FPString::append(phrase_hashes[z], last_char);
+                phrases.replace_back(p, len1 + 1, next_char);
+                phrase_hashes[z] = FPString::append(phrase_hashes[z], next_char);
 
                 // stats
                 num_consecutive_merges = 0;
@@ -361,8 +416,8 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 if constexpr(DEBUG) std::cout << "\tNEW phrase " << (z+1) << " of length 1" << std::endl;
                 
                 ++z;
-                phrases.emplace_back(p, 1, last_char);
-                phrase_hashes.emplace_back(FPString::append(0, last_char));
+                phrases.emplace_back(p, 1, next_char);
+                phrase_hashes.emplace_back(FPString::append(0, next_char));
 
                 // stats
                 num_consecutive_merges = 0;

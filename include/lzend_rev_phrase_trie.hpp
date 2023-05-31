@@ -148,7 +148,10 @@ private:
         return v;
     }
 
-    NodeNumber nca(NodeNumber u, NodeNumber v) const {
+    NodeNumber nca(NodeNumber const in_u, NodeNumber const in_v) const {
+        auto u = in_u;
+        auto v = in_v;
+
         while(u != v) {
             if(nodes_[u].len > nodes_[v].len) {
                 u = nodes_[u].parent;
@@ -156,6 +159,7 @@ private:
                 v = nodes_[v].parent;
             }
         }
+        if constexpr(DEBUG) std::cout << "\t\tnca of node " << in_u << " and node " << in_v << " is node " << u << " at depth " << nodes_[u].len << std::endl;
         return u;
     }
 
