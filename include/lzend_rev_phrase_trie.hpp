@@ -100,6 +100,10 @@ private:
     }
 
     NodeNumber approx_find(StringView const& s, Index const pos, Index const len) const {
+        if constexpr(DEBUG) {
+            std::cout << "\tTRIE: approx_find for string of length " << len << ": " << s.string_view().substr(pos, len) << std::endl;
+        }
+
         Index p = 0;
         auto v = root_;
 
@@ -113,6 +117,10 @@ private:
                 auto const h = s.fingerprint(pos, pos + p + j - 1);
                 auto it = nav_.find(nav_hash(p + j, h));
                 if(it != nav_.end()) {
+                    if constexpr(DEBUG) {
+                        std::cout << "\t\tfollowed nav[" << (p+j) << ", 0x" << std::hex << h << std::dec << "] to node " << it->second << " representing phrase " << nodes_[it->second].phr << std::endl;
+                    }
+
                     p += j;
                     v = it->second;
                 }
@@ -124,8 +132,17 @@ private:
         {
             auto it = nodes_[v].map.find(s[pos + nodes_[v].len]);
             if(it != nodes_[v].map.end()) {
+                if constexpr(DEBUG) {
+                    std::cout << "\t\tfollowed outgoing edge of node " << v << " for initial character " << display(s[pos + nodes_[v].len])
+                        << " at depth " << (pos + nodes_[v].len) << " to node " << it->second << " representing phrase " << nodes_[it->second].phr << std::endl;
+                }
+
                 v = it->second;
             }
+        }
+
+        if constexpr(DEBUG) {
+            if(v == root_) std::cout << "\t\tfound nothing" << std::endl;
         }
 
         return v;

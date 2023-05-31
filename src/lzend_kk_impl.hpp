@@ -257,10 +257,14 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 std::cout << std::endl;
                 std::cout << "--- mblock=" << mblock << " -> mglob=" << mglob << " ---" << std::endl;
                 std::cout << "next character:  " << display(window[mblock]) << std::endl;
-                std::cout << "reversed suffix: " << rwindow_fp.string_view().substr(pos_to_reverse(m-1)) << std::endl;
             }
 
             Index p = 0;
+            if(phase >= 2) {
+                auto const rsuf_begin = pos_to_reverse(m-1);
+                auto const rsuf_len = rwindow.size() - 1 - rsuf_begin;
+                p = trie.approx_find_phr(rwindow_fp, rsuf_begin, rsuf_len);
+            }
 
             lnks[m] = NIL;
             auto const len1 = phrases[z].len;                        // length of the current phrase
