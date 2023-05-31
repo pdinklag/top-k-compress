@@ -280,7 +280,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 auto const plen = phrases[p].len;
                 if(p > 0 && m > plen) {
                     if constexpr(DEBUG) {
-                        std::cout << "\ttesting whether phrase " << p << " of length " << plen << " has a common suffix of length " << len << " with current input suffix" << std::endl;
+                        std::cout << "\ttesting whether phrases " << p << " and " << (p-1) << " have a common suffix of length " << len << " with current input suffix" << std::endl;
                     }
                     assert(plen > 0);
 
@@ -307,7 +307,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                             } else {
                                 if constexpr(DEBUG) {
                                     auto const posglob = window_begin_glob + pos;                         
-                                    std::cout << "\t\tFALSE - combined length of phrase and lens does not match: lens[" << posglob << "]=" << lens[pos] << std::endl;
+                                    std::cout << "\t\tFALSE - combined length of phrase " << p << " (" << plen << ") and lens[" << posglob << "]=" << lens[pos] << " minus 1 does not match" << std::endl;
                                 }
                             }
                         } else {
@@ -317,7 +317,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                         }
                     } else {
                         if constexpr(DEBUG) {
-                            std::cout << "\t\tFALSE - phrase is too long" << std::endl;
+                            std::cout << "\t\tFALSE - phrase " << p << " is already too long by itself" << std::endl;
                         }
                     }
                 }
@@ -385,15 +385,21 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
                 // delete current phrase
                 phrases.pop_back();
-                uint64_t const suffix_hash = phrase_hashes[z];
                 phrase_hashes.pop_back();
                 --z;
                 assert(z); // nb: must still have at least phrase 0
 
                 // merge phrases
-                p = ptr;
+                if(local) {
+                    // we are here because of absorbTwo2 (local index)
+                    p = ptr;
+                } else {
+                    // we are here because of absorbTwo (trie)
+                    lnks[m] = p;
+                    if constexpr(DEBUG) std::cout << "\tsetting lnks[" << mglob << "] := " << p << std::endl;
+                }
+
                 phrases.replace_back(p, len2 + 1, next_char);
-                phrase_hashes[z] = FPString::append(FPString::append(phrase_hashes[z], suffix_hash, len1), next_char);
 
                 // stats
                 ++num_consecutive_merges;
@@ -407,7 +413,6 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
                 p = ptr;
                 phrases.replace_back(p, len1 + 1, next_char);
-                phrase_hashes[z] = FPString::append(phrase_hashes[z], next_char);
 
                 // stats
                 num_consecutive_merges = 0;
@@ -417,7 +422,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 
                 ++z;
                 phrases.emplace_back(p, 1, next_char);
-                phrase_hashes.emplace_back(FPString::append(0, next_char));
+                phrase_hashes.emplace_back(0);
 
                 // stats
                 num_consecutive_merges = 0;
@@ -427,6 +432,9 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
             // update lens
             lens[m] = phrases[z].len;
+
+            // update phrase hash
+            phrase_hashes[z] = rwindow_fp.fingerprint(pos_to_reverse(m), pos_to_reverse(m-phrases[z].len+1));
 
             // updateRecent: register updated current phrase
             mark(m, z);
@@ -470,7 +478,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 // update if necessary
                 if(lnks[q] == NIL) { 
                     auto [ln, x] = marked_lcp(q-1);
-                    if(lens[q] <= ln) {
+                    if(lens[q] <= ln + 1) { // nb: +1 because the phrase length includes the final as well -- this appears to be a mistake in [KK, 2017]
                         lnks[q] = x;
 
                         if constexpr(DEBUG) {
@@ -478,6 +486,11 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                             std::cout << "\tsetting lnks[" << qglob << "] := " << x << std::endl;
                         }
                         // nb: lens isn't updated apparently -- at the time of writing, I'd lie if I knew why
+                    } else {
+                        if constexpr(DEBUG) {
+                            auto const qglob = window_begin_glob + q;
+                            std::cout << "\tleaving lnks[" << qglob << "] at NIL because ln=" << ln << " (with phrase x=" << x << ") plus 1 is less than lens[" << qglob << "]=" << lens[q] << std::endl;
+                        }
                     }
                 }
             }
