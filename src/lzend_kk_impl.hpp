@@ -272,33 +272,51 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             if(m > len1 && z > 1) assert(is_marked(m-1-len1));
             #endif
 
-            // query the marked LCP data structure for the previous position and compute LCEs (corresponds to absorbOne2 in [KK, 2017])
-            Index lce1, lnk1;
-            std::tie(lce1, lnk1) = marked_lcp(m - 1);
-            
-            // additionally, excluding the end position of the previous phrase (corresponds to absorbTwo2 in [KK, 2017])
-            Index lce2 = 0;
-            Index lnk2 = 0;
-            if(lce1 > 0 && m > len1 && len2 < window.size())
-            {
-                // we exclude the end position of the previous phrase by temporarily unmarking it
-                unmark(m-1-len1, true);
+            // query the marked LCP data structure for the previous position and compute LCE
+            auto absorbOne2 = [&](Index& out_lnk){
+                if(m > 0 && len1 < window.size()) {
+                    Index lce;
+                    std::tie(lce, out_lnk) = marked_lcp(m - 1);
 
-                // 
-                std::tie(lce2, lnk2) = marked_lcp(m - 1);
+                    if constexpr(DEBUG) {
+                        if(lce >= len1) std::cout << "\tabsorbOne2 returned true" << std::endl;
+                    }
+                    return lce >= len1;
+                }
+                return false;
+            };
 
-                // now, we mark it again
-                mark(m-1-len1, z-1, true);
+            // query the marked LCP data structure for the previous position, excluding the most current phrase, and compute LCE
+            auto absorbTwo2 = [&](Index& out_lnk){
+                if(m > len1 && len2 < window.size()) {
+                    // TODO: the temporary unmarking/marking isn't really nice, but it does simply the code a lot
+                    // it can be avoided by expanding the implementation of marked_lcp and only doing two offset predecessor and successor queries
+                    // it is, however, not really clear how much of a performance impact this has
 
-                // TODO: this temporary unmarking/marking isn't really nice, but it does simply the code a lot
-                // it can be avoided by expanding the implementation of marked_lcp and only doing two offset predecessor and successor queries
-                // it is, however, not really clear how much of a performance impact this has
-            }
+                    // we exclude the end position of the previous phrase by temporarily unmarking it
+                    unmark(m-1-len1, true);
+
+                    // 
+                    Index lce;
+                    std::tie(lce, out_lnk) = marked_lcp(m - 1);
+
+                    // now, we mark it again
+                    mark(m-1-len1, z-1, true);
+
+                    if constexpr(DEBUG) {
+                        if(lce >= len2) std::cout << "\tabsorbTwo2 returned true" << std::endl;
+                    }
+                    return lce >= len2;
+                }
+                return false;
+            };
+
+            Index ptr;
 
             char const last_char = window[m];
-            if(m > len1 && len2 < window.size() && lce2 >= len2) {
+            if(absorbTwo2(ptr)) {
                 // merge the two current phrases and extend their length by one
-                if constexpr(DEBUG) std::cout << "\tMERGE phrases " << z << " and " << z-1 << " to new phrase of length " << (lce2+1) << std::endl;
+                if constexpr(DEBUG) std::cout << "\tMERGE phrases " << z << " and " << z-1 << " to new phrase of length " << (len2+1) << std::endl;
 
                 // updateRecent: unregister current phrase
                 unmark(m - 1);
@@ -314,21 +332,21 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 assert(z); // nb: must still have at least phrase 0
 
                 // merge phrases
-                p = lnk2;
+                p = ptr;
                 phrases.replace_back(p, len2 + 1, last_char);
                 phrase_hashes[z] = FPString::append(FPString::append(phrase_hashes[z], suffix_hash, len1), last_char);
 
                 // stats
                 ++num_consecutive_merges;
                 max_consecutive_merges = std::max(max_consecutive_merges, num_consecutive_merges);
-            } else if(m > 0 && len1 < window.size() && lce1 >= len1) {
+            } else if(absorbOne2(ptr)) {
                 // extend the current phrase by one character
                 if constexpr(DEBUG) std::cout << "\tEXTEND phrase " << z << " to length " << (len1+1) << std::endl;
 
                 // updateRecent: unregister current phrase
                 unmark(m - 1);
 
-                p = lnk1;
+                p = ptr;
                 phrases.replace_back(p, len1 + 1, last_char);
                 phrase_hashes[z] = FPString::append(phrase_hashes[z], last_char);
 
