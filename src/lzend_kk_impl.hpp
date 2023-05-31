@@ -290,12 +290,21 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                         if(phrase_hashes[p] == lhash) {
                             if(lens[pos] - 1 + plen == len) {
                                 if(lnks[pos] != NIL) {
-                                    auto const nca_len = trie.nca_len(lnks[pos], p-1);
-                                    if(nca_len + plen >= len) {
-                                        std::cout << "\t\tTRUE - combined length of NCA and phrase matches" << std::endl;
-                                        return true;
+                                    if(lnks[pos] < ztrie) {
+                                        auto const nca_len = trie.nca_len(lnks[pos], p-1);
+                                        if(nca_len + plen >= len) {
+                                            std::cout << "\t\tTRUE - combined length of NCA and phrase matches" << std::endl;
+                                            return true;
+                                        } else {
+                                            std::cout << "\t\tFALSE - combined length of NCA and phrase do not match" << std::endl;
+                                        }
                                     } else {
-                                        std::cout << "\t\tFALSE - combined length of NCA and phrase do not match" << std::endl;
+                                        // nb: this is not checked in [KK, 2017]
+                                        // either I'm getting something wrong, or they put phrase numbers into lnks before the corresponding strings are inserted into the trie
+                                        if constexpr(DEBUG) {
+                                            auto const posglob = window_begin_glob + pos;
+                                            std::cout << "\t\tFALSE - lnks[" << posglob << "] refers to a phrase not yet entered into the trie" << std::endl;
+                                        }
                                     }
                                 } else {
                                     if constexpr(DEBUG) {
