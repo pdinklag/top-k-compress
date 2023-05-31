@@ -509,22 +509,19 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             }
 
             // insert phrases that end in the first block within the window into the trie
-            // FIXME: for testing, we only consider the very first block of the text -- once the trie is properly queried and duplicate phrases can be avoided, this MUST be removed
-            if(phase == 2) {
-                if constexpr(DEBUG) {
-                    std::cout << "inserting phrases ending in sliding block into trie ..." << std::endl;
-                }
-                Index const border = window_begin_glob + max_block;
-                while(ztrie <= z && phrases[ztrie].end < border) {
-                    // insert phrases[ztrie]
-                    Index const rend = pos_to_reverse(phrases[ztrie].end - window_begin_glob);
-                    Index const len = phrases[ztrie].len;
-                    assert(rwindow[rend] == phrases[ztrie].last); // sanity check
-                    assert(len < window.size()); // Lemma 9 of [KK, 2017] implies this
+            if constexpr(DEBUG) {
+                std::cout << "inserting phrases ending in sliding block into trie ..." << std::endl;
+            }
+            Index const border = window_begin_glob + max_block;
+            while(ztrie <= z && phrases[ztrie].end < border) {
+                // insert phrases[ztrie]
+                Index const rend = pos_to_reverse(phrases[ztrie].end - window_begin_glob);
+                Index const len = phrases[ztrie].len;
+                assert(rwindow[rend] == phrases[ztrie].last); // sanity check
+                assert(len < window.size()); // Lemma 9 of [KK, 2017] implies this
 
-                    trie.insert(rwindow_fp, rend, rwindow.size() - 1 - rend);
-                    ++ztrie;
-                }
+                trie.insert(rwindow_fp, rend, rwindow.size() - 1 - rend);
+                ++ztrie;
             }
         }
 
