@@ -22,8 +22,8 @@
 #include <lzend_parsing.hpp>
 #include <lzend_rev_phrase_trie.hpp>
 
-constexpr bool DEBUG = false;
-constexpr bool PROTOCOL = false;
+constexpr bool DEBUG = true;
+constexpr bool PROTOCOL = true;
 
 constexpr uint64_t MAGIC =
     ((uint64_t)'L') << 56 |
@@ -84,6 +84,11 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     // global LZEnd algorithm
     size_t phase = 0;
     while(begin != end) {
+        if constexpr(DEBUG) {
+            std::cout << std::endl;
+            std::cout << "=== phase " << phase << " ===" << std::endl;
+        }
+
         // slide previous two blocks
         for(size_t i = 0; i < 2 * max_block; i++) {
             buffer[i] = buffer[max_block + i];
@@ -125,6 +130,11 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 window_begin_glob = (phase - 2) * max_block;
                 curblock_window_offs = 2 * max_block;
                 break;
+        }
+
+        if constexpr(DEBUG) {
+            std::cout << "curblock_size=" << curblock_size << ", curblock_window_offs=" << curblock_window_offs << ", window.size()=" << window.size() << std::endl;
+            std::cout << "computing index..." << std::endl;
         }
         
         // compute inverse suffix array and LCP array of reverse window
@@ -187,19 +197,25 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
         };
         #endif
 
-        auto mark = [&](Index const pos, Index const phrase_num){
+        auto mark = [&](Index const m, Index const phrase_num, bool silent = false){
             // register that phrase phrase_num ends at text position pos
-            if constexpr(DEBUG) std::cout << "\tregister phrase " << phrase_num << " ending at " << pos << std::endl;
+            if constexpr(DEBUG) {
+                auto const mglob = window_begin_glob + m;
+                if(!silent) std::cout << "\tregister phrase " << phrase_num << " ending at " << mglob << std::endl;
+            }
             #ifndef NDEBUG
-            assert(!is_marked(pos));
+            assert(!is_marked(m));
             #endif
-            auto const isa_m = isa[pos_to_reverse(pos)];
+            auto const isa_m = isa[pos_to_reverse(m)];
             marked.insert(MarkedLCP{isa_m, phrase_num});
         };
 
-        auto unmark = [&](Index const m){
+        auto unmark = [&](Index const m, bool silent = false){
             // unregister phrase that ends at text position m
-            if constexpr(DEBUG) std::cout << "\tunregister phrase ending at " << m << std::endl;
+            if constexpr(DEBUG) {
+                auto const mglob = window_begin_glob + m;
+                if(!silent) std::cout << "\tunregister phrase ending at " << mglob << std::endl;
+            }
             auto const isa_m = isa[pos_to_reverse(m)];
             assert(marked.contains(MarkedLCP{isa_m, DONTCARE}));
             marked.remove(MarkedLCP{isa_m, DONTCARE});
@@ -220,10 +236,14 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
         // preprocess: mark positions of phrases that end in the previous two blocks within the window
         {
+            if constexpr(DEBUG) {
+                std::cout << "preprocessing next block..." << std::endl;
+            }
+
             Index x = z;
             while(x > 0 && phrases[x].end >= window_begin_glob) {
                 assert(phrases[x].end < phase * max_block); // previously computed phrases cannot end in the new block that we just read from the input
-                mark(phrases[x].end - window_begin_glob, x);
+                mark(phrases[x].end - window_begin_glob, x, true);
                 --x;
             }
         }
@@ -231,9 +251,14 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
         // begin LZEnd algorithm by [Kempa & Kosolobov, 2017]
         for(Index mblock = 0; mblock < curblock_size; mblock++) {
             auto const m = curblock_window_offs + mblock;  // the current position within the window
-            auto const mglob = phase * max_block + mblock; // the current global position in the input
+            auto const mglob = window_begin_glob + m; // the current global position in the input
 
-            if constexpr(DEBUG) std::cout << "mglob=" << mglob << ", mblock=" << mblock << ", m=" << m << ", window[m]=" << display(window[mblock]) << std::endl;
+            if constexpr(DEBUG) {
+                std::cout << std::endl;
+                std::cout << "--- mblock=" << mblock << " -> mglob=" << mglob << " ---" << std::endl;
+                std::cout << "next character:  " << display(window[mblock]) << std::endl;
+                std::cout << "reversed suffix: " << rwindow_fp.string_view().substr(pos_to_reverse(m-1)) << std::endl;
+            }
 
             Index p = 0;
 
@@ -257,13 +282,13 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             if(lce1 > 0 && m > len1 && len2 < window.size())
             {
                 // we exclude the end position of the previous phrase by temporarily unmarking it
-                unmark(m-1-len1);
+                unmark(m-1-len1, true);
 
                 // 
                 std::tie(lce2, lnk2) = marked_lcp(m - 1);
 
                 // now, we mark it again
-                mark(m-1-len1, z-1);
+                mark(m-1-len1, z-1, true);
 
                 // TODO: this temporary unmarking/marking isn't really nice, but it does simply the code a lot
                 // it can be avoided by expanding the implementation of marked_lcp and only doing two offset predecessor and successor queries
@@ -332,9 +357,17 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
         }
 
         if(phase >= 2 && begin != end) {
+            if constexpr(DEBUG) {
+                std::cout << std::endl;
+                std::cout << "postprocessing ..." << std::endl;
+            }
+
             // insert phrases that end in the first block within the window into the trie
             // FIXME: for testing, we only consider the very first block of the text -- once the trie is properly queried and duplicate phrases can be avoided, this MUST be removed
             if(phase == 2) {
+                if constexpr(DEBUG) {
+                    std::cout << "inserting phrases ending in sliding block into trie ..." << std::endl;
+                }
                 Index const border = window_begin_glob + max_block;
                 while(ztrie <= z && phrases[ztrie].end < border) {
                     // insert phrases[ztrie]
@@ -347,8 +380,13 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                     ++ztrie;
                 }
             }
+        }
 
-            // slide lnks and lens
+        if(phase >= 1 && begin != end) {
+            // update lnks
+            if constexpr(DEBUG) {
+                std::cout << "postprocessing lnks ..." << std::endl;
+            }
             for(Index i = 0; i < curblock_size; i++) {
                 auto const q = curblock_window_offs + i;  // the current position within the window
 
@@ -357,8 +395,26 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                     auto [ln, x] = marked_lcp(q-1);
                     if(lens[q] <= ln) {
                         lnks[q] = x;
+
+                        if constexpr(DEBUG) {
+                            auto const qglob = window_begin_glob + q;
+                            std::cout << "\tsetting lnks[" << qglob << "] := " << x << std::endl;
+                        }
                         // nb: lens isn't updated apparently -- at the time of writing, I'd lie if I knew why
                     }
+                }
+            }
+
+            // slide lnks and lens
+            if constexpr(DEBUG) {
+                std::cout << "sliding lnks and lens ..." << std::endl;
+            }
+            for(Index i = 0; i < curblock_size; i++) {
+                auto const q = curblock_window_offs + i;  // the current position within the window
+
+                if constexpr(DEBUG) {
+                    auto const qglob = window_begin_glob + q;
+                    std::cout << "\tlnks[" << qglob << "] = " << lnks[q] << ", lens[" << qglob << "] = " << lens[q] << std::endl;
                 }
 
                 // slide
@@ -379,11 +435,16 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
     // write phrases
     {
+        if constexpr(PROTOCOL && DEBUG) {
+            std::cout << std::endl;
+            std::cout << "phrase protocol:" << std::endl;
+        }
+
         size_t i = 0;
         for(size_t j = 1; j <= z; j++) {
             if constexpr(PROTOCOL) {
                 std::cout << "phrase #" << j << ": i=" << i <<
-                    ", (" << phrases[j].link << ", " << (phrases[j].link ? phrases[j].len-1 : 0) << ", " << display(phrases[j].last) <<
+                    ", (" << phrases[j].link << ", " << phrases[j].len << ", " << display(phrases[j].last) <<
                     "), hash=0x" << std::hex << phrase_hashes[j] << std::dec << std::endl;
             }
             
@@ -410,6 +471,8 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             furthest = std::max(furthest, size_t(phrases[j].link));
             total_ref += phrases[j].link;
         }
+
+        if constexpr(PROTOCOL) std::cout << std::endl;
     }
 
     // flush

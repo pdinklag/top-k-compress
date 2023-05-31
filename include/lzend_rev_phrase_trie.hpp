@@ -32,6 +32,9 @@ Index max_i_rst(Index const x, Index const y) {
 /// Implements the compact trie described in [Kempa & Koslobov, 2017]
 template<std::integral Char = char, std::unsigned_integral Index = uint32_t>
 class LZEndRevPhraseTrie {
+private:
+    static constexpr bool DEBUG = true;
+
 public:
     using StringView = FPStringView<Char>;
 
@@ -88,11 +91,16 @@ private:
     void insert_nav(NodeNumber const v, NodeNumber const parent, StringView const& s, Index const pos) {
         auto const p_v = rst(nodes_[v].len, max_i_rst(nodes_[v].len, nodes_[parent].len));
         auto const h_v = s.fingerprint(pos, pos + p_v - 1);
+
+        if constexpr(DEBUG) {
+            std::cout << "\t\tnav[" << p_v << ", 0x" << std::hex << h_v << std::dec << "] := " << v << std::endl;
+        }
+
         auto const hash = nav_hash(p_v, h_v);
 
-        // assert(!nav_.contains(hash));
-        // nav_.emplace(hash, v);
-        nav_[hash] = v;
+        assert(!nav_.contains(hash));
+        nav_.emplace(hash, v);
+        // nav_[hash] = v;
     }
 
     NodeNumber approx_find(StringView const& s, Index const pos, Index const len) const {
@@ -168,6 +176,10 @@ public:
     void insert(StringView const& s, Index const pos, Index const len) {
         auto const phr = (Index)phrase_leaves_.size();
 
+        if constexpr(DEBUG) {
+            std::cout << "\tTRIE: insert string " << phr << " of length " << len << " for phrase " << phr << ": " << s.string_view().substr(pos, len) << std::endl;
+        }
+
         auto v = root_;
         NodeNumber parent = -1;
         size_t d = 0;
@@ -179,6 +191,10 @@ public:
             d = nodes_[v].len;
         }
 
+        if constexpr(DEBUG) {
+            std::cout << "\t\tblindly descended to node " << v << " at depth " << d << std::endl;
+        }
+
         auto const x = create_node();
         nodes_[x].len = len;
         nodes_[x].phr = phr;
@@ -186,6 +202,10 @@ public:
         if(v == root_) {
             // v is the root, which means that no prefix of s is contained in the trie
             assert(d == 0);
+
+            if constexpr(DEBUG) {
+                std::cout << "\t\tcreating new node " << x << " at depth " << len << " representing the new phrase as child of root" << std::endl;
+            }
 
             nodes_[root_].map.emplace(UChar(s[pos]), x);
             insert_nav(x, 0, s, pos);
@@ -225,12 +245,20 @@ public:
                 }
                 assert(common_suffix_length >= 1); // we must have matched the first character in the root, otherwise we wouldn't be here
 
+                if constexpr(DEBUG) {
+                    std::cout << "\t\tcomputed common_suffix_length=" << common_suffix_length << std::endl;
+                }
+
                 // navigate back up in the trie until the depth matches
                 while(v != root_ && nodes_[parent].len >= common_suffix_length) {
                     v = parent;
                     parent = nodes_[parent].parent;
                 }
                 assert(v != root_);
+
+                if constexpr(DEBUG) {
+                    std::cout << "\t\tascended to node " << v << " at depth " << nodes_[v].len << std::endl;
+                }
             }
             assert(common_suffix_length > nodes_[parent].len);
             assert(common_suffix_length <= nodes_[v].len);
@@ -243,6 +271,10 @@ public:
                 u = create_node();
                 nodes_[u].len = common_suffix_length;
                 nodes_[u].phr = nodes_[v].phr; // propagate any child's phrase number - we might as well use the new phr
+
+                if constexpr(DEBUG) {
+                    std::cout << "\t\tcreating new inner node " << u << " representing phrase " << nodes_[u].phr << " at depth " << common_suffix_length << " on edge from node " << parent << " to node " << v << std::endl;
+                }
 
                 // replace v by u as child of parent
                 {
@@ -268,6 +300,10 @@ public:
             }
 
             if(len > nodes_[u].len) {
+                if constexpr(DEBUG) {
+                    std::cout << "\t\tcreating new node " << x << " at depth " << len << " representing phrase " << phr << " as child of node " << u << " at depth " << nodes_[u].len << std::endl;
+                }
+
                 // make x a child of u
                 auto const c = UChar(s[pos + common_suffix_length]);
                 assert(!nodes_[u].map.contains(c));
@@ -279,6 +315,9 @@ public:
                 assert(len == nodes_[u].len);
 
                 // the string is already contained in the trie!
+                if constexpr(DEBUG) {
+                    std::cout << "\t\tstring already in trie at node " << u << " representing phrase " << nodes_[u].phr << std::endl;
+                }
                 remove_last_node();
                 phrase_leaves_.push_back(u);
                 return;
