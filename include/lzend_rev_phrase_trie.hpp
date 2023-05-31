@@ -84,10 +84,6 @@ private:
         return NodeNumber(i);
     }
 
-    void remove_last_node() {
-        nodes_.pop_back();
-    }
-
     void insert_nav(NodeNumber const v, NodeNumber const parent, StringView const& s, Index const pos) {
         auto const p_v = rst(nodes_[v].len, max_i_rst(nodes_[v].len, nodes_[parent].len));
         auto const h_v = s.fingerprint(pos, pos + p_v - 1);
@@ -175,6 +171,14 @@ public:
 
     void insert(StringView const& s, Index const pos, Index const len) {
         auto const phr = (Index)phrase_leaves_.size();
+        auto create_new_phrase_node = [&](){
+            auto const x = create_node();
+            nodes_[x].len = len;
+            nodes_[x].phr = phr;
+            phrase_leaves_.push_back(x);
+            assert(phrase_leaves_[phr] == x);
+            return x;
+        };
 
         if constexpr(DEBUG) {
             std::cout << "\tTRIE: insert string " << phr << " of length " << len << " for phrase " << phr << ": " << s.string_view().substr(pos, len) << std::endl;
@@ -195,14 +199,11 @@ public:
             std::cout << "\t\tblindly descended to node " << v << " at depth " << d << std::endl;
         }
 
-        auto const x = create_node();
-        nodes_[x].len = len;
-        nodes_[x].phr = phr;
-
         if(v == root_) {
             // v is the root, which means that no prefix of s is contained in the trie
             assert(d == 0);
 
+            auto const x = create_new_phrase_node();
             if constexpr(DEBUG) {
                 std::cout << "\t\tcreating new node " << x << " at depth " << len << " representing the new phrase as child of root" << std::endl;
             }
@@ -300,6 +301,7 @@ public:
             }
 
             if(len > nodes_[u].len) {
+                auto const x = create_new_phrase_node();
                 if constexpr(DEBUG) {
                     std::cout << "\t\tcreating new node " << x << " at depth " << len << " representing phrase " << phr << " as child of node " << u << " at depth " << nodes_[u].len << std::endl;
                 }
@@ -318,13 +320,9 @@ public:
                 if constexpr(DEBUG) {
                     std::cout << "\t\tstring already in trie at node " << u << " representing phrase " << nodes_[u].phr << std::endl;
                 }
-                remove_last_node();
                 phrase_leaves_.push_back(u);
                 return;
             }
         }
-
-        phrase_leaves_.push_back(x);
-        assert(phrase_leaves_[phr] == x);
     }
 };
