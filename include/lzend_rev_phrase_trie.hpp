@@ -202,7 +202,7 @@ public:
         };
 
         if constexpr(DEBUG) {
-            std::cout << "\tTRIE: insert string " << phr << " of length " << len << " for phrase " << phr << ": " << s.string_view().substr(pos, len) << std::endl;
+            std::cout << "\tTRIE: insert string of length " << len << " for phrase " << phr << ": " << s.string_view().substr(pos, len) << std::endl;
         }
 
         auto v = root_;
