@@ -84,7 +84,7 @@ private:
         return NodeNumber(i);
     }
 
-    void insert_nav(NodeNumber const v, NodeNumber const parent, StringView const& s, Index const pos) {
+    void update_nav(NodeNumber const v, NodeNumber const parent, StringView const& s, Index const pos) {
         auto const p_v = rst(nodes_[v].len, max_i_rst(nodes_[v].len, nodes_[parent].len));
         auto const h_v = s.fingerprint(pos, pos + p_v - 1);
 
@@ -94,9 +94,7 @@ private:
 
         auto const hash = nav_hash(p_v, h_v);
 
-        assert(!nav_.contains(hash));
-        nav_.emplace(hash, v);
-        // nav_[hash] = v;
+        nav_[hash] = v;
     }
 
     NodeNumber approx_find(StringView const& s, Index const pos, Index const len) const {
@@ -230,7 +228,7 @@ public:
             }
 
             nodes_[root_].map.emplace(UChar(s[pos]), x);
-            insert_nav(x, 0, s, pos);
+            update_nav(x, 0, s, pos);
 
             nodes_[x].parent = root_;
         } else {
@@ -307,7 +305,7 @@ public:
 
                     nodes_[u].parent = parent;
 
-                    insert_nav(u, parent, s, pos);
+                    update_nav(u, parent, s, pos);
                 }
 
                 // make v a child of new node u
@@ -315,6 +313,13 @@ public:
                     auto const c = UChar(extract_buffer_[common_suffix_length]);
                     nodes_[u].map.emplace(c, v);
                     nodes_[v].parent = u;
+
+                    // we must update nav, because the new node u may actually take up v's old entry
+                    //
+                    // to see how, consider a child of a root at depth 3 -- its nav entry will use only the first 2 characters
+                    // if we now split the edge and insert a new inner ndoe at depth 2, that nav entry will use the same 2 characters
+                    // therefore, nav has to be updated for the new situation
+                    update_nav(v, u, s, pos);
                 }
             } else {
                 // we add a new child directly to v
@@ -333,7 +338,7 @@ public:
                 nodes_[u].map.emplace(c, x);
 
                 nodes_[x].parent = u;
-                insert_nav(x, u, s, pos);
+                update_nav(x, u, s, pos);
             } else {
                 assert(len == nodes_[u].len);
 
