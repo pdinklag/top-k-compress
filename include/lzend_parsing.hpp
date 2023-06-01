@@ -82,7 +82,7 @@ public:
 
     // persists the i-th phrase in the successor data structure
     void persist(Index const i) {
-        assert(!ends_.contains(phrases_[i].end));
+        assert(!ends_.contains({phrases_[i].end, 0}));
         ends_.insert({phrases_[i].end, i});
     }
 
