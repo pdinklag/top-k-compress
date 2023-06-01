@@ -92,6 +92,8 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
         // slide previous two blocks
         for(size_t i = 0; i < 2 * max_block; i++) {
             buffer[i] = buffer[max_block + i];
+            lens[i] = lens[max_block + i];
+            lnks[i] = lnks[max_block + i];
         }
 
         // read next block
@@ -509,12 +511,15 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             }
 
             // insert phrases that end in the first two blocks within the window into the trie
+            // while doing that, also recompute marked to contain only phrases that are inserted
+            marked.clear();
+
             if constexpr(DEBUG) {
                 std::cout << "inserting phrases ending in sliding block into trie ..." << std::endl;
             }
 
             Index const border = window_begin_glob + curblock_window_offs;
-            while(phrases[ztrie].end <= border) { // we go one phrase beyond the border according to [KK, 2017]
+            while(ztrie < z && phrases[ztrie].end <= border) { // we go one phrase beyond the border according to [KK, 2017]
                 // insert phrases[ztrie]
                 Index const rend = pos_to_reverse(phrases[ztrie].end - window_begin_glob);
                 Index const len = phrases[ztrie].len;
@@ -522,6 +527,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 assert(len < window.size()); // Lemma 9 of [KK, 2017] implies this
 
                 trie.insert(rwindow_fp, rend, rwindow.size() - 1 - rend);
+                mark(phrases[ztrie].end - window_begin_glob, ztrie, true);
 
                 ++ztrie;
             }
@@ -534,9 +540,10 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 auto const q = curblock_window_offs + i;  // the current position within the window
 
                 // update if necessary
-                if(lnks[q] == NIL) { 
+                if(lens[q] > 1 && lnks[q] == NIL) { 
                     auto [ln, x] = marked_lcp(q-1);
                     if(lens[q] <= ln + 1) { // nb: +1 because the phrase length includes the final as well -- this appears to be a mistake in [KK, 2017]
+                        assert(x <= ztrie); // we cannot refer to a phrase that is not yet in the trie
                         lnks[q] = x;
 
                         if constexpr(DEBUG) {
@@ -547,29 +554,15 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                     } else {
                         if constexpr(DEBUG) {
                             auto const qglob = window_begin_glob + q;
-                            std::cout << "\tleaving lnks[" << qglob << "] at NIL because ln=" << ln << " (with phrase x=" << x << ") plus 1 is less than lens[" << qglob << "]=" << lens[q] << std::endl;
+                            std::cout << "\tleaving lnks[" << qglob << "] at NIL because ln=" << ln << " (with phrase x=" << (ln > 0 ? x : 0) << ") plus 1 is less than lens[" << qglob << "]=" << lens[q] << std::endl;
                         }
                     }
+                } else {
+                    if constexpr(DEBUG) {
+                        auto const qglob = window_begin_glob + q;
+                        std::cout << "\tleaving lnks[" << qglob << "] = " << lnks[q] << ", lens[" << qglob << "] = " << lens[q] << std::endl;
+                    }
                 }
-            }
-
-            // slide lnks and lens
-            if constexpr(DEBUG) {
-                std::cout << "sliding lnks and lens ..." << std::endl;
-            }
-            for(Index i = 0; i < curblock_size; i++) {
-                auto const q = curblock_window_offs + i;  // the current position within the window
-
-                if constexpr(DEBUG) {
-                    auto const qglob = window_begin_glob + q;
-                    std::cout << "\tlnks[" << qglob << "] = " << lnks[q] << ", lens[" << qglob << "] = " << lens[q] << std::endl;
-                }
-
-                // slide
-                lens[q - max_block] = lens[q];
-                lens[q] = 0;
-                lnks[q - max_block] = lnks[q];
-                lnks[q] = NIL;
             }
         }
 

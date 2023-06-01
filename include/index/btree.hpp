@@ -512,5 +512,11 @@ public:
         return result;
     }
 
-   size_t size() const { return size_; }
+    void clear() {
+        delete root_;
+        root_ = new Node();
+        size_ = 0;
+    }
+
+    size_t size() const { return size_; }
 };
