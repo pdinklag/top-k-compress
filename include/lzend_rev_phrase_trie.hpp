@@ -33,7 +33,7 @@ Index max_i_rst(Index const x, Index const y) {
 template<std::integral Char = char, std::unsigned_integral Index = uint32_t>
 class LZEndRevPhraseTrie {
 private:
-    static constexpr bool DEBUG = true;
+    static constexpr bool DEBUG = false;
 
 public:
     using StringView = FPStringView<Char>;

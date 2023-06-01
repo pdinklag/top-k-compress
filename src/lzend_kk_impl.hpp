@@ -22,8 +22,8 @@
 #include <lzend_parsing.hpp>
 #include <lzend_rev_phrase_trie.hpp>
 
-constexpr bool DEBUG = true;
-constexpr bool PROTOCOL = true;
+constexpr bool DEBUG = false;
+constexpr bool PROTOCOL = false;
 
 constexpr uint64_t MAGIC =
     ((uint64_t)'L') << 56 |
@@ -294,10 +294,14 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                                 if(lnks[pos] != NIL) {
                                     auto const nca_len = trie.nca_len(lnks[pos], p-1);
                                     if(nca_len + plen >= len) {
-                                        std::cout << "\t\tTRUE - combined length of NCA and phrase matches" << std::endl;
+                                        if constexpr(DEBUG) {
+                                            std::cout << "\t\tTRUE - combined length of NCA and phrase matches" << std::endl;
+                                        }
                                         return true;
                                     } else {
-                                        std::cout << "\t\tFALSE - combined length of NCA and phrase do not match" << std::endl;
+                                        if constexpr(DEBUG) {
+                                            std::cout << "\t\tFALSE - combined length of NCA and phrase do not match" << std::endl;
+                                        }
                                     }
                                 } else {
                                     if constexpr(DEBUG) {
@@ -332,7 +336,9 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                     }
                     auto const plen = phrases[p].len;
                     if(plen < len1) {
-                        std::cout << "\t\ttrie phrase " << p << " is shorter than current phrase, delegating" << std::endl;
+                        if constexpr(DEBUG) {
+                            std::cout << "\t\ttrie phrase " << p << " is shorter than current phrase, delegating" << std::endl;
+                        }
                         if(commonPart(len1)) {
                             if constexpr(DEBUG) {
                                 std::cout << "\tabsorbOne returned true" << std::endl;
@@ -347,17 +353,23 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                                 }
                             } else {
                                 if(len1 == 1) {
-                                    std::cout << "\t\tTRUE - last character matches for length-1 phrase" << std::endl;
-                                    std::cout << "\tabsorbOne returned true" << std::endl;
+                                    if constexpr(DEBUG) {
+                                        std::cout << "\t\tTRUE - last character matches for length-1 phrase" << std::endl;
+                                        std::cout << "\tabsorbOne returned true" << std::endl;
+                                    }
                                     return true;
                                 } else {
                                     auto const nca_len = trie.nca_len(lnks[m-1], phrases[p].link);
                                     if(nca_len + 1 >= len1) {
-                                        std::cout << "\t\tTRUE - NCA length plus 1 exceeds current phrase length" << std::endl;
-                                        std::cout << "\tabsorbOne returned true" << std::endl;
+                                        if constexpr(DEBUG) {
+                                            std::cout << "\t\tTRUE - NCA length plus 1 exceeds current phrase length" << std::endl;
+                                            std::cout << "\tabsorbOne returned true" << std::endl;
+                                        }
                                         return true;
                                     } else  {
-                                        std::cout << "\t\tFALSE - the NCA length plus 1 is too short" << std::endl;
+                                        if constexpr(DEBUG) {
+                                            std::cout << "\t\tFALSE - the NCA length plus 1 is too short" << std::endl;
+                                        }
                                     }
                                 }
                             }
