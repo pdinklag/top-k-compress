@@ -383,20 +383,6 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 return false;
             };
 
-            // query the marked LCP data structure for the previous position and compute LCE
-            auto absorbOne2 = [&](Index& out_lnk){
-                if(m > 0 && len1 < window.size()) {
-                    Index lce;
-                    std::tie(lce, out_lnk) = marked_lcp(m - 1);
-
-                    if constexpr(DEBUG) {
-                        if(lce >= len1) std::cout << "\tabsorbOne2 returned true" << std::endl;
-                    }
-                    return lce >= len1;
-                }
-                return false;
-            };
-
             // query the trie for a suffix matching the two current phrases
             auto absorbTwo = [&](){
                 if(commonPart(len2)) {
@@ -409,29 +395,87 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 }
             };
 
+            // combined precomputation of absorbOne2 and absorbTwo2
+            // even though absorbOne2 is never needed if absorbTwo2 returns true,
+            // the result of absorbOne2 can be used to compute absorbTwo2 without the need for temporarily unmarking and re-marking a phrase
+            // furthermore, the number of predecessor and successor queries is minimized this way
+            Index lce1 = 0, lnk1 = 0; // corresponds to absorbOne2
+            Index lce2 = 0, lnk2 = 0; // corresponds to absorbTwo2
+            auto precompute_absorb2 = [&](){
+                if(m > 0 && len1 < window.size()) {
+                    auto const isa_cur = isa[pos_to_reverse(m-1)];
+                    
+                    // this is basically marked_lcp for m-1, except we want to keep all intermediate results for further computation of absorbTwo2
+                    auto const marked_l1 = (isa_cur > 0) ? marked.predecessor(MarkedLCP{isa_cur - 1, DONTCARE}) : MResult{ false, 0 };
+                    auto const lce_l1 = marked_l1.exists ? lcp[rmq.rmq(marked_l1.key.sa_pos + 1, isa_cur)] : 0;
+                    auto const marked_r1 = marked.successor(MarkedLCP{isa_cur + 1, DONTCARE});
+                    auto const lce_r1 = marked_r1.exists ? lcp[rmq.rmq(isa_cur + 1, marked_r1.key.sa_pos)] : 0;
+
+                    if(lce_l1 > 0 || lce_r1 > 0) {
+                        // find marked position with larger LCE
+                        if(lce_l1 > lce_r1) {
+                            lnk1 = marked_l1.key.phrase_num;
+                            lce1 = lce_l1;
+                        } else {
+                            lnk1 = marked_r1.key.phrase_num;
+                            lce1 = lce_r1;
+                        }
+
+                        // additionally, perform queries excluding the end position of the previous phrase
+                        if(m > len1 && len2 < window.size()) {
+                            auto const exclude = z - 1;
+
+                            auto marked_l2 = marked_l1;
+                            auto lce_l2 = lce_l1;
+                            if(marked_l2.exists && marked_l2.key.phrase_num == exclude) {
+                                // ignore end position of previous phrase
+                                marked_l2 = (marked_l1.key.sa_pos > 0 ? marked.predecessor(MarkedLCP{marked_l1.key.sa_pos - 1, DONTCARE}) : MResult{ false, 0 });
+                                lce_l2 = marked_l2.exists ? lcp[rmq.rmq(marked_l2.key.sa_pos + 1, isa_cur)] : 0;
+                            }
+
+                            auto marked_r2 = marked_r1;
+                            auto lce_r2 = lce_r1;
+                            if(marked_r2.exists && marked_r2.key.phrase_num == exclude) {
+                                // ignore end position of previous phrase
+                                marked_r2 = marked.successor(MarkedLCP{marked_r1.key.sa_pos + 1, DONTCARE});
+                                lce_r2 = marked_r2.exists ? lcp[rmq.rmq(isa_cur + 1, marked_r2.key.sa_pos)] : 0;
+                            }
+
+                            // find marked position with larger LCE
+                            if(lce_l2 > 0 || lce_r2 > 0) {
+                                if(lce_l2 > lce_r2) {
+                                    lnk2 = marked_l2.key.phrase_num;
+                                    lce2 = lce_l2;
+                                } else {
+                                    lnk2 = marked_r2.key.phrase_num;
+                                    lce2 = lce_r2;
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
             // query the marked LCP data structure for the previous position, excluding the most current phrase, and compute LCE
             auto absorbTwo2 = [&](Index& out_lnk){
-                if(m > len1 && len2 < window.size()) {
-                    // TODO: the temporary unmarking/marking isn't really nice, but it does simply the code a lot
-                    // it can be avoided by expanding the implementation of marked_lcp and only doing two offset predecessor and successor queries
-                    // it is, however, not really clear how much of a performance impact this has
-
-                    // we exclude the end position of the previous phrase by temporarily unmarking it
-                    unmark(m-1-len1, true);
-
-                    // 
-                    Index lce;
-                    std::tie(lce, out_lnk) = marked_lcp(m - 1);
-
-                    // now, we mark it again
-                    mark(m-1-len1, z-1, true);
-
-                    if constexpr(DEBUG) {
-                        if(lce >= len2) std::cout << "\tabsorbTwo2 returned true" << std::endl;
-                    }
-                    return lce >= len2;
+                precompute_absorb2();
+                if(m > len1 && len2 < window.size() && lce2 >= len2) {
+                    out_lnk = lnk2;
+                    return true;
+                } else {
+                    return false;
                 }
-                return false;
+            };
+
+            // query the marked LCP data structure for the previous position and compute LCE
+            auto absorbOne2 = [&](Index& out_lnk){
+                // we expect that precompute_absorb2 has already been called
+                if(m > 0 && len1 < window.size() && lce1 >= len1) {
+                    out_lnk = lnk1;
+                    return true;
+                } else {
+                    return false;
+                }
             };
 
             char const next_char = window[m];
