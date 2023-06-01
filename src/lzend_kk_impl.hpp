@@ -502,18 +502,19 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             assert(is_marked(m));
         }
 
-        if(phase >= 2 && begin != end) {
+        if(phase >= 1 && begin != end) {
             if constexpr(DEBUG) {
                 std::cout << std::endl;
                 std::cout << "postprocessing ..." << std::endl;
             }
 
-            // insert phrases that end in the first block within the window into the trie
+            // insert phrases that end in the first two blocks within the window into the trie
             if constexpr(DEBUG) {
                 std::cout << "inserting phrases ending in sliding block into trie ..." << std::endl;
             }
-            Index const border = window_begin_glob + max_block;
-            while(ztrie <= z && phrases[ztrie].end < border) {
+
+            Index const border = window_begin_glob + curblock_window_offs;
+            while(phrases[ztrie].end <= border) { // we go one phrase beyond the border according to [KK, 2017]
                 // insert phrases[ztrie]
                 Index const rend = pos_to_reverse(phrases[ztrie].end - window_begin_glob);
                 Index const len = phrases[ztrie].len;
@@ -521,11 +522,10 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 assert(len < window.size()); // Lemma 9 of [KK, 2017] implies this
 
                 trie.insert(rwindow_fp, rend, rwindow.size() - 1 - rend);
+
                 ++ztrie;
             }
-        }
 
-        if(phase >= 1 && begin != end) {
             // update lnks
             if constexpr(DEBUG) {
                 std::cout << "postprocessing lnks ..." << std::endl;
