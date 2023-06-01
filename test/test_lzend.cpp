@@ -34,26 +34,45 @@ TEST_SUITE("kempa_kosolobov_2017") {
         REQUIRE(parsing.phrase_at(16) == 5);
         REQUIRE(parsing.phrase_at(17) == 5);
 
-        std::string s;
-        s.reserve(18);
         {
-            parsing.extract(std::back_inserter(s), 0, 18);
-            REQUIRE(s == "ababbbabbabbbabbaa");
+            std::string s;
+            s.reserve(18);
+            {
+                parsing.extract(std::back_inserter(s), 0, 18);
+                REQUIRE(s == "ababbbabbabbbabbaa");
+            }
+            s.clear();
+            {
+                parsing.extract_phrase(std::back_inserter(s), 3);
+                REQUIRE(s == "abb");
+            }
+            s.clear();
+            {
+                parsing.extract_phrase(std::back_inserter(s), 4);
+                REQUIRE(s == "babba");
+            }
+            s.clear();
+            {
+                parsing.extract_phrase(std::back_inserter(s), 5);
+                REQUIRE(s == "bbbabbaa");
+            }
         }
-        s.clear();
+
         {
-            parsing.extract_phrase(std::back_inserter(s), 3);
-            REQUIRE(s == "abb");
-        }
-        s.clear();
-        {
-            parsing.extract_phrase(std::back_inserter(s), 4);
-            REQUIRE(s == "babba");
-        }
-        s.clear();
-        {
-            parsing.extract_phrase(std::back_inserter(s), 5);
-            REQUIRE(s == "bbbabbaa");
+            std::string match_reverse = "ababbbabbabbbabbaa";
+            std::reverse(match_reverse.begin(), match_reverse.end());
+
+            size_t common_prefix = 0;
+            parsing.extract_reverse_until([&](char const c) {
+                if(c == match_reverse[common_prefix]) {
+                    ++common_prefix;
+                    return true;
+                } else {
+                    return false;
+                }
+            }, 0, 18);
+
+            REQUIRE(common_prefix == 18);
         }
     }
 

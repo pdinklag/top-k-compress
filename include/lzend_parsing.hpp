@@ -127,6 +127,44 @@ public:
         extract(out, phrases_[i].end - len + 1, len);
     }
 
+    // extracts the substring of the text of given length and starting at the given position
+    // stop if predicate returns false
+    template<typename Predicate>
+    bool extract_reverse_until(Predicate predicate, Index const start, Index const len) const {
+        auto const end = start + len - 1;
+        auto const r = ends_.successor({end,0});
+        assert(r.exists);
+        auto const p = r.key.phr;
+        if(r.key.pos == end) {
+            // we're at a phrase end position
+            if(!predicate(phrases_[p].last)) return false;
+            return len <= 1 || extract_reverse_until(predicate, start, len - 1);
+        } else {
+            // we're somewhere within phrase p and need to extract something from the source
+            auto const pstart = phrases_[p-1].end + 1;
+            auto const lnk_end = phrases_[phrases_[p].link].end;
+
+            if(start < pstart) {
+                // we are trying to extract some part prior to the current phrase, and that must be done separately
+                // first, extract remainder from source
+                auto const suffix_len = end - pstart + 1;
+                if(!extract_reverse_until(predicate, lnk_end - suffix_len + 1, suffix_len)) return false;
+
+                // now extract the part prior
+                return extract_reverse_until(predicate, start, pstart - start);
+            } else {
+                // extract from source
+                return extract_reverse_until(predicate, lnk_end - len + 1, len);
+            }
+        }
+    }
+
+    // extracts the suffix of the given length of the i-th phrase
+    template<typename Predicate>
+    void extract_reverse_phrase_suffix_until(Predicate predicate, Index const i, Index const len) const {
+        extract_reverse_until(predicate, phrases_[i].end - len + 1, len);
+    }
+
     // gets the number of the phrase (1-based) that the given text position (0-based) lies in
     Index phrase_at(Index const text_pos) const {
         auto const r = ends_.successor({text_pos,0});

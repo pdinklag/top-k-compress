@@ -76,8 +76,6 @@ private:
     std::vector<Node> nodes_;
     std::vector<NodeNumber> phrase_nodes_;
 
-    std::string extract_buffer_;
-
     NodeNumber create_node() {
         auto const i = nodes_.size();
         nodes_.emplace_back();
@@ -249,19 +247,18 @@ public:
             char mismatch;
             auto const extract_len = std::min(len, nodes_[v].len);
             {
-                // extract suffix of phrase v
-                // FIXME: compare more efficiently -- it can be done WHILE extracting the suffix and only until a mismatch
-                extract_buffer_.clear();
-                extract_buffer_.reserve(len);
-                lzend_->extract_phrase_suffix(std::back_inserter(extract_buffer_), nodes_[v].phr, extract_len); // TODO: extract more efficiently and only until we mismatch?
-                std::reverse(extract_buffer_.begin(), extract_buffer_.end());
-
-                // compare
+                // extract reverse suffix of phrase v while we're matching with the reverse input string
                 common_suffix_length = 0;
+                lzend_->extract_reverse_phrase_suffix_until([&](char const c){
+                    if(c == s[pos + common_suffix_length]) {
+                        ++common_suffix_length;
+                        return true;
+                    } else {
+                        mismatch = c;
+                        return false;
+                    }
+                }, nodes_[v].phr, extract_len);
 
-                while(common_suffix_length < extract_len && extract_buffer_[common_suffix_length] == s[pos + common_suffix_length]) {
-                    ++common_suffix_length;
-                }
                 assert(common_suffix_length >= 1); // we must have matched the first character in the root, otherwise we wouldn't be here
 
                 if constexpr(DEBUG) {
@@ -309,7 +306,7 @@ public:
 
                 // make v a child of new node u
                 {
-                    auto const c = UChar(extract_buffer_[common_suffix_length]);
+                    auto const c = UChar(mismatch);
                     nodes_[u].map.emplace(c, v);
                     nodes_[v].parent = u;
 
