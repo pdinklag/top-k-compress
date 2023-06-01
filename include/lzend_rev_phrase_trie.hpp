@@ -74,7 +74,7 @@ private:
 
     ankerl::unordered_dense::map<uint64_t, NodeNumber> nav_;
     std::vector<Node> nodes_;
-    std::vector<NodeNumber> phrase_leaves_;
+    std::vector<NodeNumber> phrase_nodes_;
 
     std::string extract_buffer_;
 
@@ -167,7 +167,7 @@ public:
         create_node();
 
         // empty phrase 0 to offset phrase numbers
-        phrase_leaves_.push_back(root_);
+        phrase_nodes_.push_back(root_);
     }
 
     Index approx_find_phr(StringView const& s, Index const pos, Index const len) const {
@@ -175,12 +175,12 @@ public:
     }
 
     Index nca_len(Index const p, Index const q) const {
-        assert(p < phrase_leaves_.size());
-        assert(q < phrase_leaves_.size());
+        assert(p < phrase_nodes_.size());
+        assert(q < phrase_nodes_.size());
 
         // translate phrase numbers to corresponding leaves
-        auto const u = phrase_leaves_[p];
-        auto const v = phrase_leaves_[q];
+        auto const u = phrase_nodes_[p];
+        auto const v = phrase_nodes_[q];
 
         assert(p == 0 || u != root_);
         assert(q == 0 || v != root_);
@@ -189,13 +189,12 @@ public:
     }
 
     void insert(StringView const& s, Index const pos, Index const len) {
-        auto const phr = (Index)phrase_leaves_.size();
+        auto const phr = (Index)phrase_nodes_.size();
         auto create_new_phrase_node = [&](){
             auto const x = create_node();
             nodes_[x].len = len;
             nodes_[x].phr = phr;
-            phrase_leaves_.push_back(x);
-            assert(phrase_leaves_[phr] == x);
+            phrase_nodes_.push_back(x);
             return x;
         };
 
@@ -346,9 +345,9 @@ public:
                 if constexpr(DEBUG) {
                     std::cout << "\t\tstring already in trie at node " << u << " representing phrase " << nodes_[u].phr << std::endl;
                 }
-                phrase_leaves_.push_back(u);
-                return;
+                phrase_nodes_.push_back(u);
             }
         }
+        assert(phrase_nodes_.size() == phr + 1); // we must have created a new entry here
     }
 };
