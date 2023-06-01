@@ -190,7 +190,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
         constexpr Index DONTCARE = 0; // used for querying M for a certain suffix array position (key); the phrase number then doesn't matter
 
         BTree<MarkedLCP, 65> marked;
-        using MResult = decltype(marked)::KeyResult;
+        using MResult = KeyResult<MarkedLCP>;
 
         #ifndef NDEBUG
         auto is_marked = [&](Index const m) {

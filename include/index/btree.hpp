@@ -5,6 +5,7 @@
 #include <type_traits>
 
 #include "btree_node.hpp"
+#include "key_result.hpp"
 
 template<std::totally_ordered Key, size_t degree_>
 class BTree {
@@ -394,15 +395,7 @@ public:
         delete root_;
     }
 
-    struct KeyResult {
-        bool exists;
-        Key key;
-        
-        inline operator bool() const { return exists; }
-        inline operator Key() const { return key; }
-    };
-
-    KeyResult predecessor(Key const x) const {
+    KeyResult<Key> predecessor(Key const x) const {
         Node* node = root_;
         
         bool exists = false;
@@ -429,7 +422,7 @@ public:
         return { exists, value };
     }
 
-    KeyResult successor(Key const x) const {
+    KeyResult<Key> successor(Key const x) const {
         Node* node = root_;
         
         bool exists = false;
