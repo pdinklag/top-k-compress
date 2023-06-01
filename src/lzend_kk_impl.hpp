@@ -450,7 +450,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 unmark(m - 1 - len1);
 
                 // delete current phrase
-                phrases.pop_back();
+                phrases.pop_back<false>();
                 phrase_hashes.pop_back();
                 --z;
                 assert(z); // nb: must still have at least phrase 0
@@ -465,7 +465,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 }
 
                 // merge phrases
-                phrases.replace_back(p, len2 + 1, next_char);
+                phrases.replace_back<false>(p, len2 + 1, next_char);
 
                 // stats
                 ++num_consecutive_merges;
@@ -487,7 +487,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 }
 
                 // extend phrase
-                phrases.replace_back(p, len1 + 1, next_char);
+                phrases.replace_back<false>(p, len1 + 1, next_char);
 
                 // stats
                 num_consecutive_merges = 0;
@@ -496,7 +496,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 if constexpr(DEBUG) std::cout << "\tNEW phrase " << (z+1) << " of length 1" << std::endl;
                 
                 ++z;
-                phrases.emplace_back(p, 1, next_char);
+                phrases.emplace_back<false>(p, 1, next_char);
                 phrase_hashes.emplace_back(0);
 
                 // stats
@@ -540,6 +540,11 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
                 trie.insert(rwindow_fp, rend, rwindow.size() - 1 - rend);
                 mark(phrases[ztrie].end - window_begin_glob, ztrie, true);
+
+                // also enter the trie into the parsing's successor data structure
+                // once a phrase is in the trie, we may want to decode it in order to do longest common suffix queries
+                // before that, it is never necessary to decode it, and thus it suffices to update the successor data structure now
+                phrases.persist(ztrie);
 
                 ++ztrie;
             }

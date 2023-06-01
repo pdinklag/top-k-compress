@@ -46,26 +46,20 @@ public:
     Phrase const& operator[](Index const i) const { return phrases_[i]; }
 
     // appends a new LZ-End phrase
+    // if persist is false, the successor data structure will not be updated
+    template<bool persist = true>
     void emplace_back(Index const link, Index const len, Char const last) {
         assert(len);
 
         auto const p = (Index)phrases_.size();
         text_len_ += len;
         phrases_.emplace_back(link, len, text_len_ - 1, last);
-        ends_.insert({text_len_ - 1, p});
-    }
-
-    // appends a new LZ-End phrase
-    void push_back(Phrase const& phrase) {
-        assert(phrase.len);
-
-        auto const p = (Index)phrases_.size();
-        text_len_ += phrase.len;
-        phrases_.push_back(phrase);
-        ends_.insert({text_len_ - 1, p});
+        if constexpr(persist) ends_.insert({text_len_ - 1, p});
     }
 
     // pops the last LZ-End phrase
+    // if persist is false, the successor data structure will not be updated
+    template<bool persist = true>
     Phrase pop_back() {
         assert(size() > 0);
 
@@ -73,15 +67,23 @@ public:
         assert(text_len_ >= last.len);
 
         phrases_.pop_back();
-        ends_.remove({text_len_ - 1, 0});
+        if constexpr(persist) ends_.remove({text_len_ - 1, 0});
         text_len_ -= last.len;
         return last;
     }
 
     // replaces the last LZ-End phrase
+    // if persist is false, the successor data structure will not be updated
+    template<bool persist = true>
     void replace_back(Index const link, Index const len, Char const last) {
-        pop_back();
-        emplace_back(link, len, last);
+        pop_back<persist>();
+        emplace_back<persist>(link, len, last);
+    }
+
+    // persists the i-th phrase in the successor data structure
+    void persist(Index const i) {
+        assert(!ends_.contains(phrases_[i].end));
+        ends_.insert({phrases_[i].end, i});
     }
 
     // extracts the substring of the text of given length and starting at the given position
