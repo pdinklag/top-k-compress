@@ -315,7 +315,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             };
 
             auto absorbOne = [&](){
-                if(p > 0 && m > 0) {
+                if(p > 0 && m > 0 && len1 < max_block) {
                     if constexpr(DEBUG) {
                         std::cout << "\ttesting whether trie phrase " << p << " has a common suffix with current phrase of length " << len1 << std::endl;
                     }
@@ -370,7 +370,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
             // query the trie for a suffix matching the two current phrases
             auto absorbTwo = [&](){
-                if(commonPart(len2)) {
+                if(len2 < max_block && commonPart(len2)) {
                     if constexpr(DEBUG) {
                         std::cout << "\tabsorbTwo returned true" << std::endl;
                     }
@@ -444,7 +444,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             // query the marked LCP data structure for the previous position, excluding the most current phrase, and compute LCE
             auto absorbTwo2 = [&](Index& out_lnk){
                 precompute_absorb2();
-                if(m > len1 && len2 < window.size() && lce2 >= len2) {
+                if(m > len1 && len2 < max_block && lce2 >= len2) {
                     out_lnk = lnk2;
                     return true;
                 } else {
@@ -455,7 +455,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             // query the marked LCP data structure for the previous position and compute LCE
             auto absorbOne2 = [&](Index& out_lnk){
                 // we expect that precompute_absorb2 has already been called
-                if(m > 0 && len1 < window.size() && lce1 >= len1) {
+                if(m > 0 && len1 < max_block && lce1 >= len1) {
                     out_lnk = lnk1;
                     return true;
                 } else {
@@ -535,6 +535,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             if constexpr(DEBUG) std::cout << "\t-> z=" << z << ", link=" << phrases[z].link << ", len=" << phrases[z].len << ", last=" << display(phrases[z].last) << std::endl;
 
             // update lens
+            assert(phrases[z].len <= max_block);
             lens[m] = phrases[z].len;
 
             // update phrase hash
