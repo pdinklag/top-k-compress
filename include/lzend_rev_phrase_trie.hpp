@@ -83,7 +83,7 @@ private:
     }
 
     void update_nav(NodeNumber const v, NodeNumber const parent, StringView const& s, Index const pos) {
-        auto const p_v = rst(nodes_[v].len, max_i_rst(nodes_[v].len, nodes_[parent].len));
+        auto const p_v = std::min(rst(nodes_[v].len, max_i_rst(nodes_[v].len, nodes_[parent].len)), Index(s.length() - pos));
         auto const h_v = s.fingerprint(pos, pos + p_v - 1);
 
         if constexpr(DEBUG) {
