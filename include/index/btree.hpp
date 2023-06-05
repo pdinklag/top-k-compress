@@ -5,9 +5,9 @@
 #include <type_traits>
 
 #include "btree_node.hpp"
-#include "key_result.hpp"
+#include "result.hpp"
 
-template<std::totally_ordered Key, size_t degree_>
+template<std::totally_ordered Key, typename Value, size_t degree_>
 class BTree {
 private:
     static_assert((degree_ % 2) == 1); // we only allow odd maximum degrees for the sake of implementation simplicity
@@ -26,7 +26,7 @@ public:
     private:
         friend class BTree;
     
-        BTreeSortedNodeLS<Key, max_node_keys_> impl_;
+        BTreeSortedNodeLS<Key, Value, max_node_keys_> impl_;
         ChildCount num_children_;
         Node** children_;
     
@@ -101,18 +101,19 @@ public:
 
             // get the middle value
             Key const m = y->impl_[split_mid_];
+            Value value_m;
 
             // move the keys larger than middle from y to z and remove the middle
             {
-                Key buf[split_right_];
+                Key keybuf[split_right_];
                 for(size_t j = 0; j < split_right_; j++) {
-                    buf[j] = y->impl_[j + split_right_];
-                    z->impl_.insert(buf[j]);
+                    keybuf[j] = y->impl_[j + split_right_];
+                    z->impl_.insert(keybuf[j], y->impl_.value(j + split_right_));
                 }
                 for(size_t j = 0; j < split_right_; j++) {
-                    y->impl_.remove(buf[j]);
+                    y->impl_.remove(keybuf[j]);
                 }
-                y->impl_.remove(m);
+                y->impl_.remove(m, value_m);
             }
 
             // move the m_children right of middle from y to z
@@ -125,7 +126,7 @@ public:
             }
 
             // insert middle into this and add z as child i+1
-            impl_.insert(m);
+            impl_.insert(m, value_m);
             insert_child(i + 1, z);
 
             // some assertions
@@ -137,12 +138,12 @@ public:
             if(!y->is_leaf()) assert(y->num_children_ == split_mid_ + 1);
         }
         
-        void insert(Key const key) {
+        void insert(Key const key, Value const value) {
             assert(!is_full());
             
             if(is_leaf()) {
                 // we're at a leaf, insert
-                impl_.insert(key);
+                impl_.insert(key, value);
             } else {
                 // find the child to descend into
                 auto const r = impl_.predecessor(key);
@@ -157,7 +158,7 @@ public:
                 }
 
                 // descend into non-full child
-                children_[i]->insert(key);
+                children_[i]->insert(key, value);
             }
         }
 
@@ -188,10 +189,11 @@ public:
                             c = c->children_[c->num_children_-1];
                         }
                         Key const key_pred = c->impl_[c->size()-1];
+                        Value value_pred = c->impl_.value(c->size()-1);
 
                         // replace key by predecssor in this node
                         impl_.remove(key);
-                        impl_.insert(key_pred);
+                        impl_.insert(key_pred, value_pred);
 
                         // recursively delete key_pred from y
                         y->remove(key_pred);
@@ -202,10 +204,11 @@ public:
                             c = c->children_[0];
                         }
                         Key const key_succ = c->impl_[0];
+                        Value const value_succ = c->impl_.value(0);
 
                         // replace key by successor in this node
                         impl_.remove(key);
-                        impl_.insert(key_succ);
+                        impl_.insert(key_succ, value_succ);
 
                         // recursively delete key_succ from z
                         z->remove(key_succ);
@@ -215,14 +218,15 @@ public:
                         assert(zsize == deletion_threshold_ - 1);
 
                         // remove key from this node
-                        impl_.remove(key);
+                        Value value;
+                        impl_.remove(key, value);
 
                         // merge key and all of z into y
                         {
                             // insert key and keys of z into y
-                            y->impl_.insert(key);
+                            y->impl_.insert(key, value);
                             for(size_t j = 0; j < zsize; j++) {
-                                y->impl_.insert(z->impl_[j]);
+                                y->impl_.insert(z->impl_[j], z->impl_.value(j));
                             }
 
                             // move m_children from z to y
@@ -265,14 +269,18 @@ public:
                             // retrieve splitter and move it into c
                             Key const splitter = impl_[i-1];
                             assert(key > splitter); // sanity
-                            impl_.remove(splitter);
-                            c->impl_.insert(splitter);
+                            Value splitter_value;
+                            auto const rem_splitter = impl_.remove(splitter, splitter_value);
+                            assert(rem_splitter);
+                            c->impl_.insert(splitter, splitter_value);
                             
                             // move largest key from left sibling to this node
                             Key const llargest = left->impl_[left->size()-1];
                             assert(splitter > llargest); // sanity
-                            left->impl_.remove(llargest);
-                            impl_.insert(llargest);
+                            Value llargest_value;
+                            auto const rem_llargest = left->impl_.remove(llargest, llargest_value);
+                            assert(rem_llargest);
+                            impl_.insert(llargest, llargest_value);
                             
                             // move rightmost child of left sibling to c
                             if(!left->is_leaf()) {
@@ -287,14 +295,18 @@ public:
                             // retrieve splitter and move it into c
                             Key const splitter = impl_[i];
                             assert(key < splitter); // sanity
-                            impl_.remove(splitter);
-                            c->impl_.insert(splitter);
+                            Value splitter_value;
+                            auto const rem_splitter = impl_.remove(splitter, splitter_value);
+                            assert(rem_splitter);
+                            c->impl_.insert(splitter, splitter_value);
                             
                             // move smallest key from right sibling to this node
                             Key const rsmallest = right->impl_[0];
                             assert(rsmallest > splitter); // sanity
-                            right->impl_.remove(rsmallest);
-                            impl_.insert(rsmallest);
+                            Value rsmallest_value;
+                            auto const rem_rsmallest = right->impl_.remove(rsmallest, rsmallest_value);
+                            assert(rem_rsmallest);
+                            impl_.insert(rsmallest, rsmallest_value);
                             
                             // move leftmost child of right sibling to c
                             if(!right->is_leaf()) {
@@ -315,12 +327,14 @@ public:
                                 assert(key < splitter); // sanity
                                 
                                 // move splitter into child as new median
-                                impl_.remove(splitter);
-                                c->impl_.insert(splitter);
+                                Value splitter_value;
+                                auto const rem_splitter = impl_.remove(splitter, splitter_value);
+                                assert(rem_splitter);
+                                c->impl_.insert(splitter, splitter_value);
                                 
                                 // move keys right sibling to child
                                 for(size_t j = 0; j < right->size(); j++) {
-                                    c->impl_.insert(right->impl_[j]);
+                                    c->impl_.insert(right->impl_[j], right->impl_.value(j));
                                 }
                                 
                                 if(!right->is_leaf()) {
@@ -344,12 +358,14 @@ public:
                                 assert(key > splitter); // sanity
                                 
                                 // move splitter into child as new median
-                                impl_.remove(splitter);
-                                c->impl_.insert(splitter);
+                                Value splitter_value;
+                                auto const rem_splitter = impl_.remove(splitter, splitter_value);
+                                assert(rem_splitter);
+                                c->impl_.insert(splitter, splitter_value);
                                 
                                 // move keys left sibling to child
                                 for(size_t j = 0; j < left->size(); j++) {
-                                    c->impl_.insert(left->impl_[j]);
+                                    c->impl_.insert(left->impl_[j], left->impl_.value(j));
                                 }
                                 
                                 if(!left->is_leaf()) {
@@ -395,19 +411,21 @@ public:
         delete root_;
     }
 
-    KeyResult<Key> predecessor(Key const x) const {
+    KeyValueResult<Key, Value> predecessor(Key const x) const {
         Node* node = root_;
         
         bool exists = false;
-        Key value;
+        Key key;
+        Value value;
         
         auto r = node->impl_.predecessor(x);
         while(!node->is_leaf()) {
             exists = exists || r.exists;
             if(r.exists) {
-                value = node->impl_[r.pos];
-                if(value == x) {
-                    return { true, value };
+                key = node->impl_[r.pos];
+                value = node->impl_.value(r.pos);
+                if(key == x) {
+                    return { true, key, value };
                 }
             }
                
@@ -417,24 +435,29 @@ public:
         }
         
         exists = exists || r.exists;
-        if(r.exists) value = node->impl_[r.pos];
+        if(r.exists) {
+            key = node->impl_[r.pos];
+            value = node->impl_.value(r.pos);
+        }
         
-        return { exists, value };
+        return { exists, key, value };
     }
 
-    KeyResult<Key> successor(Key const x) const {
+    KeyValueResult<Key, Value> successor(Key const x) const {
         Node* node = root_;
         
         bool exists = false;
-        Key value;
+        Key key;
+        Value value;
         
         auto r = node->impl_.successor(x);
         while(!node->is_leaf()) {
             exists = exists || r.exists;
             if(r.exists) {
-                value = node->impl_[r.pos];
-                if(value == x) {
-                    return { true, value };
+                key = node->impl_[r.pos];
+                value = node->impl_.value(r.pos);
+                if(key == x) {
+                    return { true, key, value };
                 }
             }
 
@@ -444,9 +467,12 @@ public:
         }
         
         exists = exists || r.exists;
-        if(r.exists) value = node->impl_[r.pos];
+        if(r.exists) {
+            key = node->impl_[r.pos];
+            value = node->impl_.value(r.pos);
+        }
         
-        return { exists, value };
+        return { exists, key, value };
     }
 
     bool contains(Key const x) const {
@@ -471,7 +497,7 @@ public:
         return node->impl_[node->size() - 1];
     }
 
-    void insert(Key const key) {
+    void insert(Key const key, Value const value) {
         if(root_->is_full()) {
             // root is full, split it up
             Node* new_root = new Node();
@@ -480,7 +506,7 @@ public:
             root_ = new_root;
             root_->split_child(0);
         }
-        root_->insert(key);
+        root_->insert(key, value);
         ++size_;
     }
 

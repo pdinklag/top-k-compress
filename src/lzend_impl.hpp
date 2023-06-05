@@ -34,19 +34,6 @@ constexpr uint64_t MAGIC =
 using Index = uint32_t;
 using SIndex = std::make_signed_t<Index>;
 
-struct Factor {
-    Index num;
-    Index pos;
-    
-    // std::totally_ordered
-    bool operator==(Factor const& x) const { return pos == x.pos; }
-    bool operator!=(Factor const& x) const { return pos != x.pos; }
-    bool operator< (Factor const& x) const { return pos <  x.pos; }
-    bool operator<=(Factor const& x) const { return pos <= x.pos; }
-    bool operator> (Factor const& x) const { return pos >  x.pos; }
-    bool operator>=(Factor const& x) const { return pos >= x.pos; }
-} __attribute__((__packed__));
-
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void lzend_compress(In begin, In const& end, Out out, size_t const block_size, pm::Result& result) {
     pm::Stopwatch sw;
@@ -104,7 +91,7 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
     if constexpr(TIME_PHASES) { sw.stop(); result.add("t_bws", (uint64_t)sw.elapsed_time_millis()); }
     
     // initialize dynamic successor data structure
-    BTree<Factor, 65> factors;
+    BTree<Index, Index, 65> factors;
     
     // initialize encoding
     out.write(MAGIC, 64);
@@ -134,7 +121,7 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
     {
         using Interval = BackwardSearch<>::Interval;
 
-        factors.insert({0, n+1}); // ensure there is always a successor
+        factors.insert(n+1, 0); // ensure there is always a successor
         Index i = 0;
         Index p = 1;
         while(i < n) {
@@ -155,18 +142,18 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
                 ++i_;
                 
                 if constexpr(TIME_OPS) { sw_detail.start(); }
-                auto const f = factors.successor({0, (Index)x.first}).key;
+                auto const f = factors.successor((Index)x.first);
                 if constexpr(TIME_OPS) { sw_detail.stop(); t_succ_query += sw_detail.elapsed_time_nanos(); }
-                if(f.pos <= x.second) {
-                    assert(f.num > 0);
+                if(f.key <= x.second) {
+                    assert(f.value > 0);
 
                     j = i_;
-                    q = f.num;
+                    q = f.value;
                 }
             }
             
             if constexpr(TIME_OPS) { sw_detail.start(); }
-            if(j < n) factors.insert({p, isa[pos_to_reverse(j)]});
+            if(j < n) factors.insert(isa[pos_to_reverse(j)], p);
             if constexpr(TIME_OPS) { sw_detail.stop(); t_succ_insert += sw_detail.elapsed_time_nanos(); }
 
             ++num_phrases;

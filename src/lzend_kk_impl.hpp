@@ -172,30 +172,15 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
         // position j is marked iff a phrase ends at position SA[j]
         // -> M contains suffix array positions
         // nb: the "balanced tree" P is also simulated by this data structure,
-        //     which we modified to mark positions along with the corresponding phrase number
+        //     which we modified to mark positions along with the corresponding phrase number (values)
         //     this is also what avoids the need to keep the suffix array in RAM
-        struct MarkedLCP {
-            Index sa_pos;     // the position in the suffix array of the text position at which the phrase ends
-            Index phrase_num; // the phrase number
-
-            // std::totally_ordered
-            bool operator==(MarkedLCP const& x) const { return sa_pos == x.sa_pos; }
-            bool operator!=(MarkedLCP const& x) const { return sa_pos != x.sa_pos; }
-            bool operator< (MarkedLCP const& x) const { return sa_pos <  x.sa_pos; }
-            bool operator<=(MarkedLCP const& x) const { return sa_pos <= x.sa_pos; }
-            bool operator> (MarkedLCP const& x) const { return sa_pos >  x.sa_pos; }
-            bool operator>=(MarkedLCP const& x) const { return sa_pos >= x.sa_pos; }
-        } __attribute__((__packed__));
-
-        constexpr Index DONTCARE = 0; // used for querying M for a certain suffix array position (key); the phrase number then doesn't matter
-
-        BTree<MarkedLCP, 65> marked;
-        using MResult = KeyResult<MarkedLCP>;
+        BTree<Index, Index, 65> marked;
+        using MResult = KeyValueResult<Index, Index>;
 
         #ifndef NDEBUG
         auto is_marked = [&](Index const m) {
             auto const isa_m = isa[pos_to_reverse(m)];
-            return marked.contains(MarkedLCP{isa_m, DONTCARE});
+            return marked.contains(isa_m);
         };
         #endif
 
@@ -209,7 +194,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             assert(!is_marked(m));
             #endif
             auto const isa_m = isa[pos_to_reverse(m)];
-            marked.insert(MarkedLCP{isa_m, phrase_num});
+            marked.insert(isa_m, phrase_num);
         };
 
         auto unmark = [&](Index const m, bool silent = false){
@@ -219,21 +204,21 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 if(!silent) std::cout << "\tunregister phrase ending at " << mglob << std::endl;
             }
             auto const isa_m = isa[pos_to_reverse(m)];
-            assert(marked.contains(MarkedLCP{isa_m, DONTCARE}));
-            marked.remove(MarkedLCP{isa_m, DONTCARE});
+            assert(marked.contains(isa_m));
+            marked.remove(isa_m);
         };
 
         auto marked_lcp = [&](Index const q) {
             auto const isa_q = isa[pos_to_reverse(q)];
 
             // look for the marked LCPs sorrounding the suffix array position of q
-            auto const marked_l = (isa_q > 0) ? marked.predecessor(MarkedLCP{isa_q - 1, DONTCARE}) : MResult{ false, 0 };
-            auto const lce_l = marked_l.exists ? lcp[rmq.rmq(marked_l.key.sa_pos + 1, isa_q)] : 0;
-            auto const marked_r = marked.successor(MarkedLCP{isa_q + 1, DONTCARE});
-            auto const lce_r = marked_r.exists ? lcp[rmq.rmq(isa_q + 1, marked_r.key.sa_pos)] : 0;
+            auto const marked_l = (isa_q > 0) ? marked.predecessor(isa_q - 1) : MResult::none();
+            auto const lce_l = marked_l.exists ? lcp[rmq.rmq(marked_l.key + 1, isa_q)] : 0;
+            auto const marked_r = marked.successor(isa_q + 1);
+            auto const lce_r = marked_r.exists ? lcp[rmq.rmq(isa_q + 1, marked_r.key)] : 0;
 
             // select the longer LCP and return it along with the corresponding phrase number
-            return (lce_l > lce_r) ? std::pair(lce_l, marked_l.key.phrase_num) : std::pair(lce_r, marked_r.key.phrase_num);
+            return (lce_l > lce_r) ? std::pair(lce_l, marked_l.value) : std::pair(lce_r, marked_r.value);
         };
 
         // preprocess: mark positions of phrases that end in the previous two blocks within the window
@@ -406,18 +391,18 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                     auto const isa_cur = isa[pos_to_reverse(m-1)];
                     
                     // this is basically marked_lcp for m-1, except we want to keep all intermediate results for further computation of absorbTwo2
-                    auto const marked_l1 = (isa_cur > 0) ? marked.predecessor(MarkedLCP{isa_cur - 1, DONTCARE}) : MResult{ false, 0 };
-                    auto const lce_l1 = marked_l1.exists ? lcp[rmq.rmq(marked_l1.key.sa_pos + 1, isa_cur)] : 0;
-                    auto const marked_r1 = marked.successor(MarkedLCP{isa_cur + 1, DONTCARE});
-                    auto const lce_r1 = marked_r1.exists ? lcp[rmq.rmq(isa_cur + 1, marked_r1.key.sa_pos)] : 0;
+                    auto const marked_l1 = (isa_cur > 0) ? marked.predecessor(isa_cur - 1) : MResult::none();
+                    auto const lce_l1 = marked_l1.exists ? lcp[rmq.rmq(marked_l1.key + 1, isa_cur)] : 0;
+                    auto const marked_r1 = marked.successor(isa_cur + 1);
+                    auto const lce_r1 = marked_r1.exists ? lcp[rmq.rmq(isa_cur + 1, marked_r1.key)] : 0;
 
                     if(lce_l1 > 0 || lce_r1 > 0) {
                         // find marked position with larger LCE
                         if(lce_l1 > lce_r1) {
-                            lnk1 = marked_l1.key.phrase_num;
+                            lnk1 = marked_l1.value;
                             lce1 = lce_l1;
                         } else {
-                            lnk1 = marked_r1.key.phrase_num;
+                            lnk1 = marked_r1.value;
                             lce1 = lce_r1;
                         }
 
@@ -427,27 +412,27 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
                             auto marked_l2 = marked_l1;
                             auto lce_l2 = lce_l1;
-                            if(marked_l2.exists && marked_l2.key.phrase_num == exclude) {
+                            if(marked_l2.exists && marked_l2.value == exclude) {
                                 // ignore end position of previous phrase
-                                marked_l2 = (marked_l1.key.sa_pos > 0 ? marked.predecessor(MarkedLCP{marked_l1.key.sa_pos - 1, DONTCARE}) : MResult{ false, 0 });
-                                lce_l2 = marked_l2.exists ? lcp[rmq.rmq(marked_l2.key.sa_pos + 1, isa_cur)] : 0;
+                                marked_l2 = (marked_l1.key > 0 ? marked.predecessor(marked_l1.key - 1) : MResult::none());
+                                lce_l2 = marked_l2.exists ? lcp[rmq.rmq(marked_l2.key + 1, isa_cur)] : 0;
                             }
 
                             auto marked_r2 = marked_r1;
                             auto lce_r2 = lce_r1;
-                            if(marked_r2.exists && marked_r2.key.phrase_num == exclude) {
+                            if(marked_r2.exists && marked_r2.value == exclude) {
                                 // ignore end position of previous phrase
-                                marked_r2 = marked.successor(MarkedLCP{marked_r1.key.sa_pos + 1, DONTCARE});
-                                lce_r2 = marked_r2.exists ? lcp[rmq.rmq(isa_cur + 1, marked_r2.key.sa_pos)] : 0;
+                                marked_r2 = marked.successor(marked_r1.key + 1);
+                                lce_r2 = marked_r2.exists ? lcp[rmq.rmq(isa_cur + 1, marked_r2.key)] : 0;
                             }
 
                             // find marked position with larger LCE
                             if(lce_l2 > 0 || lce_r2 > 0) {
                                 if(lce_l2 > lce_r2) {
-                                    lnk2 = marked_l2.key.phrase_num;
+                                    lnk2 = marked_l2.value;
                                     lce2 = lce_l2;
                                 } else {
-                                    lnk2 = marked_r2.key.phrase_num;
+                                    lnk2 = marked_r2.value;
                                     lce2 = lce_r2;
                                 }
                             }

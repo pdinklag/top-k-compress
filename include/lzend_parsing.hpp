@@ -20,22 +20,9 @@ public:
     } __attribute__((packed));
 
 private:
-    struct PhraseEnd {
-        Index pos;
-        Index phr;
-
-        // std::totally_ordered
-        bool operator==(PhraseEnd const& x) const { return pos == x.pos; }
-        bool operator!=(PhraseEnd const& x) const { return pos != x.pos; }
-        bool operator< (PhraseEnd const& x) const { return pos <  x.pos; }
-        bool operator<=(PhraseEnd const& x) const { return pos <= x.pos; }
-        bool operator> (PhraseEnd const& x) const { return pos >  x.pos; }
-        bool operator>=(PhraseEnd const& x) const { return pos >= x.pos; }
-    } __attribute__((packed));
-
     Index text_len_;
     std::vector<Phrase> phrases_;
-    BTree<PhraseEnd, 65> ends_;
+    BTree<Index, Index, 65> ends_;
 
 public:
     LZEndParsing() : text_len_(0) {
@@ -54,7 +41,7 @@ public:
         auto const p = (Index)phrases_.size();
         text_len_ += len;
         phrases_.emplace_back(link, len, text_len_ - 1, last);
-        if constexpr(persist) ends_.insert({text_len_ - 1, p});
+        if constexpr(persist) ends_.insert(text_len_ - 1, p);
     }
 
     // pops the last LZ-End phrase
@@ -67,7 +54,7 @@ public:
         assert(text_len_ >= last.len);
 
         phrases_.pop_back();
-        if constexpr(persist) ends_.remove({text_len_ - 1, 0});
+        if constexpr(persist) ends_.remove(text_len_ - 1);
         text_len_ -= last.len;
         return last;
     }
@@ -82,18 +69,18 @@ public:
 
     // persists the i-th phrase in the successor data structure
     void persist(Index const i) {
-        assert(!ends_.contains({phrases_[i].end, 0}));
-        ends_.insert({phrases_[i].end, i});
+        assert(!ends_.contains(phrases_[i].end));
+        ends_.insert(phrases_[i].end, i);
     }
 
     // extracts the substring of the text of given length and starting at the given position
     template<std::output_iterator<Char> Out>
     void extract(Out out, Index const start, Index const len) const {
         auto const end = start + len - 1;
-        auto const r = ends_.successor({end,0});
+        auto const r = ends_.successor(end);
         assert(r.exists);
-        auto const p = r.key.phr;
-        if(r.key.pos == end) {
+        auto const p = r.value;
+        if(r.key == end) {
             // we're at a phrase end position
             if(len > 1) extract(out, start, len - 1);
             *out++ = phrases_[p].last;
@@ -134,10 +121,10 @@ public:
     template<typename Predicate>
     bool extract_reverse_until(Predicate predicate, Index const start, Index const len) const {
         auto const end = start + len - 1;
-        auto const r = ends_.successor({end,0});
+        auto const r = ends_.successor(end);
         assert(r.exists);
-        auto const p = r.key.phr;
-        if(r.key.pos == end) {
+        auto const p = r.value;
+        if(r.key == end) {
             // we're at a phrase end position
             if(!predicate(phrases_[p].last)) return false;
             return len <= 1 || extract_reverse_until(predicate, start, len - 1);
@@ -169,8 +156,8 @@ public:
 
     // gets the number of the phrase (1-based) that the given text position (0-based) lies in
     Index phrase_at(Index const text_pos) const {
-        auto const r = ends_.successor({text_pos,0});
-        return r.exists ? r.key.phr : 0;
+        auto const r = ends_.successor(text_pos);
+        return r.exists ? r.value : 0;
     }
 
     // gets the length of the represented text

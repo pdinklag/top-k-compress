@@ -8,21 +8,10 @@
 #include <memory>
 #include <vector>
 
-#include "key_result.hpp"
+#include "result.hpp"
 
 template<std::unsigned_integral Key, std::unsigned_integral Value, size_t sample_bits_>
 class DynamicUniverseSampling {
-public:
-    struct KeyValueResult {
-        bool exists;
-        Key key;
-        Value value;
-
-        inline static KeyValueResult none() {
-            return { false, Key(), Value() };
-        }
-    };
-
 private:
     static constexpr size_t idiv_ceil(size_t const a, size_t const b) {
         return ((a + b) - 1ULL) / b;
@@ -52,7 +41,7 @@ private:
             return false;
         }
 
-        KeyValueResult max() const {
+        KeyValueResult<Key, Value> max() const {
             assert(size() > 0);
 
             Key max_idx = 0;
@@ -67,7 +56,7 @@ private:
             return { true, max, values[max_idx] };
         }
 
-        KeyValueResult min() const {
+        KeyValueResult<Key, Value> min() const {
             assert(size() > 0);
 
             Key min_idx = 0;
@@ -82,7 +71,7 @@ private:
             return { true, min, values[min_idx] };
         }
 
-        KeyValueResult predecessor(TruncatedKey const trunc_key) const {
+        KeyValueResult<Key, Value> predecessor(TruncatedKey const trunc_key) const {
             assert(size() > 0);
 
             Key pred_idx = NONE;
@@ -95,10 +84,10 @@ private:
                     if(x == trunc_key) break;
                 }
             }
-            return (pred_idx != NONE) ? KeyValueResult{ true, pred, values[pred_idx]} : KeyValueResult::none();
+            return (pred_idx != NONE) ? KeyValueResult<Key, Value>{ true, pred, values[pred_idx]} : KeyValueResult<Key, Value>::none();
         }
 
-        KeyValueResult successor(TruncatedKey const trunc_key) const {
+        KeyValueResult<Key, Value> successor(TruncatedKey const trunc_key) const {
             assert(size() > 0);
 
             Key succ_idx = NONE;
@@ -111,12 +100,12 @@ private:
                     if(x == trunc_key) break;
                 }
             }
-            return (succ_idx != NONE) ? KeyValueResult{ true, succ, values[succ_idx]} : KeyValueResult::none();
+            return (succ_idx != NONE) ? KeyValueResult<Key, Value>{ true, succ, values[succ_idx]} : KeyValueResult<Key, Value>::none();
         }
     };
 
-    inline static KeyValueResult reconstruct_key(KeyValueResult&& kvr, size_t const bucket_num) {
-        return KeyValueResult(kvr.exists, bucket_num * max_bucket_size_ + kvr.key, kvr.value);
+    inline static KeyValueResult<Key, Value> reconstruct_key(KeyValueResult<Key, Value>&& kvr, size_t const bucket_num) {
+        return KeyValueResult<Key, Value> { kvr.exists, Key(bucket_num * max_bucket_size_) + kvr.key, kvr.value };
     }
 
     size_t max_buckets_;
@@ -237,7 +226,7 @@ public:
         }
     }
 
-    KeyValueResult predecessor(Key const key) const {
+    KeyValueResult<Key, Value> predecessor(Key const key) const {
         auto const bucket_num = key >> sample_bits_;
         assert(bucket_num < max_buckets_);
 
@@ -265,10 +254,10 @@ public:
         }
 
         // there is no predecessor
-        return KeyValueResult::none();
+        return KeyValueResult<Key, Value>::none();
     }
 
-    KeyValueResult successor(Key const key) const {
+    KeyValueResult<Key, Value> successor(Key const key) const {
         auto const bucket_num = key >> sample_bits_;
         assert(bucket_num < max_buckets_);
 
@@ -296,6 +285,6 @@ public:
         }
 
         // there is no successor
-        return KeyValueResult::none();
+        return KeyValueResult<Key, Value>::none();
     }
 };
