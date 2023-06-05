@@ -58,7 +58,9 @@ public:
     size_t length() const { return view_.length(); }
 
     // returns the fingerprint of the string from its beginning up to position (including) i
-    uint64_t const fingerprint(size_t const i) const { return fp_[i]; }
+    uint64_t const fingerprint(size_t const i) const {
+        assert(i < fp_.size()); return fp_[i];
+    }
 
     // returns the fingerprint of the substring starting at i and ending at j (both included)
     uint64_t const fingerprint(size_t const i, size_t const j) const {
