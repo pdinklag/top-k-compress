@@ -581,13 +581,18 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 if constexpr(PARANOID) {
                     // verfiy that if we decode the newly inserted phrase,
                     // we end up with precisely the string we are about to enter into the trie
-                    Index i = 0;
+	            std::string rsuf;
+		    rsuf.reserve(rlen);
                     phrases.extract_reverse_phrase_suffix_until([&](char const c){
-                        auto const expect = rwindow_fp[rend + i];
-                        assert(c == expect);
-                        ++i;
+			rsuf.push_back(c);
                         return true;
                     }, ztrie, rlen);
+
+		    for(size_t i = 0; i < rlen; i++) {
+                        auto const expect = rwindow_fp[rend + i];
+			auto const c = rsuf[i];
+			assert(c == expect);
+		    }
                 }
                 #endif
 
