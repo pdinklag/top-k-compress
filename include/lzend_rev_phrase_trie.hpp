@@ -34,6 +34,7 @@ template<std::integral Char = char, std::unsigned_integral Index = uint32_t>
 class LZEndRevPhraseTrie {
 private:
     static constexpr bool DEBUG = false;
+    static constexpr bool PARANOID = true;
 
 public:
     using StringView = FPStringView<Char>;
@@ -186,6 +187,27 @@ public:
         return nodes_[nca(u, v)].len;
     }
 
+#ifndef NDEBUG
+    void verify_edge_integrity(NodeNumber const v) const {
+        // verify that we can reach v from its parent using the first character on the corresponding edge
+        auto const parent = nodes_[v].parent;
+
+        // get the first character on the edge from parent to v by decoding it from the reversed phrase suffix
+        char alpha;
+        lzend_->extract_reverse_phrase_suffix_until([&](char const c){
+            alpha = c;
+            return true; // nb: continue decoding till the end
+        }, nodes_[v].phr, nodes_[parent].len + 1);
+
+        // try find the edge for the character and retrieve the connected node
+        NodeNumber reached;
+        bool const edge_exists = nodes_[parent].try_get(UChar(alpha), reached);
+
+        assert(edge_exists);
+        assert(reached == v);
+    }
+#endif
+
     void insert(StringView const& s, Index const pos, Index const len) {
         auto const phr = (Index)phrase_nodes_.size();
         auto create_new_phrase_node = [&](){
@@ -228,6 +250,10 @@ public:
             update_nav(x, 0, s, pos);
 
             nodes_[x].parent = root_;
+
+            #ifndef NDEBUG
+            if constexpr(PARANOID) verify_edge_integrity(x);
+            #endif
         } else {
             // v is the deepest possible node such that str(v) shares a common prefix with s that <= |str(v)|
             assert(s[pos] == (*lzend_)[nodes_[v].phr].last); // if these don't match, something is seriously off
@@ -317,6 +343,11 @@ public:
                     // therefore, nav has to be updated for the new situation
                     update_nav(v, u, s, pos);
                 }
+
+                #ifndef NDEBUG
+                if constexpr(PARANOID) verify_edge_integrity(u);
+                if constexpr(PARANOID) verify_edge_integrity(v);
+                #endif
             } else {
                 // we add a new child directly to v
                 u = v;
@@ -335,6 +366,10 @@ public:
 
                 nodes_[x].parent = u;
                 update_nav(x, u, s, pos);
+
+                #ifndef NDEBUG
+                if constexpr(PARANOID) verify_edge_integrity(x);
+                #endif
             } else {
                 assert(len == nodes_[u].len);
 
