@@ -24,6 +24,7 @@
 
 constexpr bool DEBUG = false;
 constexpr bool PROTOCOL = false;
+constexpr bool PARANOID = true;
 
 constexpr uint64_t MAGIC =
     ((uint64_t)'L') << 56 |
@@ -571,11 +572,26 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
                 // insert into trie
                 Index const rend = pos_to_reverse(phrases[ztrie].end - window_begin_glob);
+                Index const rlen = rwindow.size() - 1 - rend;
                 Index const len = phrases[ztrie].len;
                 assert(rwindow[rend] == phrases[ztrie].last); // sanity check
                 assert(len < window.size()); // Lemma 9 of [KK, 2017] implies this
 
-                trie.insert(rwindow_fp, rend, rwindow.size() - 1 - rend);
+                #ifndef NDEBUG
+                if constexpr(PARANOID) {
+                    // verfiy that if we decode the newly inserted phrase,
+                    // we end up with precisely the string we are about to enter into the trie
+                    Index i = 0;
+                    phrases.extract_reverse_phrase_suffix_until([&](char const c){
+                        auto const expect = rwindow_fp[rend + i];
+                        assert(c == expect);
+                        ++i;
+                        return true;
+                    }, ztrie, rlen);
+                }
+                #endif
+
+                trie.insert(rwindow_fp, rend, rlen);
 
                 // mark the phrase end for postprocessing of lnks
                 mark(phrases[ztrie].end - window_begin_glob, ztrie, true);
