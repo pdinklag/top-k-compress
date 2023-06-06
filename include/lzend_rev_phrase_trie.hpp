@@ -34,7 +34,7 @@ template<std::integral Char = char, std::unsigned_integral Index = uint32_t>
 class LZEndRevPhraseTrie {
 private:
     static constexpr bool DEBUG = false;
-    static constexpr bool PARANOID = true;
+    static constexpr bool PARANOID = false;
 
 public:
     using StringView = FPStringView<Char>;
@@ -271,21 +271,24 @@ public:
             // - SOLUTION: only keep unused phrases represented by a leaf in the PQ
             Index common_suffix_length;
             char mismatch;
-            auto const extract_len = std::min(len, nodes_[v].len);
+
+            auto const extract_len = std::min(len + 1, nodes_[v].len); // nb: +1, because if we find no mismatch, we want the next character to be a mismatch
             {
                 // extract reverse suffix of phrase v while we're matching with the reverse input string
                 common_suffix_length = 0;
                 lzend_->extract_reverse_phrase_suffix_until([&](char const c){
-                    if(c == s[pos + common_suffix_length]) {
+                    mismatch = c;
+
+                    if(common_suffix_length < len && c == s[pos + common_suffix_length]) {
                         ++common_suffix_length;
                         return true;
                     } else {
-                        mismatch = c;
                         return false;
                     }
                 }, nodes_[v].phr, extract_len);
 
                 assert(common_suffix_length >= 1); // we must have matched the first character in the root, otherwise we wouldn't be here
+                assert(common_suffix_length <= len); // we cannot have matched more characters than the inserted string has
 
                 if constexpr(DEBUG) {
                     std::cout << "\t\tcomputed common_suffix_length=" << common_suffix_length << std::endl;
@@ -372,11 +375,8 @@ public:
                 #endif
             } else {
                 assert(len == nodes_[u].len);
-
-                // the string is already contained in the trie!
-                if constexpr(DEBUG) {
-                    std::cout << "\t\tstring already in trie at node " << u << " representing phrase " << nodes_[u].phr << std::endl;
-                }
+                // the string is already contained in the trie
+                // particularly, this happens if the inner node splitting an edge is exactly as deep as the inserted string
                 phrase_nodes_.push_back(u);
             }
         }
