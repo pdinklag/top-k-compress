@@ -480,7 +480,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 unmark(m - 1 - len1);
 
                 // delete current phrase
-                phrases.pop_back<false>();
+                phrases.pop_back<PARANOID>();
                 phrase_hashes.pop_back();
                 --z;
                 assert(z); // nb: must still have at least phrase 0
@@ -495,7 +495,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 }
 
                 // merge phrases
-                phrases.replace_back<false>(p, len2 + 1, next_char);
+                phrases.replace_back<PARANOID>(p, len2 + 1, next_char);
 
                 // stats
                 ++num_consecutive_merges;
@@ -517,7 +517,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 }
 
                 // extend phrase
-                phrases.replace_back<false>(p, len1 + 1, next_char);
+                phrases.replace_back<PARANOID>(p, len1 + 1, next_char);
 
                 // stats
                 num_consecutive_merges = 0;
@@ -526,7 +526,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 if constexpr(DEBUG) std::cout << "\tNEW phrase " << (z+1) << " of length 1" << std::endl;
                 
                 ++z;
-                phrases.emplace_back<false>(p, 1, next_char);
+                phrases.emplace_back<PARANOID>(p, 1, next_char);
                 phrase_hashes.emplace_back(0);
 
                 // stats
@@ -538,6 +538,28 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             // update lens
             assert(phrases[z].len <= max_block);
             lens[m] = phrases[z].len;
+
+            #ifndef NDEBUG
+            if constexpr(PARANOID) {
+                // verify that the current phrase is a valid LZEnd phrase
+                if(phrases[z].len > 1) {
+                    auto const lnk = phrases[z].link;
+                    assert(lnk > 0);
+                    auto const len = phrases[z].len - 1;
+
+                    std::string rsuf_lnk;
+                    rsuf_lnk.reserve(len);
+                    phrases.extract_reverse_phrase_suffix(std::back_inserter(rsuf_lnk), lnk, len);
+                    
+                    auto const offs = pos_to_reverse(m-1);
+                    for(size_t i = 0; i < len; i++) {
+                        auto const actual = rwindow_fp[offs + i];
+                        auto const expect = rsuf_lnk[i];
+                        assert(actual == expect);
+                    }
+                }
+            }
+            #endif
 
             // update phrase hash
             phrase_hashes[z] = rwindow_fp.fingerprint(pos_to_reverse(m), pos_to_reverse(m-phrases[z].len+1));
@@ -568,7 +590,11 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 // enter the phrase into the parsing's successor data structure
                 // once a phrase is in the trie, we may want to decode it in order to do longest common suffix queries
                 // before that, it is never necessary to decode it, and thus it suffices to update the successor data structure now
-                phrases.persist(ztrie);
+                if constexpr(PARANOID) {
+                    // we persist phrases immediately
+                } else {
+                    phrases.persist(ztrie);
+                }
 
                 // insert into trie
                 Index const rend = pos_to_reverse(phrases[ztrie].end - window_begin_glob);
@@ -576,25 +602,6 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 Index const len = phrases[ztrie].len;
                 assert(rwindow[rend] == phrases[ztrie].last); // sanity check
                 assert(len < window.size()); // Lemma 9 of [KK, 2017] implies this
-
-                #ifndef NDEBUG
-                if constexpr(PARANOID) {
-                    // verfiy that if we decode the newly inserted phrase,
-                    // we end up with precisely the string we are about to enter into the trie
-                    std::string rsuf;
-                    rsuf.reserve(rlen);
-                    phrases.extract_reverse_phrase_suffix_until([&](char const c){
-                        rsuf.push_back(c);
-                        return true;
-                    }, ztrie, rlen);
-
-                    for(size_t i = 0; i < rlen; i++) {
-                        auto const expect = rwindow_fp[rend + i];
-                        auto const c = rsuf[i];
-                        assert(c == expect);
-                    }
-                }
-                #endif
 
                 trie.insert(rwindow_fp, rend, rlen);
 
