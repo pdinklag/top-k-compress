@@ -116,7 +116,7 @@ public:
         extract(out, phrases_[i].end - len + 1, len);
     }
 
-    // extracts the substring of the text of given length and starting at the given position
+    // extracts the reversed substring of the text of given length and starting at the given position
     // stop if predicate returns false
     template<typename Predicate>
     bool extract_reverse_until(Predicate predicate, Index const start, Index const len) const {
@@ -148,10 +148,19 @@ public:
         }
     }
 
-    // extracts the suffix of the given length of the i-th phrase
+    // extracts the reversed suffix of the given length of the i-th phrase
     template<typename Predicate>
     void extract_reverse_phrase_suffix_until(Predicate predicate, Index const i, Index const len) const {
         extract_reverse_until(predicate, phrases_[i].end - len + 1, len);
+    }
+
+    // extracts the suffix of the given length of the i-th phrase
+    template<std::output_iterator<Char> Out>
+    void extract_reverse_phrase_suffix(Out out, Index const i, Index const len) const {
+        extract_reverse_phrase_suffix_until([&](char const c){
+            *out++ = c;
+            return true;
+        }, i, len);
     }
 
     // gets the number of the phrase (1-based) that the given text position (0-based) lies in

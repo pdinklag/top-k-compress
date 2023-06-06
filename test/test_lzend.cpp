@@ -57,22 +57,46 @@ TEST_SUITE("kempa_kosolobov_2017") {
                 REQUIRE(s == "bbbabbaa");
             }
         }
+    }
 
+    TEST_CASE("extract_reverse") {
+        LZEndParsing<char, uint32_t> parsing;
+        parsing.emplace_back(0, 1, 'a'); // 1 - a       => rev suffix: a
+        parsing.emplace_back(0, 1, 'b'); // 2 - b       => rev suffix: ba
+        parsing.emplace_back(1, 2, 'b'); // 3 - ab      => rev suffix: baba
+        parsing.emplace_back(2, 3, 'b'); // 4 - abb     => rev suffix: bbababa
+        parsing.emplace_back(2, 2, 'a'); // 5 - ba      => rev suffix: abbbababa
+        parsing.emplace_back(5, 7, 'a'); // 6 - babbbaa => rev suffix: aabbbababbbababa
+        REQUIRE(parsing.length() == 16);
         {
-            std::string match_reverse = "ababbbabbabbbabbaa";
-            std::reverse(match_reverse.begin(), match_reverse.end());
-
-            size_t common_prefix = 0;
-            parsing.extract_reverse_until([&](char const c) {
-                if(c == match_reverse[common_prefix]) {
-                    ++common_prefix;
-                    return true;
-                } else {
-                    return false;
-                }
-            }, 0, 18);
-
-            REQUIRE(common_prefix == 18);
+            std::string s;
+            parsing.extract_reverse_phrase_suffix(std::back_inserter(s), 1, 1);
+            REQUIRE(s == "a");
+        }
+        {
+            std::string s;
+            parsing.extract_reverse_phrase_suffix(std::back_inserter(s), 2, 2);
+            REQUIRE(s == "ba");
+        }
+        {
+            std::string s;
+            parsing.extract_reverse_phrase_suffix(std::back_inserter(s), 3, 4);
+            REQUIRE(s == "baba");
+        }
+        {
+            std::string s;
+            parsing.extract_reverse_phrase_suffix(std::back_inserter(s), 4, 7);
+            REQUIRE(s == "bbababa");
+        }
+        {
+            std::string s;
+            parsing.extract_reverse_phrase_suffix(std::back_inserter(s), 5, 9);
+            REQUIRE(s == "abbbababa");
+        }
+        {
+            std::string s;
+            parsing.extract_reverse_phrase_suffix(std::back_inserter(s), 6, 16);
+            REQUIRE(s == "aabbbababbbababa");
         }
     }
 
@@ -88,12 +112,12 @@ TEST_SUITE("kempa_kosolobov_2017") {
             REQUIRE(trie.approx_find_phr(fx, 0, fx.length()) == 0);
         }
 
-        parsing.emplace_back(0, 1, 'a'); // 1 - a
-        parsing.emplace_back(0, 1, 'b'); // 2 - b
-        parsing.emplace_back(1, 2, 'b'); // 3 - ab
-        parsing.emplace_back(2, 3, 'b'); // 4 - abb
-        parsing.emplace_back(1, 2, 'a'); // 5 - ba
-        parsing.emplace_back(5, 6, 'a'); // 6 - babbbaa
+        parsing.emplace_back(0, 1, 'a'); // 1 - a       => rev suffix: a
+        parsing.emplace_back(0, 1, 'b'); // 2 - b       => rev suffix: ba
+        parsing.emplace_back(1, 2, 'b'); // 3 - ab      => rev suffix: baba
+        parsing.emplace_back(2, 3, 'b'); // 4 - abb     => rev suffix: bbababa
+        parsing.emplace_back(2, 2, 'a'); // 5 - ba      => rev suffix: abbbababa
+        parsing.emplace_back(5, 7, 'a'); // 6 - babbbaa => rev suffix: aabbbababbbababa
         
         // insert concatenated phrases, reversed
         FPString f1("a");
