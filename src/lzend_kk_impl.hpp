@@ -562,19 +562,23 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
             Index const border = window_begin_glob + curblock_window_offs;
             while(ztrie < z && phrases[ztrie].end <= border) { // we go one phrase beyond the border according to [KK, 2017]
-                // insert phrases[ztrie]
+                // we enter phrases[ztrie]
+
+                // enter the phrase into the parsing's successor data structure
+                // once a phrase is in the trie, we may want to decode it in order to do longest common suffix queries
+                // before that, it is never necessary to decode it, and thus it suffices to update the successor data structure now
+                phrases.persist(ztrie);
+
+                // insert into trie
                 Index const rend = pos_to_reverse(phrases[ztrie].end - window_begin_glob);
                 Index const len = phrases[ztrie].len;
                 assert(rwindow[rend] == phrases[ztrie].last); // sanity check
                 assert(len < window.size()); // Lemma 9 of [KK, 2017] implies this
 
                 trie.insert(rwindow_fp, rend, rwindow.size() - 1 - rend);
-                mark(phrases[ztrie].end - window_begin_glob, ztrie, true);
 
-                // also enter the trie into the parsing's successor data structure
-                // once a phrase is in the trie, we may want to decode it in order to do longest common suffix queries
-                // before that, it is never necessary to decode it, and thus it suffices to update the successor data structure now
-                phrases.persist(ztrie);
+                // mark the phrase end for postprocessing of lnks
+                mark(phrases[ztrie].end - window_begin_glob, ztrie, true);
 
                 ++ztrie;
             }
