@@ -17,7 +17,7 @@ class FPStringView {
 private:
     using UChar = std::make_unsigned_t<Char>;
 
-    static constexpr size_t BASE = 256;
+    static constexpr size_t BASE = 56457; // 256;
 
 public:
     // append the given character to a given fingerprint
@@ -39,6 +39,10 @@ private:
     std::vector<uint64_t> pow_base_;
 
 public:
+    FPStringView() {}
+    FPStringView(FPStringView&&) = default;
+    FPStringView& operator=(FPStringView&&) = default;
+
     FPStringView(std::string_view const& s) : view_(s), fp_(s.length()), pow_base_(s.length()) { 
         fp_[0] = s[0];
         pow_base_[0] = 1;
@@ -53,6 +57,8 @@ public:
 
     // returns the i-th character
     char operator[](size_t const i) const { return view_[i]; }
+
+    char const* data() const { return view_.data(); }
 
     // returns the length of the string
     size_t length() const { return view_.length(); }
