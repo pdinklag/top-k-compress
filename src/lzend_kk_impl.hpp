@@ -7,20 +7,16 @@
 #include <tdc/code/concepts.hpp>
 #include <tdc/util/concepts.hpp>
 
-#include <tdc/text/util.hpp>
-#include <alx_rmq.hpp>
 #include <ankerl/unordered_dense.h>
 
 #include <display.hpp>
-
-#include <index/backward_search.hpp>
-#include <index/btree.hpp>
 
 #include <phrase_block_writer.hpp>
 #include <phrase_block_reader.hpp>
 
 #include <lzend_parsing.hpp>
 #include <lzend_rev_phrase_trie.hpp>
+#include <lzend_window_index.hpp>
 
 constexpr bool DEBUG = false;
 constexpr bool PROTOCOL = false;
@@ -38,189 +34,182 @@ constexpr uint64_t MAGIC =
 
 using Index = uint32_t;
 
-template<tdc::InputIterator<char> In, iopp::BitSink Out>
-void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block, size_t const block_size, pm::Result& result) {
-    // init stats
-    size_t num_phrases = 0;
-    size_t num_ref = 0;
-    size_t num_literal = 0;
-    size_t longest = 0;
-    size_t total_len = 0;
-    size_t furthest = 0;
-    size_t total_ref = 0;
+using Parsing = LZEndParsing<char, Index>;
+using PhraseHashes = std::vector<uint64_t>;
+using Trie = LZEndRevPhraseTrie<char, Index>;
+using NodeNumber = Trie::NodeNumber;
+using WindowIndex = LZEndWindowIndex<Index>;
+
+struct LZEndKKState {
+    static constexpr Index NIL = 0;
+
+    // global state
+    size_t max_block;
+    Index z, ztrie;
+
+    Parsing phrases;
+    PhraseHashes phrase_hashes;
+    Trie trie;
+
+    std::unique_ptr<Index[]> lnks;
+    std::unique_ptr<Index[]> lens;
+
+    std::string buffer;
+
+    // stats
     size_t max_consecutive_merges = 0;
     size_t num_consecutive_merges = 0;
 
-    // initialize buffer for LZ-End parsing
-    LZEndParsing<char, Index> phrases;
+    bool commonPart(Index const m, Index const p, Index const len, WindowIndex const& windex, Index const window_begin_glob) const {
+        auto const plen = phrases[p].len;
+        if(p > 0 && m > plen) {
+            if constexpr(DEBUG) {
+                std::cout << "\ttesting whether trie phrases " << p << " and " << (p-1) << " have a common suffix of length " << len << " with current input suffix" << std::endl;
+            }
+            assert(plen > 0);
 
-    std::vector<uint64_t> phrase_hashes;
-    phrase_hashes.emplace_back(0); // phrase 0
-
-    Index z = 0;
-    Index ztrie = 1; // the first phrase that has not yet been entered into the trie
-
-    // initialize the compact trie
-    using Trie = LZEndRevPhraseTrie<char, Index>;
-    using NodeNumber = Trie::NodeNumber;
-
-    Trie trie(phrases);
-
-    // initialize lnks and lens
-    // at position j, lens contains the length of the phrase ending at j in the length-j prefix of the input text (a.k.a. the length of the current phrase)
-    // lnks contains the number of the phrase FROM THE TRIE that ends at position j, or NIL if it either does not exist or lens[j] = 1
-    constexpr Index NIL = 0;
-    std::unique_ptr<Index[]> lnks = std::make_unique<Index[]>(3 * max_block);
-    std::unique_ptr<Index[]> lens = std::make_unique<Index[]>(3 * max_block);
-    for(size_t i = 0; i < 3 * max_block; i++) {
-        lnks[i] = NIL;
-        lens[i] = 0;
+            if(plen < len) {
+                auto const pos = m - plen;
+                auto const lhash = windex.reverse_fingerprint(pos, m-1);
+                if(phrase_hashes[p] == lhash) {
+                    if(lens[pos] - 1 + plen == len) {
+                        if(lnks[pos] != NIL) {
+                            auto const nca_len = trie.nca_len(lnks[pos], p-1);
+                            if(nca_len + plen >= len) {
+                                if constexpr(DEBUG) {
+                                    std::cout << "\t\tTRUE - combined length of NCA and phrase matches" << std::endl;
+                                }
+                                return true;
+                            } else {
+                                if constexpr(DEBUG) {
+                                    std::cout << "\t\tFALSE - combined length of NCA and phrase do not match" << std::endl;
+                                }
+                            }
+                        } else {
+                            if constexpr(DEBUG) {
+                                auto const posglob = window_begin_glob + pos;                         
+                                std::cout << "\t\tFALSE - lnks[" << posglob << "] is NIL" << std::endl;
+                            }
+                        }
+                    } else {
+                        if constexpr(DEBUG) {
+                            auto const posglob = window_begin_glob + pos;                         
+                            std::cout << "\t\tFALSE - combined length of trie phrase " << p << " (" << plen << ") and lens[" << posglob << "]=" << lens[pos] << " minus 1 does not match" << std::endl;
+                        }
+                    }
+                } else {
+                    if constexpr(DEBUG) {
+                        std::cout << "\t\tFALSE - trie phrase hash (0x" << std::hex << phrase_hashes[p] << " does not match current suffix hash (0x" << lhash << std::dec << ")" << std::endl;
+                    }
+                }
+            } else {
+                if constexpr(DEBUG) {
+                    std::cout << "\t\tFALSE - trie phrase " << p << " is already too long by itself" << std::endl;
+                }
+            }
+        }
+        return false;
     }
 
-    // prepare working memory
-    std::string buffer(3 * max_block, 0); // contains the 3 most recent blocks
-
-    std::string_view window;   // the entire current window of 3 blocks (or less at the beginning)
-
-    // global LZEnd algorithm
-    size_t phase = 0;
-    while(begin != end) {
-        if constexpr(DEBUG) {
-            std::cout << std::endl;
-            std::cout << "=== phase " << phase << " ===" << std::endl;
-        }
-
-        // slide previous two blocks
-        for(size_t i = 0; i < 2 * max_block; i++) {
-            buffer[i] = buffer[max_block + i];
-            lens[i] = lens[max_block + i];
-            lnks[i] = lnks[max_block + i];
-        }
-
-        // read next block
-        Index const curblock_buffer_offs = 2 * max_block;
-        Index curblock_size = 0;
-        {
-            while(begin != end && curblock_size < max_block) {
-                buffer[curblock_buffer_offs + curblock_size] = *begin++;
-                ++curblock_size;
+    bool absorbTwo(Index const m, Index const p, Index const len2, WindowIndex const& windex, Index const window_begin_glob) const {
+        if(len2 < max_block && commonPart(m, p, len2, windex, window_begin_glob)) {
+            if constexpr(DEBUG) {
+                std::cout << "\tabsorbTwo returned true" << std::endl;
             }
-
-            // window = std::string_view(buffer.at(offs), buffer.at(offs + num_read));
+            return true;
+        } else {
+            return false;
         }
+    }
 
-        // determine window and block boundaries
-        Index window_begin_glob;
-        Index curblock_window_offs;
-        switch(phase) {
-            case 0:
-                // in the very first phase, we only deal with a single block
-                window = std::string_view(buffer.data() + 2 * max_block, curblock_size);
-                window_begin_glob = 0;
-                curblock_window_offs = 0;
-                break;
-            
-            case 1:
-                // in the second phase, we additionally deal with one previous block
-                window = std::string_view(buffer.data() + max_block, max_block + curblock_size);
-                window_begin_glob = 0;
-                curblock_window_offs = max_block;
-                break;
-            
-            default:
-                // in subsequent phases, the window spans all 3 blocks
-                window = std::string_view(buffer.data(), 2 * max_block + curblock_size);
-                window_begin_glob = (phase - 2) * max_block;
-                curblock_window_offs = 2 * max_block;
-                break;
+    bool absorbOne(Index const m, Index const p, Index const len1, WindowIndex const& windex, Index const window_begin_glob) const {
+        if(p > 0 && m > 0 && len1 < max_block) {
+            if constexpr(DEBUG) {
+                std::cout << "\ttesting whether trie phrase " << p << " has a common suffix with current phrase of length " << len1 << std::endl;
+            }
+            auto const plen = phrases[p].len;
+            if(plen < len1) {
+                if constexpr(DEBUG) {
+                    std::cout << "\t\ttrie phrase " << p << " is shorter than current phrase, delegating" << std::endl;
+                }
+                if(commonPart(m, p, len1, windex, window_begin_glob)) {
+                    if constexpr(DEBUG) {
+                        std::cout << "\tabsorbOne returned true" << std::endl;
+                    }
+                    return true;
+                }
+            } else {
+                if(phrases[p].last == phrases[z].last) {
+                    if(len1 > 1 && lnks[m-1] == NIL) {
+                        if constexpr(DEBUG) {
+                            std::cout << "\t\tFALSE - a phrase ends at the previous position, but the trie link is NIL" << std::endl;
+                        }
+                    } else {
+                        if(len1 == 1) {
+                            if constexpr(DEBUG) {
+                                std::cout << "\t\tTRUE - last character matches for length-1 phrase" << std::endl;
+                                std::cout << "\tabsorbOne returned true" << std::endl;
+                            }
+                            return true;
+                        } else {
+                            auto const nca_len = trie.nca_len(lnks[m-1], phrases[p].link);
+                            if(nca_len + 1 >= len1) {
+                                if constexpr(DEBUG) {
+                                    std::cout << "\t\tTRUE - NCA length plus 1 exceeds current phrase length" << std::endl;
+                                    std::cout << "\tabsorbOne returned true" << std::endl;
+                                }
+                                return true;
+                            } else  {
+                                if constexpr(DEBUG) {
+                                    std::cout << "\t\tFALSE - the NCA length plus 1 is too short" << std::endl;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    if constexpr(DEBUG) {
+                        std::cout << "\t\tFALSE: end characters do not match" << std::endl;
+                    }
+                }
+            }
         }
+        return false;
+    }
+
+public:
+    LZEndKKState(size_t const max_block)
+        : max_block(max_block),
+          z(0),
+          ztrie(1),
+          trie(phrases),
+          lnks(std::make_unique<Index[]>(3 * max_block)),
+          lens(std::make_unique<Index[]>(3 * max_block)),
+          buffer(3 * max_block, 0) {
+
+        phrase_hashes.emplace_back(0); // phrase 0
+
+        for(size_t i = 0; i < 3 * max_block; i++) {
+            lnks[i] = NIL;
+            lens[i] = 0;
+        }
+    }
+
+    void parse_block(
+        size_t const phase,
+        std::string_view window,
+        Index const curblock_size,
+        Index const window_begin_glob,
+        Index const curblock_window_offs,
+        bool const final_block) {
 
         if constexpr(DEBUG) {
             std::cout << "curblock_size=" << curblock_size << ", curblock_window_offs=" << curblock_window_offs << ", window.size()=" << window.size() << std::endl;
             std::cout << "computing index..." << std::endl;
         }
-        
-        // compute inverse suffix array and LCP array of reverse window
-        std::unique_ptr<uint32_t[]> lcp;
-        std::unique_ptr<uint32_t[]> isa;
-        std::string rwindow;
-        {
-            // reverse window
-            rwindow.reserve(window.size()+1);
-            std::copy(window.rbegin(), window.rend(), std::back_inserter(rwindow));
-            rwindow.push_back(0); // make sure that the last suffix is the lexicographically smallest
 
-            // compute inverse suffix array and LCP array of reverse window
-            auto [_sa, _isa, _lcp] = tdc::text::sa_isa_lcp_u32(rwindow.begin(), rwindow.end());
-            assert(_sa[0] == window.size());
-
-            // keep inverse suffix array and LCP array, discard suffix array and reversed window
-            lcp = std::move(_lcp);
-            isa = std::move(_isa);
-        }
-
-        using FPString = FPStringView<char>;
-        FPString rwindow_fp(rwindow);
-
-        // translate a position in the block to the corresponding position in the reverse block (which has a sentinel!)
-        auto pos_to_reverse = [&](Index const i) { return window.size() - (i+1); };
-
-        // compute rmq on LCP array
-        alx::rmq::rmq_n rmq(lcp.get(), window.size() + 1);
-        // RMQRMM64 rmq((std::make_signed_t<Index>*)lcp.get(), window.size()+1); // argh... the RMQ constructor wants signed integers
-
-        // initialize "marked binary tree" (a.k.a. predessor + successor data structure)
-        // position j is marked iff a phrase ends at position SA[j]
-        // -> M contains suffix array positions
-        // nb: the "balanced tree" P is also simulated by this data structure,
-        //     which we modified to mark positions along with the corresponding phrase number (values)
-        //     this is also what avoids the need to keep the suffix array in RAM
-        BTree<Index, Index, 65> marked;
-        using MResult = KeyValueResult<Index, Index>;
-
-        #ifndef NDEBUG
-        auto is_marked = [&](Index const m) {
-            auto const isa_m = isa[pos_to_reverse(m)];
-            return marked.contains(isa_m);
-        };
-        #endif
-
-        auto mark = [&](Index const m, Index const phrase_num, bool silent = false){
-            // register that phrase phrase_num ends at text position pos
-            if constexpr(DEBUG) {
-                auto const mglob = window_begin_glob + m;
-                if(!silent) std::cout << "\tregister phrase " << phrase_num << " ending at " << mglob << std::endl;
-            }
-            #ifndef NDEBUG
-            assert(!is_marked(m));
-            #endif
-            auto const isa_m = isa[pos_to_reverse(m)];
-            marked.insert(isa_m, phrase_num);
-        };
-
-        auto unmark = [&](Index const m, bool silent = false){
-            // unregister phrase that ends at text position m
-            if constexpr(DEBUG) {
-                auto const mglob = window_begin_glob + m;
-                if(!silent) std::cout << "\tunregister phrase ending at " << mglob << std::endl;
-            }
-            auto const isa_m = isa[pos_to_reverse(m)];
-            assert(marked.contains(isa_m));
-            marked.remove(isa_m);
-        };
-
-        auto marked_lcp = [&](Index const q) {
-            auto const isa_q = isa[pos_to_reverse(q)];
-
-            // look for the marked LCPs sorrounding the suffix array position of q
-            auto const marked_l = (isa_q > 0) ? marked.predecessor(isa_q - 1) : MResult::none();
-            auto const lce_l = marked_l.exists ? lcp[rmq.rmq(marked_l.key + 1, isa_q)] : 0;
-            auto const marked_r = marked.successor(isa_q + 1);
-            auto const lce_r = marked_r.exists ? lcp[rmq.rmq(isa_q + 1, marked_r.key)] : 0;
-
-            // select the longer LCP and return it along with the corresponding phrase number
-            return (lce_l > lce_r) ? std::pair(lce_l, marked_l.value) : std::pair(lce_r, marked_r.value);
-        };
+        // construct window index
+        WindowIndex windex(window);
+        auto const& rfp = windex.reverse_fingerprints();
 
         // preprocess: mark positions of phrases that end in the previous two blocks within the window
         {
@@ -231,7 +220,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             Index x = z;
             while(x > 0 && phrases[x].end >= window_begin_glob) {
                 assert(phrases[x].end < phase * max_block); // previously computed phrases cannot end in the new block that we just read from the input
-                mark(phrases[x].end - window_begin_glob, x, true);
+                windex.mark(phrases[x].end - window_begin_glob, x, true);
                 --x;
             }
         }
@@ -249,11 +238,11 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
             Index p = 0;
             if(phase >= 2) {
-                auto const rsuf_begin = pos_to_reverse(m-1);
-                auto const rsuf_len = rwindow.size() - 1 - rsuf_begin;
+                auto const rsuf_begin = windex.pos_to_reverse(m-1);
+                auto const rsuf_len = windex.size() - 1 - rsuf_begin;
 
                 Index hash_match;
-                p = trie.approx_find_phr(rwindow_fp, rsuf_begin, rsuf_len, hash_match);
+                p = trie.approx_find_phr(rfp, rsuf_begin, rsuf_len, hash_match);
 
                 #ifndef NDEBUG
                 if constexpr(PARANOID) {
@@ -262,11 +251,9 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                         rsuf.reserve(hash_match);
                         phrases.extract_reverse_phrase_suffix(std::back_inserter(rsuf), p, hash_match);
                         
-                        auto const* rstr = rwindow_fp.data() + rsuf_begin;
+                        auto const* rstr = rfp.data() + rsuf_begin;
                         for(size_t i = 0; i < hash_match; i++) {
-                            auto const actual = rstr[i];
-                            auto const expect = rsuf[i];
-                            assert(actual == expect);
+                            assert(rstr[i] == rsuf[i]);
                         }
                     }
                 }
@@ -279,184 +266,26 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
             // sanity
             #ifndef NDEBUG
-            if(m > 0) assert(is_marked(m-1));
-            if(m > len1 && z > 1) assert(is_marked(m-1-len1));
+            if(m > 0) assert(windex.is_marked(m-1));
+            if(m > len1 && z > 1) assert(windex.is_marked(m-1-len1));
             #endif
-
-            auto commonPart = [&](Index const len){
-                auto const plen = phrases[p].len;
-                if(p > 0 && m > plen) {
-                    if constexpr(DEBUG) {
-                        std::cout << "\ttesting whether trie phrases " << p << " and " << (p-1) << " have a common suffix of length " << len << " with current input suffix" << std::endl;
-                    }
-                    assert(plen > 0);
-
-                    if(plen < len) {
-                        auto const pos = m - plen;
-                        auto const lhash = rwindow_fp.fingerprint(pos_to_reverse(m-1), pos_to_reverse(pos));
-                        if(phrase_hashes[p] == lhash) {
-                            if(lens[pos] - 1 + plen == len) {
-                                if(lnks[pos] != NIL) {
-                                    auto const nca_len = trie.nca_len(lnks[pos], p-1);
-                                    if(nca_len + plen >= len) {
-                                        if constexpr(DEBUG) {
-                                            std::cout << "\t\tTRUE - combined length of NCA and phrase matches" << std::endl;
-                                        }
-                                        return true;
-                                    } else {
-                                        if constexpr(DEBUG) {
-                                            std::cout << "\t\tFALSE - combined length of NCA and phrase do not match" << std::endl;
-                                        }
-                                    }
-                                } else {
-                                    if constexpr(DEBUG) {
-                                        auto const posglob = window_begin_glob + pos;                         
-                                        std::cout << "\t\tFALSE - lnks[" << posglob << "] is NIL" << std::endl;
-                                    }
-                                }
-                            } else {
-                                if constexpr(DEBUG) {
-                                    auto const posglob = window_begin_glob + pos;                         
-                                    std::cout << "\t\tFALSE - combined length of trie phrase " << p << " (" << plen << ") and lens[" << posglob << "]=" << lens[pos] << " minus 1 does not match" << std::endl;
-                                }
-                            }
-                        } else {
-                            if constexpr(DEBUG) {
-                                std::cout << "\t\tFALSE - trie phrase hash (0x" << std::hex << phrase_hashes[p] << " does not match current suffix hash (0x" << lhash << std::dec << ")" << std::endl;
-                            }
-                        }
-                    } else {
-                        if constexpr(DEBUG) {
-                            std::cout << "\t\tFALSE - trie phrase " << p << " is already too long by itself" << std::endl;
-                        }
-                    }
-                }
-                return false;
-            };
-
-            auto absorbOne = [&](){
-                if(p > 0 && m > 0 && len1 < max_block) {
-                    if constexpr(DEBUG) {
-                        std::cout << "\ttesting whether trie phrase " << p << " has a common suffix with current phrase of length " << len1 << std::endl;
-                    }
-                    auto const plen = phrases[p].len;
-                    if(plen < len1) {
-                        if constexpr(DEBUG) {
-                            std::cout << "\t\ttrie phrase " << p << " is shorter than current phrase, delegating" << std::endl;
-                        }
-                        if(commonPart(len1)) {
-                            if constexpr(DEBUG) {
-                                std::cout << "\tabsorbOne returned true" << std::endl;
-                            }
-                            return true;
-                        }
-                    } else {
-                        if(phrases[p].last == phrases[z].last) {
-                            if(len1 > 1 && lnks[m-1] == NIL) {
-                                if constexpr(DEBUG) {
-                                    std::cout << "\t\tFALSE - a phrase ends at the previous position, but the trie link is NIL" << std::endl;
-                                }
-                            } else {
-                                if(len1 == 1) {
-                                    if constexpr(DEBUG) {
-                                        std::cout << "\t\tTRUE - last character matches for length-1 phrase" << std::endl;
-                                        std::cout << "\tabsorbOne returned true" << std::endl;
-                                    }
-                                    return true;
-                                } else {
-                                    auto const nca_len = trie.nca_len(lnks[m-1], phrases[p].link);
-                                    if(nca_len + 1 >= len1) {
-                                        if constexpr(DEBUG) {
-                                            std::cout << "\t\tTRUE - NCA length plus 1 exceeds current phrase length" << std::endl;
-                                            std::cout << "\tabsorbOne returned true" << std::endl;
-                                        }
-                                        return true;
-                                    } else  {
-                                        if constexpr(DEBUG) {
-                                            std::cout << "\t\tFALSE - the NCA length plus 1 is too short" << std::endl;
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            if constexpr(DEBUG) {
-                                std::cout << "\t\tFALSE: end characters do not match" << std::endl;
-                            }
-                        }
-                    }
-                }
-                return false;
-            };
-
-            // query the trie for a suffix matching the two current phrases
-            auto absorbTwo = [&](){
-                if(len2 < max_block && commonPart(len2)) {
-                    if constexpr(DEBUG) {
-                        std::cout << "\tabsorbTwo returned true" << std::endl;
-                    }
-                    return true;
-                } else {
-                    return false;
-                }
-            };
 
             // combined precomputation of absorbOne2 and absorbTwo2
             // even though absorbOne2 is never needed if absorbTwo2 returns true,
             // the result of absorbOne2 can be used to compute absorbTwo2 without the need for temporarily unmarking and re-marking a phrase
             // furthermore, the number of predecessor and successor queries is minimized this way
-            Index lce1 = 0, lnk1 = 0; // corresponds to absorbOne2
-            Index lce2 = 0, lnk2 = 0; // corresponds to absorbTwo2
+            Index lce1, lnk1; // corresponds to absorbOne2
+            Index lce2, lnk2; // corresponds to absorbTwo2
             auto precompute_absorb2 = [&](){
                 if(m > 0 && len1 < window.size()) {
-                    auto const isa_cur = isa[pos_to_reverse(m-1)];
-                    
-                    // this is basically marked_lcp for m-1, except we want to keep all intermediate results for further computation of absorbTwo2
-                    auto const marked_l1 = (isa_cur > 0) ? marked.predecessor(isa_cur - 1) : MResult::none();
-                    auto const lce_l1 = marked_l1.exists ? lcp[rmq.rmq(marked_l1.key + 1, isa_cur)] : 0;
-                    auto const marked_r1 = marked.successor(isa_cur + 1);
-                    auto const lce_r1 = marked_r1.exists ? lcp[rmq.rmq(isa_cur + 1, marked_r1.key)] : 0;
-
-                    if(lce_l1 > 0 || lce_r1 > 0) {
-                        // find marked position with larger LCE
-                        if(lce_l1 > lce_r1) {
-                            lnk1 = marked_l1.value;
-                            lce1 = lce_l1;
-                        } else {
-                            lnk1 = marked_r1.value;
-                            lce1 = lce_r1;
-                        }
-
-                        // additionally, perform queries excluding the end position of the previous phrase
-                        if(m > len1 && len2 < window.size()) {
-                            auto const exclude = z - 1;
-
-                            auto marked_l2 = marked_l1;
-                            auto lce_l2 = lce_l1;
-                            if(marked_l2.exists && marked_l2.value == exclude) {
-                                // ignore end position of previous phrase
-                                marked_l2 = (marked_l1.key > 0 ? marked.predecessor(marked_l1.key - 1) : MResult::none());
-                                lce_l2 = marked_l2.exists ? lcp[rmq.rmq(marked_l2.key + 1, isa_cur)] : 0;
-                            }
-
-                            auto marked_r2 = marked_r1;
-                            auto lce_r2 = lce_r1;
-                            if(marked_r2.exists && marked_r2.value == exclude) {
-                                // ignore end position of previous phrase
-                                marked_r2 = marked.successor(marked_r1.key + 1);
-                                lce_r2 = marked_r2.exists ? lcp[rmq.rmq(isa_cur + 1, marked_r2.key)] : 0;
-                            }
-
-                            // find marked position with larger LCE
-                            if(lce_l2 > 0 || lce_r2 > 0) {
-                                if(lce_l2 > lce_r2) {
-                                    lnk2 = marked_l2.value;
-                                    lce2 = lce_l2;
-                                } else {
-                                    lnk2 = marked_r2.value;
-                                    lce2 = lce_r2;
-                                }
-                            }
-                        }
+                    if(m > len1 && len2 < window.size()) {
+                        // compute both absorbOne2 and absorbTwo2
+                        windex.marked_lcp2(m-1, z-1, lnk1, lce1, lnk2, lce2);
+                    } else {
+                        // compute just absorbOne2
+                        lnk2 = 0;
+                        lce2 = 0;
+                        windex.marked_lcp(m-1, lnk1, lce1);
                     }
                 }
             };
@@ -501,7 +330,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             AlgorithmCase whence = AlgorithmCase::NONE;
             #endif
 
-            if(absorbTwo() || (localTwo = absorbTwo2(ptr))) {
+            if(absorbTwo(m, p, len2, windex, window_begin_glob) || (localTwo = absorbTwo2(ptr))) {
                 #ifndef NDEBUG
                 whence = localTwo ? AlgorithmCase::ABSORB_TWO2 : AlgorithmCase::ABSORB_TWO;
                 #endif
@@ -510,10 +339,10 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 if constexpr(DEBUG) std::cout << "\tMERGE phrases " << z << " and " << z-1 << " to new phrase of length " << (len2+1) << std::endl;
 
                 // updateRecent: unregister current phrase
-                unmark(m - 1);
+                windex.unmark(m - 1);
 
                 // updateRecent: unregister previous phrase
-                unmark(m - 1 - len1);
+                windex.unmark(m - 1 - len1);
 
                 // delete current phrase
                 phrases.pop_back<PARANOID>();
@@ -536,7 +365,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 // stats
                 ++num_consecutive_merges;
                 max_consecutive_merges = std::max(max_consecutive_merges, num_consecutive_merges);
-            } else if(absorbOne() || (localOne = absorbOne2(ptr))) {
+            } else if(absorbOne(m, p, len1, windex, window_begin_glob) || (localOne = absorbOne2(ptr))) {
                 #ifndef NDEBUG
                 whence = localOne ? AlgorithmCase::ABSORB_ONE2 : AlgorithmCase::ABSORB_ONE;
                 #endif
@@ -545,7 +374,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 if constexpr(DEBUG) std::cout << "\tEXTEND phrase " << z << " to length " << (len1+1) << std::endl;
 
                 // updateRecent: unregister current phrase
-                unmark(m - 1);
+                windex.unmark(m - 1);
 
                 if(localOne) {
                     // we are here because of absorbOne2 (local index)
@@ -589,32 +418,30 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 if(phrases[z].len > 1) {
                     auto const lnk = phrases[z].link;
                     assert(lnk > 0);
-                    auto const len = phrases[z].len - 1;
+                    auto const common_len = phrases[z].len - 1;
 
                     std::string rsuf;
-                    rsuf.reserve(len);
-                    phrases.extract_reverse_phrase_suffix(std::back_inserter(rsuf), lnk, len);
+                    rsuf.reserve(common_len);
+                    phrases.extract_reverse_phrase_suffix(std::back_inserter(rsuf), lnk, common_len);
                     
-                    auto const offs = pos_to_reverse(m-1);
-                    auto const* rstr = rwindow_fp.data() + offs;
-                    for(size_t i = 0; i < len; i++) {
-                        auto const actual = rstr[i];
-                        auto const expect = rsuf[i];
-                        assert(actual == expect);
+                    auto const offs = windex.pos_to_reverse(m-1);
+                    auto const* rstr = rfp.data() + offs;
+                    for(size_t i = 0; i < common_len; i++) {
+                        assert(rstr[i] == rsuf[i]);
                     }
                 }
             }
             #endif
 
             // update phrase hash
-            phrase_hashes[z] = rwindow_fp.fingerprint(pos_to_reverse(m), pos_to_reverse(m-phrases[z].len+1));
+            phrase_hashes[z] = windex.reverse_fingerprint(m - phrases[z].len + 1, m);
 
             // updateRecent: register updated current phrase
-            mark(m, z);
-            assert(is_marked(m));
+            windex.mark(m, z);
+            assert(windex.is_marked(m));
         }
 
-        if(phase >= 1 && begin != end) {
+        if(phase >= 1 && !final_block) {
             if constexpr(DEBUG) {
                 std::cout << std::endl;
                 std::cout << "postprocessing ..." << std::endl;
@@ -622,7 +449,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
             // insert phrases that end in the first two blocks within the window into the trie
             // while doing that, also recompute marked to contain only phrases that are inserted
-            marked.clear();
+            windex.clear_marked();
 
             if constexpr(DEBUG) {
                 std::cout << "inserting phrases ending in sliding block into trie ..." << std::endl;
@@ -642,16 +469,16 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 }
 
                 // insert into trie
-                Index const rend = pos_to_reverse(phrases[ztrie].end - window_begin_glob);
-                Index const rlen = rwindow.size() - 1 - rend;
+                Index const rend = windex.pos_to_reverse(phrases[ztrie].end - window_begin_glob);
+                Index const rlen = windex.size() - 1 - rend;
                 Index const len = phrases[ztrie].len;
-                assert(rwindow[rend] == phrases[ztrie].last); // sanity check
+                // assert(rwindow[rend] == phrases[ztrie].last); // sanity check
                 assert(len < window.size()); // Lemma 9 of [KK, 2017] implies this
 
-                trie.insert(rwindow_fp, rend, rlen);
+                trie.insert(rfp, rend, rlen);
 
                 // mark the phrase end for postprocessing of lnks
-                mark(phrases[ztrie].end - window_begin_glob, ztrie, true);
+                windex.mark(phrases[ztrie].end - window_begin_glob, ztrie, true);
 
                 ++ztrie;
             }
@@ -665,7 +492,8 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
                 // update if necessary
                 if(lens[q] > 1 && lnks[q] == NIL) { 
-                    auto [ln, x] = marked_lcp(q-1);
+                    Index x, ln;
+                    windex.marked_lcp(q-1, x, ln);
                     if(lens[q] <= ln + 1) { // nb: +1 because the phrase length includes the final as well -- this appears to be a mistake in [KK, 2017]
                         assert(x <= ztrie); // we cannot refer to a phrase that is not yet in the trie
                         lnks[q] = x;
@@ -689,10 +517,88 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 }
             }
         }
-
-        // advance to next phase
-        ++phase;
     }
+
+    template<tdc::InputIterator<char> In>
+    void parse(In begin, In const& end) {
+        std::string_view window;
+        size_t phase = 0;
+        while(begin != end) {
+            if constexpr(DEBUG) {
+                std::cout << std::endl;
+                std::cout << "=== phase " << phase << " ===" << std::endl;
+            }
+
+            // slide previous two blocks
+            for(size_t i = 0; i < 2 * max_block; i++) {
+                buffer[i] = buffer[max_block + i];
+                lens[i] = lens[max_block + i];
+                lnks[i] = lnks[max_block + i];
+            }
+
+            // read next block
+            Index const curblock_buffer_offs = 2 * max_block;
+            Index curblock_size = 0;
+            {
+                while(begin != end && curblock_size < max_block) {
+                    buffer[curblock_buffer_offs + curblock_size] = *begin++;
+                    ++curblock_size;
+                }
+
+                // window = std::string_view(buffer.at(offs), buffer.at(offs + num_read));
+            }
+
+            // determine window and block boundaries
+            Index window_begin_glob;
+            Index curblock_window_offs;
+            switch(phase) {
+                case 0:
+                    // in the very first phase, we only deal with a single block
+                    window = std::string_view(buffer.data() + 2 * max_block, curblock_size);
+                    window_begin_glob = 0;
+                    curblock_window_offs = 0;
+                    break;
+                
+                case 1:
+                    // in the second phase, we additionally deal with one previous block
+                    window = std::string_view(buffer.data() + max_block, max_block + curblock_size);
+                    window_begin_glob = 0;
+                    curblock_window_offs = max_block;
+                    break;
+                
+                default:
+                    // in subsequent phases, the window spans all 3 blocks
+                    window = std::string_view(buffer.data(), 2 * max_block + curblock_size);
+                    window_begin_glob = (phase - 2) * max_block;
+                    curblock_window_offs = 2 * max_block;
+                    break;
+            }
+
+            // parse block
+            parse_block(phase, window, curblock_size, window_begin_glob, curblock_window_offs, begin == end);
+
+            // advance to next phase
+            ++phase;
+        }
+    }
+};
+
+template<tdc::InputIterator<char> In, iopp::BitSink Out>
+void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block, size_t const block_size, pm::Result& result) {
+    // parse
+    LZEndKKState state(max_block);
+    state.parse(begin, end);
+
+    // init stats
+    size_t num_phrases = 0;
+    size_t num_ref = 0;
+    size_t num_literal = 0;
+    size_t longest = 0;
+    size_t total_len = 0;
+    size_t furthest = 0;
+    size_t total_ref = 0;
+
+    auto const& phrases = state.phrases;
 
     // initialize encoding
     out.write(MAGIC, 64);
@@ -706,11 +612,9 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
         }
 
         size_t i = 0;
-        for(size_t j = 1; j <= z; j++) {
+        for(size_t j = 1; j <= state.z; j++) {
             if constexpr(PROTOCOL) {
-                std::cout << "phrase #" << j << ": i=" << i <<
-                    ", (" << phrases[j].link << ", " << phrases[j].len << ", " << display(phrases[j].last) <<
-                    "), hash=0x" << std::hex << phrase_hashes[j] << std::dec << std::endl;
+                std::cout << "phrase #" << j << ": i=" << i << ", (" << phrases[j].link << ", " << phrases[j].len << ", " << display(phrases[j].last) << std::endl;
             }
             
             i += phrases[j].len;
@@ -751,7 +655,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     result.add("phrases_furthest", furthest);
     result.add("phrases_avg_len", std::round(100.0 * ((double)total_len / (double)num_phrases)) / 100.0);
     result.add("phrases_avg_dist", std::round(100.0 * ((double)total_ref / (double)num_phrases)) / 100.0);
-    result.add("max_consecutive_merges", max_consecutive_merges);
+    result.add("max_consecutive_merges", state.max_consecutive_merges);
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
