@@ -162,7 +162,7 @@ private:
         auto v = in_v;
 
         while(u != v) {
-            if(nodes_[u].len > nodes_[v].len) {
+            if(nodes_[u].len >= nodes_[v].len) {
                 u = nodes_[u].parent;
             } else {
                 v = nodes_[v].parent;
@@ -368,9 +368,20 @@ public:
 
                         // instead, we compute h_v by reconstructing the correct string from the encoding
                         // TODO: use h_u as a seed - the first characters do match, there is no need to reconstruct them
+                        Index i = 0;
                         uint64_t h_v = 0;
                         lzend_->extract_reverse_phrase_suffix_until([&](char const c){
                             h_v = StringView::append(h_v, c);
+
+                            #ifndef NDEBUG
+                            if constexpr(PARANOID) {
+                                if(i < common_suffix_length) {
+                                    assert(c == s[pos + i]);
+                                }
+                                ++i;
+                            }
+                            #endif
+
                             return true;
                         }, v, p_v);
 
