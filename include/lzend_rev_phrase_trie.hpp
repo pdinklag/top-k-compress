@@ -49,33 +49,43 @@ public:
 private:
     using UChar = std::make_unsigned_t<Char>;
 
+    static constexpr uint64_t map_hash(NodeNumber const v, UChar const c) {
+        return uint64_t(v) * 186530261ULL + uint64_t(c) * 6335453014963ULL;
+    }
+
     static constexpr NodeNumber root_ = 0;
 
     struct Node {
         Index len;
         Index phr;
         NodeNumber parent;
-        ankerl::unordered_dense::map<UChar, NodeNumber> map;
 
         Node() : len(0), phr(0), parent(root_) {
         }
-
-        bool try_get(UChar const c, NodeNumber& out) const {
-            auto it = map.find(c);
-            if(it != map.end()) {
-                out = it->second;
-                return true;
-            } else {
-                return false;
-            }
-        }
-    };
+    } __attribute__((packed));
 
     LZEndParsing<Char, Index> const* lzend_;
 
-    ankerl::unordered_dense::map<uint64_t, NodeNumber> nav_;
     std::vector<Node> nodes_;
     std::vector<NodeNumber> phrase_nodes_;
+
+    ankerl::unordered_dense::map<uint64_t, NodeNumber> nav_;
+    ankerl::unordered_dense::map<uint64_t, NodeNumber> map_;
+
+    bool try_get_child(NodeNumber const v, UChar const c, NodeNumber& out) const {
+        auto const h = map_hash(v, c);
+        auto it = map_.find(h);
+        if(it != map_.end()) {
+            out = it->second;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    void add_child(NodeNumber const v, UChar const c, NodeNumber const u) {
+        map_.emplace(map_hash(v, c), u);
+    }
 
     NodeNumber create_node() {
         auto const i = nodes_.size();
@@ -139,14 +149,13 @@ private:
 
         // potentially follow next edge
         {
-            auto it = nodes_[v].map.find(s[pos + nodes_[v].len]);
-            if(it != nodes_[v].map.end()) {
+            NodeNumber reached;
+            if(try_get_child(v, s[pos + nodes_[v].len], reached)) {
                 if constexpr(DEBUG) {
                     std::cout << "\t\tfollowed outgoing edge of node " << v << " for initial character " << display(s[pos + nodes_[v].len])
-                        << " at depth " << (pos + nodes_[v].len) << " to node " << it->second << " representing phrase " << nodes_[it->second].phr << std::endl;
+                        << " at depth " << (pos + nodes_[v].len) << " to node " << reached << " representing phrase " << nodes_[reached].phr << std::endl;
                 }
-
-                v = it->second;
+                v = reached;
             }
         }
 
@@ -218,7 +227,7 @@ public:
 
         // try find the edge for the character and retrieve the connected node
         NodeNumber reached;
-        bool const edge_exists = nodes_[parent].try_get(UChar(alpha), reached);
+        bool const edge_exists = try_get_child(parent, UChar(alpha), reached);
 
         assert(edge_exists);
         assert(reached == v);
@@ -244,7 +253,7 @@ public:
         size_t d = 0;
 
         NodeNumber found;
-        while(d < len && nodes_[v].try_get(UChar(s[pos + d]), found)) {
+        while(d < len && try_get_child(v, UChar(s[pos + d]), found)) {
             parent = v;
             v = found;
             d = nodes_[v].len;
@@ -263,7 +272,7 @@ public:
                 std::cout << "\t\tcreating new node " << x << " at depth " << len << " representing the new phrase as child of root" << std::endl;
             }
 
-            nodes_[root_].map.emplace(UChar(s[pos]), x);
+            add_child(root_, s[pos], x);
             update_nav(x, 0, s, pos);
 
             nodes_[x].parent = root_;
@@ -343,9 +352,9 @@ public:
                 uint64_t h_u;
                 {
                     auto const c = UChar(s[pos + nodes_[parent].len]);
-                    assert(nodes_[parent].map.contains(c));
-                    assert(nodes_[parent].map[c] == v);
-                    nodes_[parent].map[c] = u;
+                    assert(map_.contains(map_hash(parent, c)));
+                    assert(map_[map_hash(parent, c)] == v);
+                    map_[map_hash(parent, c)] = u;
 
                     nodes_[u].parent = parent;
 
@@ -357,7 +366,7 @@ public:
                 // make v a child of new node u
                 {
                     auto const c = UChar(mismatch);
-                    nodes_[u].map.emplace(c, v);
+                    add_child(u, c, v);
                     nodes_[v].parent = u;
 
                     auto const p_v = compute_pv(v, u);
@@ -406,8 +415,8 @@ public:
 
                 // make x a child of u
                 auto const c = UChar(s[pos + common_suffix_length]);
-                assert(!nodes_[u].map.contains(c));
-                nodes_[u].map.emplace(c, x);
+                assert(!map_.contains(map_hash(u, c)));
+                add_child(u, c, x);
 
                 nodes_[x].parent = u;
                 update_nav(x, u, s, pos);
