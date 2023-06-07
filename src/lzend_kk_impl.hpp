@@ -251,7 +251,26 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             if(phase >= 2) {
                 auto const rsuf_begin = pos_to_reverse(m-1);
                 auto const rsuf_len = rwindow.size() - 1 - rsuf_begin;
-                p = trie.approx_find_phr(rwindow_fp, rsuf_begin, rsuf_len);
+
+                Index hash_match;
+                p = trie.approx_find_phr(rwindow_fp, rsuf_begin, rsuf_len, hash_match);
+
+                #ifndef NDEBUG
+                if constexpr(PARANOID) {
+                    if(p > 0 && hash_match > 0) {
+                        std::string rsuf;
+                        rsuf.reserve(hash_match);
+                        phrases.extract_reverse_phrase_suffix(std::back_inserter(rsuf), p, hash_match);
+                        
+                        auto const* rstr = rwindow_fp.data() + rsuf_begin;
+                        for(size_t i = 0; i < hash_match; i++) {
+                            auto const actual = rstr[i];
+                            auto const expect = rsuf[i];
+                            assert(actual == expect);
+                        }
+                    }
+                }
+                #endif
             }
 
             lnks[m] = NIL;
@@ -469,6 +488,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             Index ptr;
             bool localTwo = false;
             bool localOne = false;
+
             if(absorbTwo() || (localTwo = absorbTwo2(ptr))) {
                 // merge the two current phrases and extend their length by one
                 if constexpr(DEBUG) std::cout << "\tMERGE phrases " << z << " and " << z-1 << " to new phrase of length " << (len2+1) << std::endl;
@@ -508,10 +528,10 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 unmark(m - 1);
 
                 if(localOne) {
-                    // we are here because of absorbTwo2 (local index)
+                    // we are here because of absorbOne2 (local index)
                     p = ptr;
                 } else {
-                    // we are here because of absorbTwo (trie)
+                    // we are here because of absorbOne (trie)
                     lnks[m] = p;
                     if constexpr(DEBUG) std::cout << "\tsetting lnks[" << mglob << "] := " << p << std::endl;
                 }
@@ -547,14 +567,15 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                     assert(lnk > 0);
                     auto const len = phrases[z].len - 1;
 
-                    std::string rsuf_lnk;
-                    rsuf_lnk.reserve(len);
-                    phrases.extract_reverse_phrase_suffix(std::back_inserter(rsuf_lnk), lnk, len);
+                    std::string rsuf;
+                    rsuf.reserve(len);
+                    phrases.extract_reverse_phrase_suffix(std::back_inserter(rsuf), lnk, len);
                     
                     auto const offs = pos_to_reverse(m-1);
+                    auto const* rstr = rwindow_fp.data() + offs;
                     for(size_t i = 0; i < len; i++) {
-                        auto const actual = rwindow_fp[offs + i];
-                        auto const expect = rsuf_lnk[i];
+                        auto const actual = rstr[i];
+                        auto const expect = rsuf[i];
                         assert(actual == expect);
                     }
                 }

@@ -34,14 +34,14 @@ template<std::integral Char = char, std::unsigned_integral Index = uint32_t>
 class LZEndRevPhraseTrie {
 private:
     static constexpr bool DEBUG = false;
-    static constexpr bool PARANOID = false;
+    static constexpr bool PARANOID = true;
 
 public:
     using StringView = FPStringView<Char>;
 
     // computes a hash for a string with the given length and fingerprint
     static constexpr uint64_t nav_hash(Index const len, uint64_t const fp) {
-        return 963ULL * len - fp;
+        return uint64_t(len) * 68719476377ULL + fp * 262127ULL;
     }
 
     using NodeNumber = Index;
@@ -83,24 +83,34 @@ private:
         return NodeNumber(i);
     }
 
-    void update_nav(NodeNumber const v, NodeNumber const parent, StringView const& s, Index const pos) {
-        auto const p_v = std::min(rst(nodes_[v].len, max_i_rst(nodes_[v].len, nodes_[parent].len)), Index(s.length() - pos));
-        auto const h_v = s.fingerprint(pos, pos + p_v - 1);
+    Index compute_pv(NodeNumber const v, NodeNumber const parent) {
+        return rst(nodes_[v].len, max_i_rst(nodes_[v].len, nodes_[parent].len));
+    }
 
+    void update_nav(NodeNumber const v, Index const p_v, Index const h_v) {
         if constexpr(DEBUG) {
             std::cout << "\t\tnav[" << p_v << ", 0x" << std::hex << h_v << std::dec << "] := " << v << std::endl;
         }
 
         auto const hash = nav_hash(p_v, h_v);
-
         nav_[hash] = v;
     }
 
-    NodeNumber approx_find(StringView const& s, Index const pos, Index const len) const {
+    std::pair<Index, uint64_t> update_nav(NodeNumber const v, NodeNumber const parent, StringView const& s, Index const pos) {
+        auto const p_v = std::min(compute_pv(v, parent), Index(s.length() - pos));
+        assert(p_v > nodes_[parent].len);
+
+        auto const h_v = s.fingerprint(pos, pos + p_v - 1);
+        update_nav(v, p_v, h_v);
+        return { p_v, h_v };
+    }
+
+    NodeNumber approx_find(StringView const& s, Index const pos, Index const len, Index& hash_match) const {
         if constexpr(DEBUG) {
             std::cout << "\tTRIE: approx_find for string of length " << len << ": " << s.string_view().substr(pos, len) << std::endl;
         }
 
+        hash_match = 0;
         Index p = 0;
         auto v = root_;
 
@@ -120,6 +130,8 @@ private:
 
                     p += j;
                     v = it->second;
+
+                    hash_match = p;
                 }
             }
             j /= 2;
@@ -169,8 +181,13 @@ public:
         phrase_nodes_.push_back(root_);
     }
 
+    Index approx_find_phr(StringView const& s, Index const pos, Index const len, Index& hash_match) const {
+        return nodes_[approx_find(s, pos, len, hash_match)].phr;
+    }
+
     Index approx_find_phr(StringView const& s, Index const pos, Index const len) const {
-        return nodes_[approx_find(s, pos, len)].phr;
+        Index discard;
+        return approx_find_phr(s, pos, len, discard);
     }
 
     Index nca_len(Index const p, Index const q) const {
@@ -322,6 +339,8 @@ public:
                 }
 
                 // replace v by u as child of parent
+                Index p_u;
+                uint64_t h_u;
                 {
                     auto const c = UChar(s[pos + nodes_[parent].len]);
                     assert(nodes_[parent].map.contains(c));
@@ -330,7 +349,9 @@ public:
 
                     nodes_[u].parent = parent;
 
-                    update_nav(u, parent, s, pos);
+                    // update anv
+                    // it is OK to use s for fingerprint computation, because u marks the common suffix
+                    std::tie(p_u, h_u) = update_nav(u, parent, s, pos);
                 }
 
                 // make v a child of new node u
@@ -339,12 +360,22 @@ public:
                     nodes_[u].map.emplace(c, v);
                     nodes_[v].parent = u;
 
-                    // we must update nav, because the new node u may actually take up v's old entry
-                    //
-                    // to see how, consider a child of a root at depth 3 -- its nav entry will use only the first 2 characters
-                    // if we now split the edge and insert a new inner ndoe at depth 2, that nav entry will use the same 2 characters
-                    // therefore, nav has to be updated for the new situation
-                    update_nav(v, u, s, pos);
+                    auto const p_v = compute_pv(v, u);
+                    if(p_v <= common_suffix_length) {
+                        // we must update nav for v
+                        // HOWEVER, we MUST NOT use s for fingerprint computation beyond the common suffix length,
+                        // because it does NOT match the phrase represented by v anymore
+
+                        // instead, we compute h_v by reconstructing the correct string from the encoding
+                        // TODO: use h_u as a seed - the first characters do match, there is no need to reconstruct them
+                        uint64_t h_v = 0;
+                        lzend_->extract_reverse_phrase_suffix_until([&](char const c){
+                            h_v = StringView::append(h_v, c);
+                            return true;
+                        }, v, p_v);
+
+                        update_nav(v, p_v, h_v);
+                    }
                 }
 
                 #ifndef NDEBUG
