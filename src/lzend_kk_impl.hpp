@@ -489,7 +489,23 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
             bool localTwo = false;
             bool localOne = false;
 
+            #ifndef NDEBUG
+            enum AlgorithmCase {
+                NONE,
+                ABSORB_ONE,
+                ABSORB_ONE2,
+                ABSORB_TWO,
+                ABSORB_TWO2,
+                NEW_CHAR
+            };
+            AlgorithmCase whence = AlgorithmCase::NONE;
+            #endif
+
             if(absorbTwo() || (localTwo = absorbTwo2(ptr))) {
+                #ifndef NDEBUG
+                whence = localTwo ? AlgorithmCase::ABSORB_TWO2 : AlgorithmCase::ABSORB_TWO;
+                #endif
+
                 // merge the two current phrases and extend their length by one
                 if constexpr(DEBUG) std::cout << "\tMERGE phrases " << z << " and " << z-1 << " to new phrase of length " << (len2+1) << std::endl;
 
@@ -521,6 +537,10 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 ++num_consecutive_merges;
                 max_consecutive_merges = std::max(max_consecutive_merges, num_consecutive_merges);
             } else if(absorbOne() || (localOne = absorbOne2(ptr))) {
+                #ifndef NDEBUG
+                whence = localOne ? AlgorithmCase::ABSORB_ONE2 : AlgorithmCase::ABSORB_ONE;
+                #endif
+
                 // extend the current phrase by one character
                 if constexpr(DEBUG) std::cout << "\tEXTEND phrase " << z << " to length " << (len1+1) << std::endl;
 
@@ -542,6 +562,10 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
                 // stats
                 num_consecutive_merges = 0;
             } else {
+                #ifndef NDEBUG
+                whence = AlgorithmCase::NEW_CHAR;
+                #endif
+
                 // begin a new phrase of initially length one
                 if constexpr(DEBUG) std::cout << "\tNEW phrase " << (z+1) << " of length 1" << std::endl;
                 
