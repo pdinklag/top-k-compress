@@ -34,7 +34,7 @@ template<std::integral Char = char, std::unsigned_integral Index = uint32_t>
 class LZEndRevPhraseTrie {
 private:
     static constexpr bool DEBUG = false;
-    static constexpr bool PARANOID = true;
+    static constexpr bool PARANOID = false;
 
 public:
     using StringView = FPStringView<Char>;

@@ -20,7 +20,7 @@
 
 constexpr bool DEBUG = false;
 constexpr bool PROTOCOL = false;
-constexpr bool PARANOID = true;
+constexpr bool PARANOID = false;
 
 constexpr uint64_t MAGIC =
     ((uint64_t)'L') << 56 |
