@@ -17,7 +17,7 @@ class FPStringView {
 private:
     using UChar = std::make_unsigned_t<Char>;
 
-    static constexpr size_t BASE = 56457; // 256;
+    static constexpr size_t BASE = 256;
 
 public:
     // append the given character to a given fingerprint
