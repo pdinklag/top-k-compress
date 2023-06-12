@@ -27,16 +27,25 @@ public:
     } __attribute__((packed));
 
 private:
+    static constexpr size_t succ_sampling_ = (1ULL << 8);
+
     Index text_len_;
     std::vector<Phrase> phrases_;
+    std::vector<Index> succ_index_;
 
     KeyValueResult<Index, Index> successor(Index const pos) const {
         assert(phrases_.size() > 1);
 
-        // we shrink the search range by 1 to assure that we do not find the empty phrase
-        auto r = BinarySearchHybrid<Phrase>::successor(phrases_.data() + 1, phrases_.size() - 1, pos);
+        // find the search range by using the sampling index
+        auto const pos_s = pos / succ_sampling_;
+        assert(pos_s < succ_index_.size());
+
+        auto const a = succ_index_[pos_s];
+        auto const b = (pos_s + 1 < succ_index_.size()) ? succ_index_[pos_s + 1] : phrases_.size() - 1;
+
+        auto r = BinarySearchHybrid<Phrase>::successor(phrases_.data() + a, b - a + 1, pos);
         if(r.exists) {
-            auto const i = r.pos + 1; // account for shrunk search range
+            auto const i = r.pos + a; // account for smaller search range
             return { true, phrases_[i].end, (Index)i };
         } else {
             return KeyValueResult<Index, Index>::none();
@@ -60,6 +69,15 @@ public:
         text_len_ += len;
         phrases_.emplace_back(link, len, text_len_ - 1, last);
         if(p > 1) assert(phrases_[p].end > phrases_[p-1].end);
+
+        // maintain successor index
+        {
+            auto const end = text_len_ - 1;
+            auto const end_s = end / succ_sampling_;
+            while(end_s >= succ_index_.size()) {
+                succ_index_.emplace_back(p);
+            }
+        }
     }
 
     // pops the last LZ-End phrase
@@ -69,6 +87,14 @@ public:
 
         auto const last = phrases_.back();
         assert(text_len_ >= last.len);
+        
+        // maintain successor index
+        {
+            auto const p = phrases_.size() - 1;
+            while(succ_index_.back() == p) {
+                succ_index_.pop_back();
+            }
+        }
 
         phrases_.pop_back();
         text_len_ -= last.len;
