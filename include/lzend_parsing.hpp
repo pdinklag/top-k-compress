@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <display.hpp>
+#include <index/binary_search_hybrid.hpp>
 #include <index/btree.hpp>
 
 // represents a dynamically growing LZ-End parsing
@@ -17,15 +18,29 @@ public:
         Index len;
         Index end;
         Char last;
+
+        // comparators for successor search
+        inline bool operator< (Index x) const { return end <  x; }
+        inline bool operator<=(Index x) const { return end <= x; }
+        inline bool operator>=(Index x) const { return end >= x; }
+        inline bool operator> (Index x) const { return end >  x; }
     } __attribute__((packed));
 
 private:
     Index text_len_;
     std::vector<Phrase> phrases_;
-    BTree<Index, Index, 65> ends_;
 
     KeyValueResult<Index, Index> successor(Index const pos) const {
-        return ends_.successor(pos);
+        assert(phrases_.size() > 1);
+
+        // we shrink the search range by 1 to assure that we do not find the empty phrase
+        auto r = BinarySearchHybrid<Phrase>::successor(phrases_.data() + 1, phrases_.size() - 1, pos);
+        if(r.exists) {
+            auto const i = r.pos + 1; // account for shrunk search range
+            return { true, phrases_[i].end, (Index)i };
+        } else {
+            return KeyValueResult<Index, Index>::none();
+        }
     }
 
 public:
@@ -38,19 +53,17 @@ public:
 
     // appends a new LZ-End phrase
     // if persist is false, the successor data structure will not be updated
-    template<bool persist = true>
     void emplace_back(Index const link, Index const len, Char const last) {
         assert(len);
 
         auto const p = (Index)phrases_.size();
         text_len_ += len;
         phrases_.emplace_back(link, len, text_len_ - 1, last);
-        if constexpr(persist) ends_.insert(text_len_ - 1, p);
+        if(p > 1) assert(phrases_[p].end > phrases_[p-1].end);
     }
 
     // pops the last LZ-End phrase
     // if persist is false, the successor data structure will not be updated
-    template<bool persist = true>
     Phrase pop_back() {
         assert(size() > 0);
 
@@ -58,23 +71,15 @@ public:
         assert(text_len_ >= last.len);
 
         phrases_.pop_back();
-        if constexpr(persist) ends_.remove(text_len_ - 1);
         text_len_ -= last.len;
         return last;
     }
 
     // replaces the last LZ-End phrase
     // if persist is false, the successor data structure will not be updated
-    template<bool persist = true>
     void replace_back(Index const link, Index const len, Char const last) {
-        pop_back<persist>();
-        emplace_back<persist>(link, len, last);
-    }
-
-    // persists the i-th phrase in the successor data structure
-    void persist(Index const i) {
-        assert(!ends_.contains(phrases_[i].end));
-        ends_.insert(phrases_[i].end, i);
+        pop_back();
+        emplace_back(link, len, last);
     }
 
     // extracts the substring of the text of given length and starting at the given position

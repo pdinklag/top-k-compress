@@ -345,7 +345,7 @@ public:
                 windex.unmark(m - 1 - len1);
 
                 // delete current phrase
-                phrases.pop_back<PARANOID>();
+                phrases.pop_back();
                 phrase_hashes.pop_back();
                 --z;
                 assert(z); // nb: must still have at least phrase 0
@@ -360,7 +360,7 @@ public:
                 }
 
                 // merge phrases
-                phrases.replace_back<PARANOID>(p, len2 + 1, next_char);
+                phrases.replace_back(p, len2 + 1, next_char);
 
                 // stats
                 ++num_consecutive_merges;
@@ -386,7 +386,7 @@ public:
                 }
 
                 // extend phrase
-                phrases.replace_back<PARANOID>(p, len1 + 1, next_char);
+                phrases.replace_back(p, len1 + 1, next_char);
 
                 // stats
                 num_consecutive_merges = 0;
@@ -399,7 +399,7 @@ public:
                 if constexpr(DEBUG) std::cout << "\tNEW phrase " << (z+1) << " of length 1" << std::endl;
                 
                 ++z;
-                phrases.emplace_back<PARANOID>(p, 1, next_char);
+                phrases.emplace_back(p, 1, next_char);
                 phrase_hashes.emplace_back(0);
 
                 // stats
@@ -458,15 +458,6 @@ public:
             Index const border = window_begin_glob + curblock_window_offs;
             while(ztrie < z && phrases[ztrie].end <= border) { // we go one phrase beyond the border according to [KK, 2017]
                 // we enter phrases[ztrie]
-
-                // enter the phrase into the parsing's successor data structure
-                // once a phrase is in the trie, we may want to decode it in order to do longest common suffix queries
-                // before that, it is never necessary to decode it, and thus it suffices to update the successor data structure now
-                if constexpr(PARANOID) {
-                    // we persist phrases immediately
-                } else {
-                    phrases.persist(ztrie);
-                }
 
                 // insert into trie
                 Index const rend = windex.pos_to_reverse(phrases[ztrie].end - window_begin_glob);
