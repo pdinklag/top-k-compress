@@ -24,6 +24,10 @@ private:
     std::vector<Phrase> phrases_;
     BTree<Index, Index, 65> ends_;
 
+    KeyValueResult<Index, Index> successor(Index const pos) const {
+        return ends_.successor(pos);
+    }
+
 public:
     LZEndParsing() : text_len_(0) {
         phrases_.emplace_back(0, 0, -1, 0);
@@ -77,7 +81,7 @@ public:
     template<std::output_iterator<Char> Out>
     void extract(Out out, Index const start, Index const len) const {
         auto const end = start + len - 1;
-        auto const r = ends_.successor(end);
+        auto const r = successor(end);
         assert(r.exists);
         auto const p = r.value;
         if(r.key == end) {
@@ -121,7 +125,7 @@ public:
     template<typename Predicate>
     bool extract_reverse_until(Predicate predicate, Index const start, Index const len) const {
         auto const end = start + len - 1;
-        auto const r = ends_.successor(end);
+        auto const r = successor(end);
         assert(r.exists);
         auto const p = r.value;
         if(r.key == end) {
@@ -165,7 +169,7 @@ public:
 
     // gets the number of the phrase (1-based) that the given text position (0-based) lies in
     Index phrase_at(Index const text_pos) const {
-        auto const r = ends_.successor(text_pos);
+        auto const r = successor(text_pos);
         return r.exists ? r.value : 0;
     }
 
