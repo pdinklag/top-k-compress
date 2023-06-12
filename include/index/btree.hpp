@@ -35,6 +35,17 @@ public:
         inline size_t size() const { return impl_.size(); }
         ChildCount num_children() const { return num_children_; }
         Node const* child(size_t const i) { return children_[i]; }
+
+        size_t memory_size() const {
+            size_t mem = sizeof(Node);
+            if(children_) {
+                mem += degree_ * sizeof(Node*);
+                for(size_t i = 0; i < num_children_; i++) {
+                    mem += children_[i]->memory_size();
+                }
+            }
+            return mem;
+        }
         
     private:
         inline bool is_empty() const { return size() == 0; }
@@ -538,4 +549,5 @@ public:
     }
 
     size_t size() const { return size_; }
+    size_t memory_size() const { return root_->memory_size(); }
 };

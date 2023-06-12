@@ -83,4 +83,8 @@ public:
             return fingerprint(j);
         }
     }
+
+    size_t memory_size() const {
+        return (fp_.capacity() + pow_base_.capacity()) * sizeof(uint64_t);
+    }
 };

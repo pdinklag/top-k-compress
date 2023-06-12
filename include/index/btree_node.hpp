@@ -94,5 +94,4 @@ public:
     }
 
     inline size_t size() const { return size_; }
-    
 } __attribute__((__packed__));

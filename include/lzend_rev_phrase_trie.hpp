@@ -200,15 +200,6 @@ public:
 
     size_t size() const { return nodes_.size(); }
 
-    size_t approx_memory_size() const {
-        size_t mem = 0;
-        mem += nodes_.capacity() * sizeof(Node);
-        mem += phrase_nodes_.capacity() * sizeof(NodeNumber);
-        mem += nav_.size() * (sizeof(uint64_t) + sizeof(NodeNumber));
-        mem += map_.size() * (sizeof(uint64_t) + sizeof(NodeNumber));
-        return mem;
-    }
-
     Stats const& stats() const { return stats_; }
 
     Index approx_find_phr(StringView const& s, Index const pos, Index const len, Index& hash_match) const {
@@ -436,5 +427,33 @@ public:
             }
         }
         assert(phrase_nodes_.size() == phr + 1); // we must have created a new entry here
+    }
+
+    struct MemoryProfile {
+        size_t nodes = 0;
+        size_t phrase_nodes = 0;
+        size_t nav = 0;
+        size_t map = 0;
+
+        size_t total() const { return nodes + phrase_nodes + nav + map; }
+    };
+
+    template<typename Key, typename Value>
+    inline static size_t memory_size_of(ankerl::unordered_dense::map<Key, Value> const& map) {
+        using Map = ankerl::unordered_dense::map<Key, Value>;
+
+        size_t mem = 0;
+        mem += map.bucket_count() * sizeof(typename Map::bucket_type);
+        mem += map.values().capacity() * sizeof(typename  Map::value_container_type::value_type);
+        return map.size() * (sizeof(Key) + sizeof(Value));
+    }
+
+    MemoryProfile memory_profile() const {
+        MemoryProfile profile;
+        profile.nodes = nodes_.capacity() * sizeof(Node);
+        profile.phrase_nodes = phrase_nodes_.capacity() * sizeof(NodeNumber);
+        profile.nav = memory_size_of(nav_);
+        profile.map = memory_size_of(map_);
+        return profile;
     }
 };

@@ -34,22 +34,18 @@ constexpr uint64_t MAGIC =
 
 using Index = uint32_t;
 
-using Parsing = LZEndParsing<char, Index>;
-using PhraseHashes = std::vector<uint64_t>;
-using Trie = LZEndRevPhraseTrie<char, Index>;
-using NodeNumber = Trie::NodeNumber;
-using WindowIndex = LZEndWindowIndex<Index>;
-
 struct LZEndKKState {
+    using WindowIndex = LZEndWindowIndex<Index>;
+
     static constexpr Index NIL = 0;
 
     // global state
     size_t max_block;
     Index z, ztrie;
 
-    Parsing phrases;
-    PhraseHashes phrase_hashes;
-    Trie trie;
+    LZEndParsing<char, Index> phrases;
+    std::vector<uint64_t> phrase_hashes;
+    LZEndRevPhraseTrie<char, Index> trie;
 
     std::unique_ptr<Index[]> lnks;
     std::unique_ptr<Index[]> lens;
@@ -57,8 +53,27 @@ struct LZEndKKState {
     std::string buffer;
 
     // stats
+    WindowIndex::MemoryProfile max_window_memory;
     size_t max_consecutive_merges = 0;
     size_t num_consecutive_merges = 0;
+
+    struct MemoryProfile {
+        size_t buffer;
+        size_t parsing;
+        size_t phrase_hashes;
+        size_t lnks_lens;
+
+        size_t total() const { return buffer + parsing + phrase_hashes + lnks_lens; }
+    };
+
+    MemoryProfile memory_profile() const {
+        MemoryProfile profile;
+        profile.buffer = buffer.capacity() * sizeof(char);
+        profile.parsing = phrases.memory_size();
+        profile.phrase_hashes = phrase_hashes.capacity() * sizeof(uint64_t);
+        profile.lnks_lens = 2 * (sizeof(Index) * 3 * max_block);
+        return profile;
+    };
 
     bool commonPart(Index const m, Index const p, Index const len, WindowIndex const& windex, Index const window_begin_glob) const {
         auto const plen = phrases[p].len;
@@ -441,6 +456,8 @@ public:
             assert(windex.is_marked(m));
         }
 
+        max_window_memory = WindowIndex::MemoryProfile::max(max_window_memory, windex.memory_profile());
+
         if(phase >= 1 && !final_block) {
             if constexpr(DEBUG) {
                 std::cout << std::endl;
@@ -639,6 +656,9 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     writer.flush();
     
     // get stats
+    auto mem_state = state.memory_profile();
+    auto mem_trie = state.trie.memory_profile();
+
     result.add("phrases_total", num_phrases);
     result.add("phrases_ref", num_ref);
     result.add("phrases_literal", num_literal);
@@ -648,9 +668,25 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     result.add("phrases_avg_dist", std::round(100.0 * ((double)total_ref / (double)num_phrases)) / 100.0);
     result.add("max_consecutive_merges", state.max_consecutive_merges);
     result.add("trie_nodes", state.trie.size());
-    result.add("trie_approx_mem", state.trie.approx_memory_size());
     result.add("trie_num_match_extract", state.trie.stats().num_match_extract);
     result.add("trie_num_recalc", state.trie.stats().num_recalc);
+    result.add("mem_glob_buffer", mem_state.buffer);
+    result.add("mem_glob_lnks_lens", mem_state.lnks_lens);
+    result.add("mem_glob_parsing", mem_state.parsing);
+    result.add("mem_glob_phrase_hashes", mem_state.phrase_hashes);
+    result.add("mem_glob", mem_state.total());
+    result.add("mem_trie", mem_trie.total());
+    result.add("mem_trie_nodes", mem_trie.nodes);
+    result.add("mem_trie_phrase_ptrs", mem_trie.phrase_nodes);
+    result.add("mem_trie_nav", mem_trie.nav);
+    result.add("mem_trie_map", mem_trie.map);
+    result.add("mem_window_rev_string", state.max_window_memory.reverse_window);
+    result.add("mem_window_lcp_isa", state.max_window_memory.lcp_isa);
+    result.add("mem_window_tmp_sa", state.max_window_memory.tmp_sa);
+    result.add("mem_window_marked", state.max_window_memory.marked);
+    result.add("mem_window_fingerprints", state.max_window_memory.fingerprints);
+    result.add("mem_window_rmq", state.max_window_memory.rmq);
+    result.add("mem_window", state.max_window_memory.total());
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>

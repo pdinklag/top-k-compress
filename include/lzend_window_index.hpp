@@ -160,5 +160,38 @@ public:
     }
 
     size_t size() const { return rwindow.size(); }
+
+    struct MemoryProfile {
+        inline static MemoryProfile max(MemoryProfile const& a, MemoryProfile const& b) {
+            MemoryProfile max;
+            max.reverse_window = std::max(a.reverse_window, b.reverse_window);
+            max.lcp_isa = std::max(a.lcp_isa, b.lcp_isa);
+            max.tmp_sa = std::max(a.tmp_sa, b.tmp_sa);
+            max.marked = std::max(a.marked, b.marked);
+            max.rmq = std::max(a.rmq, b.rmq);
+            max.fingerprints = std::max(a.fingerprints, b.fingerprints);
+            return max;
+        }
+
+        size_t reverse_window = 0;
+        size_t lcp_isa = 0;
+        size_t tmp_sa = 0;
+        size_t marked = 0;
+        size_t rmq = 0;
+        size_t fingerprints = 0;
+
+        inline size_t total() const { return reverse_window + lcp_isa + tmp_sa + marked + rmq + fingerprints; }
+    };
+
+    MemoryProfile memory_profile() const {
+        MemoryProfile profile;
+        profile.reverse_window = rwindow.capacity() * sizeof(char);
+        profile.lcp_isa = (rwindow.size() + 1) * (sizeof(uint32_t) + sizeof(uint32_t)); // lcp and isa
+        profile.tmp_sa = (rwindow.size() + 1) * sizeof(uint32_t);
+        profile.rmq = rmq.memory_size();
+        profile.marked = marked.memory_size();
+        profile.fingerprints = rfp.memory_size();
+        return profile;
+    }
 };
 

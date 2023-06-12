@@ -113,6 +113,15 @@ class rmq_nlgn {
                                                             : r_interval_min;
   }
 
+  size_t memory_size() const {
+    size_t mem = 0;
+    mem += m_power_rmq.capacity() * sizeof(std::vector<index_type>);
+    for(auto const& v : m_power_rmq) {
+      mem += v.capacity() * sizeof(index_type);
+    }
+    return mem;
+  }
+
  private:
   key_type const* m_data = nullptr;
   std::vector<std::vector<index_type>> m_power_rmq;
@@ -208,6 +217,14 @@ class rmq_n {
     size_t const left = std::min(i, j) + 1;
     size_t const right = std::max(i, j);
     return rmq_lr(left, right);
+  }
+
+  size_t memory_size() const {
+    size_t mem = 0;
+    mem += m_sampled_indexes.capacity() * sizeof(index_type);
+    mem += m_sampled_minimas.capacity() * sizeof(key_type);
+    mem += m_sampled_rmq.memory_size();
+    return mem;
   }
 
  private:

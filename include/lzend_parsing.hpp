@@ -209,4 +209,8 @@ public:
 
     // gets the number of phrases
     auto size() const { return phrases_.size() - 1; }
+
+    size_t memory_size() const {
+        return phrases_.capacity() * sizeof(Phrase) + succ_index_.capacity() * sizeof(Index);
+    }
 };
