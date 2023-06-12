@@ -35,6 +35,7 @@ class LZEndRevPhraseTrie {
 private:
     static constexpr bool DEBUG = false;
     static constexpr bool PARANOID = false;
+    static constexpr bool STATS = true;
 
 public:
     using StringView = FPStringView<Char>;
@@ -45,6 +46,12 @@ public:
     }
 
     using NodeNumber = Index;
+
+    struct Stats {
+        size_t num_match_extract = 0;
+        size_t num_recalc_extract = 0;
+        size_t num_recalc = 0;
+    };
 
 private:
     using UChar = std::make_unsigned_t<Char>;
@@ -71,6 +78,8 @@ private:
 
     ankerl::unordered_dense::map<uint64_t, NodeNumber> nav_;
     ankerl::unordered_dense::map<uint64_t, NodeNumber> map_;
+
+    Stats stats_;
 
     bool try_get_child(NodeNumber const v, UChar const c, NodeNumber& out) const {
         auto const h = map_hash(v, c);
@@ -189,6 +198,19 @@ public:
         // empty phrase 0 to offset phrase numbers
         phrase_nodes_.push_back(root_);
     }
+
+    size_t size() const { return nodes_.size(); }
+
+    size_t approx_memory_size() const {
+        size_t mem = 0;
+        mem += nodes_.capacity() * sizeof(Node);
+        mem += phrase_nodes_.capacity() * sizeof(NodeNumber);
+        mem += nav_.size() * (sizeof(uint64_t) + sizeof(NodeNumber));
+        mem += map_.size() * (sizeof(uint64_t) + sizeof(NodeNumber));
+        return mem;
+    }
+
+    Stats const& stats() const { return stats_; }
 
     Index approx_find_phr(StringView const& s, Index const pos, Index const len, Index& hash_match) const {
         return nodes_[approx_find(s, pos, len, hash_match)].phr;
@@ -312,6 +334,7 @@ public:
                         return false;
                     }
                 }, nodes_[v].phr, extract_len);
+                if constexpr(STATS) stats_.num_match_extract += common_suffix_length + 1;;
 
                 assert(common_suffix_length >= 1); // we must have matched the first character in the root, otherwise we wouldn't be here
                 assert(common_suffix_length <= len); // we cannot have matched more characters than the inserted string has
@@ -371,12 +394,14 @@ public:
 
                     auto const p_v = compute_pv(v, u);
                     if(p_v <= common_suffix_length) {
+                        if constexpr(STATS) ++stats_.num_recalc;
+                        
                         // we must update nav for v
                         // HOWEVER, we MUST NOT use s for fingerprint computation beyond the common suffix length,
                         // because it does NOT match the phrase represented by v anymore
 
                         // instead, we compute h_v by reconstructing the correct string from the encoding
-                        // TODO: use h_u as a seed - the first characters do match, there is no need to reconstruct them
+                        // TODO: use common suffix as a seed - the first characters do match, there is no need to reconstruct them
                         Index i = 0;
                         uint64_t h_v = 0;
                         lzend_->extract_reverse_phrase_suffix_until([&](char const c){
@@ -393,6 +418,10 @@ public:
 
                             return true;
                         }, v, p_v);
+                        
+                        if constexpr(STATS) {
+                            stats_.num_recalc_extract += p_v;
+                        }
 
                         update_nav(v, p_v, h_v);
                     }

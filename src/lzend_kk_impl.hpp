@@ -656,6 +656,11 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     result.add("phrases_avg_len", std::round(100.0 * ((double)total_len / (double)num_phrases)) / 100.0);
     result.add("phrases_avg_dist", std::round(100.0 * ((double)total_ref / (double)num_phrases)) / 100.0);
     result.add("max_consecutive_merges", state.max_consecutive_merges);
+    result.add("trie_nodes", state.trie.size());
+    result.add("trie_approx_mem", state.trie.approx_memory_size());
+    result.add("trie_num_match_extract", state.trie.stats().num_match_extract);
+    result.add("trie_num_recalc", state.trie.stats().num_recalc);
+    result.add("trie_num_recalc_extract", state.trie.stats().num_recalc_extract);
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
