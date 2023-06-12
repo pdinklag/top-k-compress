@@ -7,12 +7,14 @@
 #include <string_view>
 #include <type_traits>
 
+#include <idiv_ceil.hpp>
+
 #include <tlx/container/ring_buffer.hpp>
 
 #include <mersenne61.hpp>
 
 // represents a string view enhanced by Karp-Rabin fingerprints
-template<std::integral Char>
+template<std::integral Char, size_t pow_sampling_ = 8>
 class FPStringView {
 private:
     using UChar = std::make_unsigned_t<Char>;
@@ -35,21 +37,43 @@ public:
 
 private:
     std::string_view view_;
-    std::vector<uint64_t> fp_;
-    std::vector<uint64_t> pow_base_;
+    std::unique_ptr<uint64_t[]> fp_;
+    std::unique_ptr<uint64_t[]> pow_base_;
+
+    uint64_t pow_base(size_t const i) const {
+        auto const s = i / pow_sampling_;
+        auto pow_base = pow_base_[s];
+
+        auto j = s * pow_sampling_ + 1;
+        while(j <= i) {
+            pow_base = Mersenne61::mulmod(pow_base, BASE);
+            ++j;
+        }
+
+        return pow_base;
+    }
 
 public:
     FPStringView() {}
     FPStringView(FPStringView&&) = default;
     FPStringView& operator=(FPStringView&&) = default;
 
-    FPStringView(std::string_view const& s) : view_(s), fp_(s.length()), pow_base_(s.length()) { 
+    FPStringView(std::string_view const& s)
+        : view_(s),
+          fp_(std::make_unique<uint64_t[]>(s.length())),
+          pow_base_(std::make_unique<uint64_t[]>(idiv_ceil(s.length(), pow_sampling_))) {
+
         fp_[0] = s[0];
         pow_base_[0] = 1;
 
+        uint64_t pow_base = pow_base_[0];
         for(size_t i = 1; i < s.length(); i++) {
             fp_[i] = append(fp_[i-1], s[i]);
-            pow_base_[i] = Mersenne61::mulmod(pow_base_[i-1], BASE);
+            pow_base = Mersenne61::mulmod(pow_base, BASE);
+
+            if(i % pow_sampling_ == 0) {
+                pow_base_[i / pow_sampling_] = pow_base;
+            }
         }
     }
 
@@ -65,7 +89,8 @@ public:
 
     // returns the fingerprint of the string from its beginning up to position (including) i
     uint64_t const fingerprint(size_t const i) const {
-        assert(i < fp_.size()); return fp_[i];
+        assert(i < fp_.size());
+        return fp_[i];
     }
 
     // returns the fingerprint of the substring starting at i and ending at j (both included)
@@ -73,7 +98,7 @@ public:
         assert(i <= j);
         if(i) {
             auto const fp_j = fingerprint(j);
-            auto const fp_i_shifted = Mersenne61::mulmod(pow_base_[j-i+1], fingerprint(i-1));
+            auto const fp_i_shifted = Mersenne61::mulmod(pow_base(j-i+1), fingerprint(i-1));
             if (fp_j >= fp_i_shifted) {
                 return fp_j - fp_i_shifted;
             } else {
@@ -85,6 +110,6 @@ public:
     }
 
     size_t memory_size() const {
-        return (fp_.capacity() + pow_base_.capacity()) * sizeof(uint64_t);
+        return (view_.length() + idiv_ceil(view_.length(), pow_sampling_)) * sizeof(uint64_t);
     }
 };

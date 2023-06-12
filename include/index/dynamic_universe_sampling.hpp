@@ -8,15 +8,13 @@
 #include <memory>
 #include <vector>
 
+#include <idiv_ceil.hpp>
+
 #include "result.hpp"
 
 template<std::unsigned_integral Key, std::unsigned_integral Value, size_t sample_bits_>
 class DynamicUniverseSampling {
 private:
-    static constexpr size_t idiv_ceil(size_t const a, size_t const b) {
-        return ((a + b) - 1ULL) / b;
-    }
-
     static constexpr size_t key_bits_ = std::numeric_limits<Key>::digits;
     static_assert(key_bits_ > sample_bits_);
     static constexpr size_t trunc_bits_ = key_bits_ - sample_bits_;
