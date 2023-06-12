@@ -49,7 +49,6 @@ public:
 
     struct Stats {
         size_t num_match_extract = 0;
-        size_t num_recalc_extract = 0;
         size_t num_recalc = 0;
     };
 
@@ -394,36 +393,12 @@ public:
 
                     auto const p_v = compute_pv(v, u);
                     if(p_v <= common_suffix_length) {
-                        if constexpr(STATS) ++stats_.num_recalc;
-                        
                         // we must update nav for v
-                        // HOWEVER, we MUST NOT use s for fingerprint computation beyond the common suffix length,
-                        // because it does NOT match the phrase represented by v anymore
-
-                        // instead, we compute h_v by reconstructing the correct string from the encoding
-                        // TODO: use common suffix as a seed - the first characters do match, there is no need to reconstruct them
-                        Index i = 0;
-                        uint64_t h_v = 0;
-                        lzend_->extract_reverse_phrase_suffix_until([&](char const c){
-                            h_v = StringView::append(h_v, c);
-
-                            #ifndef NDEBUG
-                            if constexpr(PARANOID) {
-                                if(i < common_suffix_length) {
-                                    assert(c == s[pos + i]);
-                                }
-                                ++i;
-                            }
-                            #endif
-
-                            return true;
-                        }, v, p_v);
-                        
-                        if constexpr(STATS) {
-                            stats_.num_recalc_extract += p_v;
-                        }
-
+                        // since p_v <= common_suffix_length, we can safely use s to retrieve the correct fingerprint
+                        auto const h_v = s.fingerprint(pos, pos + p_v - 1);
                         update_nav(v, p_v, h_v);
+
+                        if constexpr(STATS) ++stats_.num_recalc;
                     }
                 }
 
