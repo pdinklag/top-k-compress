@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <ankerl/unordered_dense.h>
+#include <ankerl_memory_size.hpp>
 
 #include <word_packing.hpp>
 
@@ -25,14 +26,15 @@ private:
     static constexpr Key bucket_for(Key const key) { return key / sampling_; }
     static constexpr TruncatedKey truncate(Key const key) { return TruncatedKey(key % sampling_); }
 
+    static constexpr size_t packs_per_bucket_ = word_packing::num_packs_required<uint64_t>(sampling_, 1);
+
     struct Bucket {
         std::unique_ptr<uint64_t[]> bits_;
         ankerl::unordered_dense::map<TruncatedKey, Value> values_;
 
         Bucket() {
-            auto const n = word_packing::num_packs_required<uint64_t>(sampling_, 1);
-            bits_ = std::make_unique<uint64_t[]>(n);
-            for(size_t i = 0; i < n; i++) bits_[i] = 0;
+            bits_ = std::make_unique<uint64_t[]>(packs_per_bucket_);
+            for(size_t i = 0; i < packs_per_bucket_; i++) bits_[i] = 0;
         }
 
         auto bits() { return word_packing::bit_accessor(bits_.get()); }
@@ -85,13 +87,19 @@ private:
     Key max_bucket_num_;
 
 public:
-    DynamicUniverseSampling(Key const max) : max_bucket_num_(bucket_for(max)) {
+    DynamicUniverseSampling() : max_bucket_num_(0) {
     }
 
     ~DynamicUniverseSampling() {
+        clear();
+    }
+
+    void clear() {
         for(auto& e : buckets_) {
             delete e.second;
         }
+        buckets_.clear();
+        max_bucket_num_ = 0;
     }
 
     void insert(Key const key, Value const value) {
@@ -104,6 +112,7 @@ public:
         } else {
             bucket = new Bucket();
             buckets_.emplace(bucket_num, bucket);
+            max_bucket_num_ = std::max(bucket_num, max_bucket_num_);
         }
 
         auto const tkey = truncate(key);
@@ -125,6 +134,7 @@ public:
                     // delete bucket completely
                     delete bucket;
                     buckets_.erase(bucket_num);
+                    // TODO: update max_bucket_num_?
                 } else {
                     // only delete key
                     bits[tkey] = 0;
@@ -209,5 +219,16 @@ public:
         } else {
             return false;
         }
+    }
+
+    size_t memory_size() const {
+        size_t mem = 0;
+        mem += memory_size_of(buckets_);
+        for(auto& e : buckets_) {
+            mem += sizeof(Bucket);
+            mem += packs_per_bucket_ * sizeof(uint64_t);
+            mem += memory_size_of(e.second->values_);
+        }
+        return mem;
     }
 };

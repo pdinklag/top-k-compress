@@ -57,7 +57,7 @@ TEST_SUITE("pred") {
     }
 
     TEST_CASE("predecessor") {   
-        DynamicUniverseSampling<uint32_t, uint32_t, b> ds(U); 
+        DynamicUniverseSampling<uint32_t, uint32_t, b> ds; 
         INSERT(ds, 5);
         INSERT(ds, 17);
         INSERT(ds, 19);
@@ -89,7 +89,7 @@ TEST_SUITE("pred") {
     }
 
     TEST_CASE("successor") {
-        DynamicUniverseSampling<uint32_t, uint32_t, b> ds(U);
+        DynamicUniverseSampling<uint32_t, uint32_t, b> ds;
         INSERT(ds, 5);
         INSERT(ds, 17);
         INSERT(ds, 19);
@@ -121,7 +121,7 @@ TEST_SUITE("pred") {
     }
 
     TEST_CASE("insert") {
-        DynamicUniverseSampling<uint32_t, uint32_t, b> ds(U);
+        DynamicUniverseSampling<uint32_t, uint32_t, b> ds;
         REQUIRE_PRED_NEXIST(ds, 317'362);
         REQUIRE_SUCC_NEXIST(ds, 5);
         INSERT(ds, 783'281);
@@ -152,7 +152,7 @@ TEST_SUITE("pred") {
     }
 
     TEST_CASE("remove") {
-        DynamicUniverseSampling<uint32_t, uint32_t, b> ds(U);
+        DynamicUniverseSampling<uint32_t, uint32_t, b> ds;
         INSERT(ds, 783'281);
         INSERT(ds, 372'444);
         INSERT(ds, 388'123);
@@ -175,7 +175,7 @@ TEST_SUITE("pred") {
     }
 
     TEST_CASE("contains") {   
-        DynamicUniverseSampling<uint32_t, uint32_t, b> ds(U); 
+        DynamicUniverseSampling<uint32_t, uint32_t, b> ds; 
         INSERT(ds, 5);
         INSERT(ds, 17);
         INSERT(ds, 19);
