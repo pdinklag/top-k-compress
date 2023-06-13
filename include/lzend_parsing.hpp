@@ -140,31 +140,46 @@ private:
         }
     }
 
-    bool extract_rev(Predicate predicate, Index const start, Index const len) const {
-        auto const end = start + len - 1;
-        auto const r = successor(end);
-        assert(r.exists);
-        auto const p = r.value;
-        if(r.key == end) {
-            // we're at a phrase end position
-            if(!predicate(phrases_[p].last)) return false;
-            return len <= 1 || extract_rev(predicate, start, len - 1);
-        } else {
-            // we're somewhere within phrase p and need to extract something from the source
-            auto const pstart = phrases_[p-1].end + 1;
-            auto const lnk_end = phrases_[phrases_[p].link].end;
+    void extract_rev(Predicate predicate, Index start, Index len) const {
+        // initialize LIFO queue of substrings to extract
+        static std::vector<std::pair<Index, Index>> queue;
+        queue.clear();
+        queue.emplace_back(start, len);
 
-            if(start < pstart) {
-                // we are trying to extract some part prior to the current phrase, and that must be done separately
-                // first, extract remainder from source
-                auto const suffix_len = end - pstart + 1;
-                if(!extract_rev(predicate, lnk_end - suffix_len + 1, suffix_len)) return false;
+        // work off stack
+        while(!queue.empty()) {
+            // get next parameter set
+            std::tie(start, len) = queue.back();
+            queue.pop_back();
 
-                // now extract the part prior
-                return extract_rev(predicate, start, pstart - start);
-            } else {
-                // extract from source
-                return extract_rev(predicate, lnk_end - len + 1, len);
+            while(len > 0) {
+                auto const end = start + len - 1;
+                auto const r = successor(end);
+                assert(r.exists);
+                auto const p = r.value;
+                if(r.key == end) {
+                    // we're at a phrase end position
+                    if(!predicate(phrases_[p].last)) return;
+                    --len;
+                } else {
+                    // we're somewhere within phrase p and need to extract something from the source
+                    auto const pstart = phrases_[p-1].end + 1;
+                    auto const lnk_end = phrases_[phrases_[p].link].end;
+
+                    if(start < pstart) {
+                        // we are trying to extract some part prior to the current phrase, and that must be done separately
+                        // queue up the part prior
+                        queue.emplace_back(start, pstart - start);
+
+                        // extract remainder from source
+                        auto const suffix_len = end - pstart + 1;
+                        start = lnk_end - suffix_len + 1;
+                        len = suffix_len;
+                    } else {
+                        // extract from source
+                        start = lnk_end - len + 1;
+                    }
+                }
             }
         }
     }
