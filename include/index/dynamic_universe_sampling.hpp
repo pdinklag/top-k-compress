@@ -70,7 +70,7 @@ private:
 
         TruncatedKey max() const {
             auto bv = bits();
-            for(size_t x = sampling_ + 1; x > 0; x--) {
+            for(size_t x = sampling_; x > 0; x--) {
                 if(bv[x-1]) return x-1;
             }
             assert(false); // there must not be any empty buckets
