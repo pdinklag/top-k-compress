@@ -89,7 +89,7 @@ public:
 
     // returns the fingerprint of the string from its beginning up to position (including) i
     uint64_t const fingerprint(size_t const i) const {
-        assert(i < fp_.size());
+        assert(i < length());
         return fp_[i];
     }
 
