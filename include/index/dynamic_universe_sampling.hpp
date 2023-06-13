@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bit>
 #include <cassert>
 #include <concepts>
 #include <cstddef>
@@ -12,6 +13,7 @@
 #include <ankerl/unordered_dense.h>
 #include <ankerl_memory_size.hpp>
 
+#include <idiv_ceil.hpp>
 #include <word_packing.hpp>
 
 #include "result.hpp"
@@ -27,52 +29,115 @@ private:
     static constexpr TruncatedKey truncate(Key const key) { return TruncatedKey(key % sampling_); }
 
     static constexpr size_t packs_per_bucket_ = word_packing::num_packs_required<uint64_t>(sampling_, 1);
+    static constexpr size_t pack_bits_ = 64;
+
+    static constexpr uint8_t lowest_set_bit(uint64_t const x) {
+        return __builtin_ctzll(x);
+    }
+
+    static constexpr uint8_t highest_set_bit(uint64_t const x) {
+        return pack_bits_ - 1 - __builtin_clzll(x);
+    }
 
     struct Bucket {
-        std::unique_ptr<uint64_t[]> bits_;
+        std::unique_ptr<uint64_t[]> data_;
         ankerl::unordered_dense::map<TruncatedKey, Value> values_;
 
         Bucket() {
-            bits_ = std::make_unique<uint64_t[]>(packs_per_bucket_);
-            for(size_t i = 0; i < packs_per_bucket_; i++) bits_[i] = 0;
+            data_ = std::make_unique<uint64_t[]>(packs_per_bucket_);
+            for(size_t i = 0; i < packs_per_bucket_; i++) data_[i] = 0;
         }
 
-        auto bits() { return word_packing::bit_accessor(bits_.get()); }
-        auto bits() const { return word_packing::bit_accessor(bits_.get()); }
+        auto bits() { return word_packing::bit_accessor(data_.get()); }
+        auto bits() const { return word_packing::bit_accessor(data_.get()); }
 
         PosResult predecessor(size_t x) const {
-            auto bv = bits();
-            ++x;
-            while(x > 0) {
-                if(bv[x-1]) return { true, x-1 };
-                else --x;
+            uint64_t const* data = data_.get();
+            auto i = x / pack_bits_;
+
+            if(data[i]) {
+                // the predecessor may be in x's own pack word
+                auto j = x % pack_bits_;
+                auto m = 1ULL << j;
+
+                auto const pack = data[i];
+                while(m) {
+                    if(pack & m) return { true, i * pack_bits_ + j };
+
+                    m >>= 1;
+                    --j;
+                }
+            }
+
+            // we did not find a predecesor in the corresponding word
+            // thus, the predcesor is the highest set previous bit
+            while(i > 0) {
+                if(data[i-1] != 0) {
+                    // find the last set bit
+                    return { true, (i-1) * pack_bits_ + highest_set_bit(data[i-1]) };
+                }
+                --i;
             }
             return PosResult::none();
         }
 
         PosResult successor(size_t x) const {
-            auto bv = bits();
-            while(x < sampling_) {
-                if(bv[x]) return { true, x };
-                else ++x;
+            uint64_t const* data = data_.get();
+            auto i = x / pack_bits_;
+
+            if(data[i]) {
+                // the successor may be in x's own pack word
+                auto j = x % pack_bits_;
+                auto m = 1ULL << j;
+
+                auto const pack = data[i];
+                while(j < pack_bits_) {
+                    if(pack & m) return { true, i * pack_bits_ + j };
+
+                    m <<= 1;
+                    ++j;
+                }
+            }
+
+            // we did not find a successor in the corresponding word
+            // thus, the successor is the lowest set next bit
+            ++i;
+            while(i < packs_per_bucket_) {
+                if(data[i] != 0) {
+                    // find the last set bit
+                    return { true, i * pack_bits_ + lowest_set_bit(data[i]) };
+                }
+                ++i;
             }
             return PosResult::none();
         }
 
         TruncatedKey min() const {
-            auto bv = bits();
-            for(size_t x = 0; x < sampling_; x++) {
-                if(bv[x]) return x;
+            uint64_t const* data = data_.get();
+
+            // find first pack that has a set bit
+            for(size_t i = 0; i < packs_per_bucket_; i++) {
+                if(data[i] != 0) {
+                    // find the first set bit
+                    return i * pack_bits_ + lowest_set_bit(data[i]);
+                }
             }
+
             assert(false); // there must not be any empty buckets
             return TruncatedKey();
         }
 
         TruncatedKey max() const {
-            auto bv = bits();
-            for(size_t x = sampling_; x > 0; x--) {
-                if(bv[x-1]) return x-1;
+            uint64_t const* data = data_.get();
+
+            // find last pack that has a set bit
+            for(size_t i = packs_per_bucket_; i > 0; i--) {
+                if(data[i-1] != 0) {
+                    // find the last set bit
+                    return (i-1) * pack_bits_ + highest_set_bit(data[i-1]);
+                }
             }
+
             assert(false); // there must not be any empty buckets
             return TruncatedKey();
         }
@@ -83,11 +148,18 @@ private:
         }
     };
 
-    ankerl::unordered_dense::map<Key, Bucket*> buckets_;
+    //ankerl::unordered_dense::map<Key, Bucket*> buckets_;
+    std::unique_ptr<Bucket*[]> buckets_;
+    size_t num_buckets_;
+
     Key max_bucket_num_;
 
 public:
-    DynamicUniverseSampling() : max_bucket_num_(0) {
+    DynamicUniverseSampling(Key const universe) {
+        num_buckets_ = idiv_ceil(universe, sampling_);
+        buckets_ = std::make_unique<Bucket*[]>(num_buckets_);
+        for(size_t i = 0; i < num_buckets_; i++) buckets_[i] = nullptr;
+        max_bucket_num_ = 0;
     }
 
     ~DynamicUniverseSampling() {
@@ -95,23 +167,23 @@ public:
     }
 
     void clear() {
-        for(auto& e : buckets_) {
-            delete e.second;
+        for(size_t i = 0; i < num_buckets_; i++) {
+            if(buckets_[i]) {
+                delete buckets_[i];
+                buckets_[i] = nullptr;
+            }
         }
-        buckets_.clear();
         max_bucket_num_ = 0;
     }
 
     void insert(Key const key, Value const value) {
-        Bucket* bucket;
-
         auto const bucket_num = bucket_for(key);
-        auto it = buckets_.find(bucket_num);
-        if(it != buckets_.end()) {
-            bucket = it->second;
-        } else {
+        assert(bucket_num < num_buckets_);
+
+        Bucket* bucket = buckets_[bucket_num];
+        if(!bucket) {
             bucket = new Bucket();
-            buckets_.emplace(bucket_num, bucket);
+            buckets_[bucket_num] = bucket;
             max_bucket_num_ = std::max(bucket_num, max_bucket_num_);
         }
 
@@ -122,9 +194,10 @@ public:
 
     bool remove(Key const key) {
         auto const bucket_num = bucket_for(key);
-        auto it = buckets_.find(bucket_num);
-        if(it != buckets_.end()) [[likely]] {
-            Bucket* bucket = it->second;
+        assert(bucket_num < num_buckets_);
+
+        Bucket* bucket = buckets_[bucket_num];
+        if(bucket) [[likely]] {
             auto const tkey = truncate(key);
 
             auto bits = bucket->bits();
@@ -133,7 +206,7 @@ public:
                 if(bucket->values_.size() == 1) {
                     // delete bucket completely
                     delete bucket;
-                    buckets_.erase(bucket_num);
+                    buckets_[bucket_num] = nullptr;
                     // TODO: update max_bucket_num_?
                 } else {
                     // only delete key
@@ -149,14 +222,15 @@ public:
 
     KeyValueResult<Key, Value> predecessor(Key const key) const {
         auto bucket_num = bucket_for(key);
+        assert(bucket_num < num_buckets_);
+
         auto const tkey = truncate(key);
 
         // find predecessor in corresponding bucket
         {
-            auto it = buckets_.find(bucket_num);
-            if(it != buckets_.end()) {
+            Bucket const* bucket = buckets_[bucket_num];
+            if(bucket) {
                 // we found the right bucket, attempt to find the predecessor in there
-                Bucket const* bucket = it->second;
                 auto r = bucket->predecessor(tkey);
                 if(r.exists) {
                     return bucket->get_kv(r.pos, bucket_num);
@@ -168,9 +242,8 @@ public:
         // find the preceding bucket and return its maximum
         while(bucket_num) {
             --bucket_num;
-            auto it = buckets_.find(bucket_num);
-            if(it != buckets_.end()) {
-                Bucket const* bucket = it->second;
+            Bucket const* bucket = buckets_[bucket_num];
+            if(bucket) {
                 return bucket->get_kv(bucket->max(), bucket_num);
             }
         }
@@ -181,14 +254,15 @@ public:
 
     KeyValueResult<Key, Value> successor(Key const key) const {
         auto bucket_num = bucket_for(key);
+        assert(bucket_num < num_buckets_);
+
         auto const tkey = truncate(key);
 
         // find successor in corresponding bucket
         {
-            auto it = buckets_.find(bucket_num);
-            if(it != buckets_.end()) {
+            Bucket const* bucket = buckets_[bucket_num];
+            if(bucket) {
                 // we found the right bucket, attempt to find the predecessor in there
-                Bucket const* bucket = it->second;
                 auto r = bucket->successor(tkey);
                 if(r.exists) {
                     return bucket->get_kv(r.pos, bucket_num);
@@ -200,9 +274,8 @@ public:
         // find the succeeding bucket and return its minimum
         while(bucket_num < max_bucket_num_) {
             ++bucket_num;
-            auto it = buckets_.find(bucket_num);
-            if(it != buckets_.end()) {
-                Bucket const* bucket = it->second;
+            Bucket const* bucket = buckets_[bucket_num];
+            if(bucket) {
                 return bucket->get_kv(bucket->min(), bucket_num);
             }
         }
@@ -212,9 +285,12 @@ public:
     }
 
     bool contains(Key const key) const {
-        auto it = buckets_.find(bucket_for(key));
-        if(it != buckets_.end()) [[likely]] {
-            auto bits = it->second->bits();
+        auto bucket_num = bucket_for(key);
+        assert(bucket_num < num_buckets_);
+
+        Bucket const* bucket = buckets_[bucket_num];
+        if(bucket) {
+            auto bits = bucket->bits();
             return bits[truncate(key)];
         } else {
             return false;
@@ -223,11 +299,14 @@ public:
 
     size_t memory_size() const {
         size_t mem = 0;
-        mem += memory_size_of(buckets_);
-        for(auto& e : buckets_) {
-            mem += sizeof(Bucket);
-            mem += packs_per_bucket_ * sizeof(uint64_t);
-            mem += memory_size_of(e.second->values_);
+        mem += num_buckets_ * sizeof(Bucket*);
+        for(size_t i = 0; i < num_buckets_; i++) {
+            Bucket const* bucket = buckets_[i];
+            if(bucket) {
+                mem += sizeof(Bucket);
+                mem += packs_per_bucket_ * sizeof(uint64_t);
+                mem += memory_size_of(bucket->values_);
+            }
         }
         return mem;
     }
