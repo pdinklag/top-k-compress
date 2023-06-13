@@ -6,283 +6,208 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <type_traits>
 #include <vector>
 
-#include <idiv_ceil.hpp>
+#include <ankerl/unordered_dense.h>
+
+#include <word_packing.hpp>
 
 #include "result.hpp"
 
-template<std::unsigned_integral Key, std::unsigned_integral Value, size_t sample_bits_>
+template<std::unsigned_integral Key, std::unsigned_integral Value, Key sampling_>
 class DynamicUniverseSampling {
 private:
-    static constexpr size_t key_bits_ = std::numeric_limits<Key>::digits;
-    static_assert(key_bits_ > sample_bits_);
-    static constexpr size_t trunc_bits_ = key_bits_ - sample_bits_;
-    static_assert(trunc_bits_ <= 32);
-    static constexpr size_t max_bucket_size_ = 1ULL << sample_bits_;
-    static constexpr Key trunc_mask_ = Key(max_bucket_size_ - 1);
+    static_assert(sampling_ <= UINT32_MAX);
 
-    static constexpr Key NONE = -1;
+    using TruncatedKey = std::conditional_t<sampling_ <= UINT8_MAX, uint8_t, std::conditional_t<sampling_ <= UINT16_MAX, uint16_t, uint32_t>>;
 
-    using TruncatedKey = std::conditional_t<trunc_bits_ <=8, uint8_t,std::conditional_t<trunc_bits_ <= 16, uint16_t, uint32_t>>;
+    static constexpr Key bucket_for(Key const key) { return key / sampling_; }
+    static constexpr TruncatedKey truncate(Key const key) { return TruncatedKey(key % sampling_); }
 
     struct Bucket {
-        std::vector<TruncatedKey> keys;
-        std::vector<Value> values;
+        std::unique_ptr<uint64_t[]> bits_;
+        ankerl::unordered_dense::map<TruncatedKey, Value> values_;
 
-        size_t size() const { return keys.size(); }
-
-        bool contains(TruncatedKey const trunc_key) const {
-            for(size_t i = 0; i < size(); i++) {
-                if(keys[i] == trunc_key) return true;
-            }
-            return false;
+        Bucket() {
+            auto const n = word_packing::num_packs_required<uint64_t>(sampling_, 1);
+            bits_ = std::make_unique<uint64_t[]>(n);
+            for(size_t i = 0; i < n; i++) bits_[i] = 0;
         }
 
-        KeyValueResult<Key, Value> max() const {
-            assert(size() > 0);
+        auto bits() { return word_packing::bit_accessor(bits_.get()); }
+        auto bits() const { return word_packing::bit_accessor(bits_.get()); }
 
-            Key max_idx = 0;
-            TruncatedKey max = keys[0];
-            for(size_t i = 1; i < size(); i++) {
-                auto const x = keys[i];
-                if(x > max) {
-                    max_idx = i;
-                    max = x;
-                }
+        PosResult predecessor(size_t x) const {
+            auto bv = bits();
+            ++x;
+            while(x > 0) {
+                if(bv[x-1]) return { true, x-1 };
+                else --x;
             }
-            return { true, max, values[max_idx] };
+            return PosResult::none();
         }
 
-        KeyValueResult<Key, Value> min() const {
-            assert(size() > 0);
-
-            Key min_idx = 0;
-            TruncatedKey min = keys[0];
-            for(size_t i = 1; i < size(); i++) {
-                auto const x = keys[i];
-                if(x < min) {
-                    min_idx = i;
-                    min = x;
-                }
+        PosResult successor(size_t x) const {
+            auto bv = bits();
+            while(x < sampling_) {
+                if(bv[x]) return { true, x };
+                else ++x;
             }
-            return { true, min, values[min_idx] };
+            return PosResult::none();
         }
 
-        KeyValueResult<Key, Value> predecessor(TruncatedKey const trunc_key) const {
-            assert(size() > 0);
-
-            Key pred_idx = NONE;
-            TruncatedKey pred;
-            for(size_t i = 0; i < size(); i++) {
-                auto const x = keys[i];
-                if(x <= trunc_key && (pred_idx == NONE || x > pred)) {
-                    pred_idx = i;
-                    pred = x;
-                    if(x == trunc_key) break;
-                }
+        TruncatedKey min() const {
+            auto bv = bits();
+            for(size_t x = 0; x < sampling_; x++) {
+                if(bv[x]) return x;
             }
-            return (pred_idx != NONE) ? KeyValueResult<Key, Value>{ true, pred, values[pred_idx]} : KeyValueResult<Key, Value>::none();
+            assert(false); // there must not be any empty buckets
+            return TruncatedKey();
         }
 
-        KeyValueResult<Key, Value> successor(TruncatedKey const trunc_key) const {
-            assert(size() > 0);
-
-            Key succ_idx = NONE;
-            TruncatedKey succ;
-            for(size_t i = 0; i < size(); i++) {
-                auto const x = keys[i];
-                if(x >= trunc_key && (succ_idx == NONE || x < succ)) {
-                    succ_idx = i;
-                    succ = x;
-                    if(x == trunc_key) break;
-                }
+        TruncatedKey max() const {
+            auto bv = bits();
+            for(size_t x = sampling_ + 1; x > 0; x--) {
+                if(bv[x-1]) return x-1;
             }
-            return (succ_idx != NONE) ? KeyValueResult<Key, Value>{ true, succ, values[succ_idx]} : KeyValueResult<Key, Value>::none();
+            assert(false); // there must not be any empty buckets
+            return TruncatedKey();
+        }
+
+        KeyValueResult<Key, Value> get_kv(TruncatedKey const x, Key const bucket_num) const {
+            assert(values_.contains(x));
+            return { true, bucket_num * sampling_ + x, values_.find(x)->second };
         }
     };
 
-    inline static KeyValueResult<Key, Value> reconstruct_key(KeyValueResult<Key, Value>&& kvr, size_t const bucket_num) {
-        return KeyValueResult<Key, Value> { kvr.exists, Key(bucket_num * max_bucket_size_) + kvr.key, kvr.value };
-    }
-
-    size_t max_buckets_;
-    std::unique_ptr<Bucket*[]> buckets_;
-    std::unique_ptr<Key[]> active_pred_;
-    std::unique_ptr<Key[]> active_succ_;
+    ankerl::unordered_dense::map<Key, Bucket*> buckets_;
+    Key max_bucket_num_;
 
 public:
-    DynamicUniverseSampling(size_t const universe) {
-        max_buckets_ = idiv_ceil(universe, max_bucket_size_);
-
-        buckets_ = std::make_unique<Bucket*[]>(max_buckets_);
-        active_pred_ = std::make_unique<Key[]>(max_buckets_);
-        active_succ_ = std::make_unique<Key[]>(max_buckets_);
-        for(size_t i = 0; i < max_buckets_; i++) {
-            buckets_[i] = nullptr;
-            active_pred_[i] = NONE;
-            active_succ_[i] = NONE;
-        }
+    DynamicUniverseSampling(Key const max) : max_bucket_num_(bucket_for(max)) {
     }
 
     ~DynamicUniverseSampling() {
-        for(size_t i = 0; i < max_buckets_; i++) {
-            if(buckets_[i] != nullptr) delete buckets_[i];
+        for(auto& e : buckets_) {
+            delete e.second;
         }
     }
 
-    void clear() {
-        for(size_t i = 0; i < max_buckets_; i++) {
-            if(buckets_[i] != nullptr) delete buckets_[i];
-
-            buckets_[i] = nullptr;
-            active_pred_[i] = NONE;
-            active_succ_[i] = NONE;
-        }
-    }    
-
     void insert(Key const key, Value const value) {
-        auto const bucket_num = key >> sample_bits_;
-        assert(bucket_num < max_buckets_);
+        Bucket* bucket;
 
-        Bucket* bucket = buckets_[bucket_num];
-        if(bucket == nullptr) {
+        auto const bucket_num = bucket_for(key);
+        auto it = buckets_.find(bucket_num);
+        if(it != buckets_.end()) {
+            bucket = it->second;
+        } else {
             bucket = new Bucket();
-            buckets_[bucket_num] = bucket;
-
-            // update active
-            {
-                size_t i = bucket_num;
-                while(i < max_buckets_ && (active_pred_[i] == NONE || active_pred_[i] < bucket_num)) {
-                    active_pred_[i] = bucket_num;
-                    ++i;
-                }
-
-                size_t j = bucket_num + 1;
-                while(j > 0 && (active_succ_[j-1] == NONE || active_succ_[j-1] > bucket_num)) {
-                    active_succ_[j-1] = bucket_num;
-                    --j;
-                }
-            }   
+            buckets_.emplace(bucket_num, bucket);
         }
 
-        bucket->values.emplace_back(std::move(value));
-
-        auto const trunc_key = key & trunc_mask_;
-        bucket->keys.emplace_back(trunc_key);
+        auto const tkey = truncate(key);
+        bucket->bits()[tkey] = 1;
+        bucket->values_.emplace(tkey, value);
     }
 
     bool remove(Key const key) {
-        auto const bucket_num = key >> sample_bits_;
-        assert(bucket_num < max_buckets_);
+        auto const bucket_num = bucket_for(key);
+        auto it = buckets_.find(bucket_num);
+        if(it != buckets_.end()) [[likely]] {
+            Bucket* bucket = it->second;
+            auto const tkey = truncate(key);
 
-        bool removed = false;
-        Bucket* bucket = buckets_[bucket_num];
-        if(bucket != nullptr) {
-            auto const trunc_key = key & trunc_mask_;
-            for(size_t i = 0; i < bucket->size(); i++) {
-                if(bucket->keys[i] == trunc_key) {
-                    // swap with last, then pop
-                    std::swap(bucket->keys[i], bucket->keys.back());
-                    bucket->keys.pop_back();
-                    std::swap(bucket->values[i], bucket->values.back());
-                    bucket->values.pop_back();
-                    removed = true;
-                    break;
+            auto bits = bucket->bits();
+            bool const result = bits[tkey];
+            if(result) [[likely]] {
+                if(bucket->values_.size() == 1) {
+                    // delete bucket completely
+                    delete bucket;
+                    buckets_.erase(bucket_num);
+                } else {
+                    // only delete key
+                    bits[tkey] = 0;
+                    bucket->values_.erase(tkey);
                 }
             }
-
-            if(removed && bucket->size() == 0) {
-                // delete empty bucket
-                delete bucket;
-                buckets_[bucket_num] = nullptr;
-
-                // update active
-                auto const prev_active_bucket_num = (bucket_num > 0) ? active_pred_[bucket_num - 1] : NONE;
-                for(size_t i = bucket_num; i < max_buckets_ && active_pred_[i] == bucket_num; i++) {
-                    active_pred_[i] = prev_active_bucket_num;
-                }
-
-                auto const next_active_bucket_num = (bucket_num + 1 < max_buckets_) ? active_succ_[bucket_num + 1] : NONE;
-                for(size_t j = bucket_num + 1; j > 0 && active_succ_[j-1] == bucket_num; j--) {
-                    active_succ_[j-1] = next_active_bucket_num;
-                }
-            }
-        }
-        return removed;
-    }
-
-    bool contains(Key const key) const {
-        auto const bucket_num = key >> sample_bits_;
-        assert(bucket_num < max_buckets_);
-
-        auto const active_bucket_num = active_pred_[bucket_num];
-        if(active_bucket_num == bucket_num) {
-            return buckets_[bucket_num]->contains(key & trunc_mask_);
+            return result;
         } else {
             return false;
         }
     }
 
     KeyValueResult<Key, Value> predecessor(Key const key) const {
-        auto const bucket_num = key >> sample_bits_;
-        assert(bucket_num < max_buckets_);
+        auto bucket_num = bucket_for(key);
+        auto const tkey = truncate(key);
 
-        auto const active_bucket_num = active_pred_[bucket_num];
-        if(active_bucket_num != NONE){
-            if(active_bucket_num < bucket_num) {
-                // the bucket that the key would reside in doesn't exist
-                // we simply report the maximum of the previous active bucket
-                return reconstruct_key(buckets_[active_bucket_num]->max(), active_bucket_num);
-            } else {
-                assert(active_bucket_num == bucket_num);
-
-                // find predecessor in matching bucket
-                auto result = reconstruct_key(buckets_[bucket_num]->predecessor(key & trunc_mask_), bucket_num);
-                if(result.exists) {
-                    return result;
-                } else if(active_bucket_num > 0) {
-                    // we couldn't find a predecessor in the matching bucket, so the predecessor must be the maximum of the previous active bucket
-                    auto const prev_active_bucket_num = active_pred_[active_bucket_num - 1];
-                    if(prev_active_bucket_num != NONE) {
-                        return reconstruct_key(buckets_[prev_active_bucket_num]->max(), prev_active_bucket_num);
-                    }
+        // find predecessor in corresponding bucket
+        {
+            auto it = buckets_.find(bucket_num);
+            if(it != buckets_.end()) {
+                // we found the right bucket, attempt to find the predecessor in there
+                Bucket const* bucket = it->second;
+                auto r = bucket->predecessor(tkey);
+                if(r.exists) {
+                    return bucket->get_kv(r.pos, bucket_num);
                 }
             }
         }
+        
+        // we either couldn't find the right bucket, or the predecessor was not in there
+        // find the preceding bucket and return its maximum
+        while(bucket_num) {
+            --bucket_num;
+            auto it = buckets_.find(bucket_num);
+            if(it != buckets_.end()) {
+                Bucket const* bucket = it->second;
+                return bucket->get_kv(bucket->max(), bucket_num);
+            }
+        }
 
-        // there is no predecessor
+        // nope
         return KeyValueResult<Key, Value>::none();
     }
 
     KeyValueResult<Key, Value> successor(Key const key) const {
-        auto const bucket_num = key >> sample_bits_;
-        assert(bucket_num < max_buckets_);
+        auto bucket_num = bucket_for(key);
+        auto const tkey = truncate(key);
 
-        auto const active_bucket_num = active_succ_[bucket_num];
-        if(active_bucket_num != NONE){
-            if(active_bucket_num > bucket_num) {
-                // the bucket that the key would reside in doesn't exist
-                // we simply report the minimum of the next active bucket
-                return reconstruct_key(buckets_[active_bucket_num]->min(), active_bucket_num);
-            } else {
-                assert(active_bucket_num == bucket_num);
-
-                // find successor in matching bucket
-                auto result = reconstruct_key(buckets_[bucket_num]->successor(key & trunc_mask_), bucket_num);
-                if(result.exists) {
-                    return result;
-                } else if(active_bucket_num + 1 < max_buckets_) {
-                    // we couldn't find a successor in the matching bucket, so the successor must be the minimum of the next active bucket
-                    auto const next_active_bucket_num = active_succ_[active_bucket_num + 1];
-                    if(next_active_bucket_num != NONE) {
-                        return reconstruct_key(buckets_[next_active_bucket_num]->min(), next_active_bucket_num);
-                    }
+        // find successor in corresponding bucket
+        {
+            auto it = buckets_.find(bucket_num);
+            if(it != buckets_.end()) {
+                // we found the right bucket, attempt to find the predecessor in there
+                Bucket const* bucket = it->second;
+                auto r = bucket->successor(tkey);
+                if(r.exists) {
+                    return bucket->get_kv(r.pos, bucket_num);
                 }
             }
         }
+        
+        // we either couldn't find the right bucket, or the successor was not in there
+        // find the succeeding bucket and return its minimum
+        while(bucket_num < max_bucket_num_) {
+            ++bucket_num;
+            auto it = buckets_.find(bucket_num);
+            if(it != buckets_.end()) {
+                Bucket const* bucket = it->second;
+                return bucket->get_kv(bucket->min(), bucket_num);
+            }
+        }
 
-        // there is no successor
+        // nope
         return KeyValueResult<Key, Value>::none();
+    }
+
+    bool contains(Key const key) const {
+        auto it = buckets_.find(bucket_for(key));
+        if(it != buckets_.end()) [[likely]] {
+            auto bits = it->second->bits();
+            return bits[truncate(key)];
+        } else {
+            return false;
+        }
     }
 };
