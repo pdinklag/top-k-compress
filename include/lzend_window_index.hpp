@@ -8,6 +8,7 @@
 #include <alx_rmq.hpp>
 #include <fp_string_view.hpp>
 #include <index/btree.hpp>
+#include <index/dynamic_universe_sampling.hpp>
 #include <tdc/text/util.hpp>
 
 template<std::unsigned_integral Index>
@@ -24,12 +25,13 @@ private:
     std::unique_ptr<uint32_t[]> isa;
     RMQ rmq;
     
-    BTree<Index, Index, 65> marked;
+    //BTree<Index, Index, 65> marked;
+    DynamicUniverseSampling<Index, Index, 4096> marked;
 
     FPString rfp;
 
 public:
-    LZEndWindowIndex(std::string_view window) : window_size(window.size()) {
+    LZEndWindowIndex(std::string_view window) : window_size(window.size()), marked(window_size+1) {
         // reverse window
         rwindow.reserve(window_size+1);
         std::copy(window.rbegin(), window.rend(), std::back_inserter(rwindow));
