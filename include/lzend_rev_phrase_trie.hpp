@@ -232,7 +232,7 @@ public:
 
         // get the first character on the edge from parent to v by decoding it from the reversed phrase suffix
         char alpha;
-        lzend_->extract_reverse_phrase_suffix_until([&](char const c){
+        lzend_->template extract_phrase_suffix<true>([&](char const c){
             alpha = c;
             return true; // nb: continue decoding till the end
         }, nodes_[v].phr, nodes_[parent].len + 1);
@@ -314,7 +314,7 @@ public:
             {
                 // extract reverse suffix of phrase v while we're matching with the reverse input string
                 common_suffix_length = 0;
-                lzend_->extract_reverse_phrase_suffix_until([&](char const c){
+                lzend_->template extract_phrase_suffix<true>([&](char const c){
                     mismatch = c;
 
                     if(common_suffix_length < len && c == s[pos + common_suffix_length]) {

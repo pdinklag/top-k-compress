@@ -38,22 +38,22 @@ TEST_SUITE("kempa_kosolobov_2017") {
             std::string s;
             s.reserve(18);
             {
-                parsing.extract(std::back_inserter(s), 0, 18);
+                parsing.extract<false>(std::back_inserter(s), 0, 18);
                 REQUIRE(s == "ababbbabbabbbabbaa");
             }
             s.clear();
             {
-                parsing.extract_phrase(std::back_inserter(s), 3);
+                parsing.extract_phrase<false>(std::back_inserter(s), 3);
                 REQUIRE(s == "abb");
             }
             s.clear();
             {
-                parsing.extract_phrase(std::back_inserter(s), 4);
+                parsing.extract_phrase<false>(std::back_inserter(s), 4);
                 REQUIRE(s == "babba");
             }
             s.clear();
             {
-                parsing.extract_phrase(std::back_inserter(s), 5);
+                parsing.extract_phrase<false>(std::back_inserter(s), 5);
                 REQUIRE(s == "bbbabbaa");
             }
         }
@@ -70,32 +70,32 @@ TEST_SUITE("kempa_kosolobov_2017") {
         REQUIRE(parsing.length() == 16);
         {
             std::string s;
-            parsing.extract_reverse_phrase_suffix(std::back_inserter(s), 1, 1);
+            parsing.extract_phrase_suffix<true>(std::back_inserter(s), 1, 1);
             REQUIRE(s == "a");
         }
         {
             std::string s;
-            parsing.extract_reverse_phrase_suffix(std::back_inserter(s), 2, 2);
+            parsing.extract_phrase_suffix<true>(std::back_inserter(s), 2, 2);
             REQUIRE(s == "ba");
         }
         {
             std::string s;
-            parsing.extract_reverse_phrase_suffix(std::back_inserter(s), 3, 4);
+            parsing.extract_phrase_suffix<true>(std::back_inserter(s), 3, 4);
             REQUIRE(s == "baba");
         }
         {
             std::string s;
-            parsing.extract_reverse_phrase_suffix(std::back_inserter(s), 4, 7);
+            parsing.extract_phrase_suffix<true>(std::back_inserter(s), 4, 7);
             REQUIRE(s == "bbababa");
         }
         {
             std::string s;
-            parsing.extract_reverse_phrase_suffix(std::back_inserter(s), 5, 9);
+            parsing.extract_phrase_suffix<true>(std::back_inserter(s), 5, 9);
             REQUIRE(s == "abbbababa");
         }
         {
             std::string s;
-            parsing.extract_reverse_phrase_suffix(std::back_inserter(s), 6, 16);
+            parsing.extract_phrase_suffix<true>(std::back_inserter(s), 6, 16);
             REQUIRE(s == "aabbbababbbababa");
         }
     }

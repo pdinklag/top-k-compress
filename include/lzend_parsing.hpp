@@ -26,6 +26,8 @@ public:
         inline bool operator> (Index x) const { return end >  x; }
     } __attribute__((packed));
 
+    using Predicate = std::function<bool(Char)>;
+
 private:
     static constexpr size_t succ_sampling_ = (1ULL << 8);
 
@@ -108,17 +110,16 @@ public:
         emplace_back(link, len, last);
     }
 
-    // extracts the substring of the text of given length and starting at the given position
-    template<std::output_iterator<Char> Out>
-    void extract(Out out, Index const start, Index const len) const {
+private:
+    bool extract_fwd(Predicate predicate, Index const start, Index const len) const {
         auto const end = start + len - 1;
         auto const r = successor(end);
         assert(r.exists);
         auto const p = r.value;
         if(r.key == end) {
             // we're at a phrase end position
-            if(len > 1) extract(out, start, len - 1);
-            *out++ = phrases_[p].last;
+            if(len > 1 && !extract_fwd(predicate, start, len - 1)) return false;
+            return predicate(phrases_[p].last);
         } else {
             // we're somewhere within phrase p and need to extract something from the source
             auto const pstart = phrases_[p-1].end + 1;
@@ -126,35 +127,20 @@ public:
 
             if(start < pstart) {
                 // we are trying to extract some part prior to the current phrase, and that must be done separately
-                extract(out, start, pstart - start);
+                // first, extract the part prior
+                if(!extract_fwd(predicate, start, pstart - start)) return false;
 
-                // extract remainder from source
+                // now extract remainder from source
                 auto const suffix_len = end - pstart + 1;
-                extract(out, lnk_end - suffix_len + 1, suffix_len);
+                return extract_fwd(predicate, lnk_end - suffix_len + 1, suffix_len);
             } else {
                 // extract from source
-                extract(out, lnk_end - len + 1, len);
+                return extract_fwd(predicate, lnk_end - len + 1, len);
             }
         }
     }
 
-    // extracts the i-th phrase
-    template<std::output_iterator<Char> Out>
-    void extract_phrase(Out out, Index const i) const {
-        auto const len = phrases_[i].len;
-        extract(out, phrases_[i].end - len + 1, len);
-    }
-
-    // extracts the suffix of the given length of the i-th phrase
-    template<std::output_iterator<Char> Out>
-    void extract_phrase_suffix(Out out, Index const i, Index const len) const {
-        extract(out, phrases_[i].end - len + 1, len);
-    }
-
-    // extracts the reversed substring of the text of given length and starting at the given position
-    // stop if predicate returns false
-    template<typename Predicate>
-    bool extract_reverse_until(Predicate predicate, Index const start, Index const len) const {
+    bool extract_rev(Predicate predicate, Index const start, Index const len) const {
         auto const end = start + len - 1;
         auto const r = successor(end);
         assert(r.exists);
@@ -162,7 +148,7 @@ public:
         if(r.key == end) {
             // we're at a phrase end position
             if(!predicate(phrases_[p].last)) return false;
-            return len <= 1 || extract_reverse_until(predicate, start, len - 1);
+            return len <= 1 || extract_rev(predicate, start, len - 1);
         } else {
             // we're somewhere within phrase p and need to extract something from the source
             auto const pstart = phrases_[p-1].end + 1;
@@ -172,30 +158,58 @@ public:
                 // we are trying to extract some part prior to the current phrase, and that must be done separately
                 // first, extract remainder from source
                 auto const suffix_len = end - pstart + 1;
-                if(!extract_reverse_until(predicate, lnk_end - suffix_len + 1, suffix_len)) return false;
+                if(!extract_rev(predicate, lnk_end - suffix_len + 1, suffix_len)) return false;
 
                 // now extract the part prior
-                return extract_reverse_until(predicate, start, pstart - start);
+                return extract_rev(predicate, start, pstart - start);
             } else {
                 // extract from source
-                return extract_reverse_until(predicate, lnk_end - len + 1, len);
+                return extract_rev(predicate, lnk_end - len + 1, len);
             }
         }
     }
 
+public:
+    // extracts the substring of the text of given length and starting at the given position
+    // this is done step by step, asking the given predicate whether or not to stop at a given character
+    // the reverse flag allows extracting original substring or reversed
+    template<bool reverse>
+    void extract(Predicate predicate, Index const start, Index const len) const {
+        if constexpr(reverse) {
+            extract_rev(predicate, start, len);
+        } else {
+            extract_fwd(predicate, start, len);
+        }
+    }
+
     // extracts the reversed suffix of the given length of the i-th phrase
-    template<typename Predicate>
-    void extract_reverse_phrase_suffix_until(Predicate predicate, Index const i, Index const len) const {
-        extract_reverse_until(predicate, phrases_[i].end - len + 1, len);
+    template<bool reverse, std::output_iterator<Char> Out>
+    void extract(Out out, Index const start, Index const len) const {
+        extract<reverse>([&](Char const c){ *out++ = c; return true; }, start, len);
     }
 
     // extracts the suffix of the given length of the i-th phrase
-    template<std::output_iterator<Char> Out>
-    void extract_reverse_phrase_suffix(Out out, Index const i, Index const len) const {
-        extract_reverse_phrase_suffix_until([&](char const c){
-            *out++ = c;
-            return true;
-        }, i, len);
+    template<bool reverse>
+    void extract_phrase_suffix(Predicate predicate, Index const i, Index const len) const {
+        extract<reverse>(predicate, phrases_[i].end - len + 1, len);
+    }
+
+    // extracts the reversed suffix of the given length of the i-th phrase
+    template<bool reverse, std::output_iterator<Char> Out>
+    void extract_phrase_suffix(Out out, Index const i, Index const len) const {
+        extract_phrase_suffix<reverse>([&](Char const c){ *out++ = c; return true; }, i, len);
+    }
+
+    // extracts the i-th phrase
+    template<bool reverse>
+    void extract_phrase(Predicate predicate, Index const i) const {
+        extract_phrase_suffix<reverse>(predicate, i, phrases_[i].len);
+    }
+
+    // extracts the i-th phrase
+    template<bool reverse, std::output_iterator<Char> Out>
+    void extract_phrase(Out out, Index const i) const {
+        extract_phrase_suffix<reverse>(out, i, phrases_[i].len);
     }
 
     // gets the number of the phrase (1-based) that the given text position (0-based) lies in
