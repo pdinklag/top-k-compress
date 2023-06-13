@@ -59,6 +59,9 @@ public:
         phrases_.emplace_back(0, 0, -1, 0);
     }
 
+    LZEndParsing(LZEndParsing&&) = default;
+    LZEndParsing& operator=(LZEndParsing&&) = default;
+
     // accesses the i-th phrase (1-based, read-only)
     Phrase const& operator[](Index const i) const { return phrases_[i]; }
 

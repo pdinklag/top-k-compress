@@ -35,6 +35,8 @@ constexpr uint64_t MAGIC =
 using Index = uint32_t;
 
 struct LZEndKKState {
+    using Parsing = LZEndParsing<char, Index>;
+    using Trie = LZEndRevPhraseTrie<char, Index>;
     using WindowIndex = LZEndWindowIndex<Index>;
 
     static constexpr Index NIL = 0;
@@ -43,9 +45,9 @@ struct LZEndKKState {
     size_t max_block;
     Index z, ztrie;
 
-    LZEndParsing<char, Index> phrases;
+    Parsing phrases;
     std::vector<uint64_t> phrase_hashes;
-    LZEndRevPhraseTrie<char, Index> trie;
+    Trie trie;
 
     std::unique_ptr<Index[]> lnks;
     std::unique_ptr<Index[]> lens;
@@ -54,8 +56,6 @@ struct LZEndKKState {
 
     // stats
     WindowIndex::MemoryProfile max_window_memory;
-    size_t max_consecutive_merges = 0;
-    size_t num_consecutive_merges = 0;
 
     struct MemoryProfile {
         size_t buffer;
@@ -376,10 +376,6 @@ public:
 
                 // merge phrases
                 phrases.replace_back(p, len2 + 1, next_char);
-
-                // stats
-                ++num_consecutive_merges;
-                max_consecutive_merges = std::max(max_consecutive_merges, num_consecutive_merges);
             } else if(absorbOne(m, p, len1, windex, window_begin_glob) || (localOne = absorbOne2(ptr))) {
                 #ifndef NDEBUG
                 whence = localOne ? AlgorithmCase::ABSORB_ONE2 : AlgorithmCase::ABSORB_ONE;
@@ -402,9 +398,6 @@ public:
 
                 // extend phrase
                 phrases.replace_back(p, len1 + 1, next_char);
-
-                // stats
-                num_consecutive_merges = 0;
             } else {
                 #ifndef NDEBUG
                 whence = AlgorithmCase::NEW_CHAR;
@@ -416,9 +409,6 @@ public:
                 ++z;
                 phrases.emplace_back(p, 1, next_char);
                 phrase_hashes.emplace_back(0);
-
-                // stats
-                num_consecutive_merges = 0;
             }
 
             if constexpr(DEBUG) std::cout << "\t-> z=" << z << ", link=" << phrases[z].link << ", len=" << phrases[z].len << ", last=" << display(phrases[z].last) << std::endl;
@@ -593,9 +583,31 @@ public:
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block, size_t const block_size, pm::Result& result) {
+    // init parsing and stats
+    size_t z;
+    LZEndKKState::Parsing phrases;
+    LZEndKKState::MemoryProfile state_mem;
+    LZEndKKState::Trie::MemoryProfile trie_mem;
+    LZEndKKState::Trie::Stats trie_stats;
+    size_t trie_nodes;
+    LZEndKKState::WindowIndex::MemoryProfile win_mem;
+
     // parse
-    LZEndKKState state(max_block);
-    state.parse(begin, end);
+    {
+        LZEndKKState state(max_block);
+        state.parse(begin, end);
+
+        // get parsing stats
+        state_mem = state.memory_profile();
+        trie_mem = state.trie.memory_profile();
+        trie_stats = state.trie.stats();
+        trie_nodes = state.trie.size();
+        win_mem = state.max_window_memory;
+
+        // get parsing
+        z = state.z;
+        phrases = std::move(state.phrases);
+    }
 
     // init stats
     size_t num_phrases = 0;
@@ -605,8 +617,6 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     size_t total_len = 0;
     size_t furthest = 0;
     size_t total_ref = 0;
-
-    auto const& phrases = state.phrases;
 
     // initialize encoding
     out.write(MAGIC, 64);
@@ -620,7 +630,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
         }
 
         size_t i = 0;
-        for(size_t j = 1; j <= state.z; j++) {
+        for(size_t j = 1; j <= z; j++) {
             if constexpr(PROTOCOL) {
                 std::cout << "phrase #" << j << ": i=" << i << ", (" << phrases[j].link << ", " << phrases[j].len << ", " << display(phrases[j].last) << std::endl;
             }
@@ -654,10 +664,6 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 
     // flush
     writer.flush();
-    
-    // get stats
-    auto mem_state = state.memory_profile();
-    auto mem_trie = state.trie.memory_profile();
 
     result.add("phrases_total", num_phrases);
     result.add("phrases_ref", num_ref);
@@ -666,27 +672,26 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     result.add("phrases_furthest", furthest);
     result.add("phrases_avg_len", std::round(100.0 * ((double)total_len / (double)num_phrases)) / 100.0);
     result.add("phrases_avg_dist", std::round(100.0 * ((double)total_ref / (double)num_phrases)) / 100.0);
-    result.add("max_consecutive_merges", state.max_consecutive_merges);
-    result.add("trie_nodes", state.trie.size());
-    result.add("trie_num_match_extract", state.trie.stats().num_match_extract);
-    result.add("trie_num_recalc", state.trie.stats().num_recalc);
-    result.add("mem_glob_buffer", mem_state.buffer);
-    result.add("mem_glob_lnks_lens", mem_state.lnks_lens);
-    result.add("mem_glob_parsing", mem_state.parsing);
-    result.add("mem_glob_phrase_hashes", mem_state.phrase_hashes);
-    result.add("mem_glob", mem_state.total());
-    result.add("mem_trie", mem_trie.total());
-    result.add("mem_trie_nodes", mem_trie.nodes);
-    result.add("mem_trie_phrase_ptrs", mem_trie.phrase_nodes);
-    result.add("mem_trie_nav", mem_trie.nav);
-    result.add("mem_trie_map", mem_trie.map);
-    result.add("mem_window_rev_string", state.max_window_memory.reverse_window);
-    result.add("mem_window_lcp_isa", state.max_window_memory.lcp_isa);
-    result.add("mem_window_tmp_sa", state.max_window_memory.tmp_sa);
-    result.add("mem_window_marked", state.max_window_memory.marked);
-    result.add("mem_window_fingerprints", state.max_window_memory.fingerprints);
-    result.add("mem_window_rmq", state.max_window_memory.rmq);
-    result.add("mem_window", state.max_window_memory.total());
+    result.add("trie_nodes", trie_nodes);
+    result.add("trie_num_match_extract", trie_stats.num_match_extract);
+    result.add("trie_num_recalc", trie_stats.num_recalc);
+    result.add("mem_glob_buffer", state_mem.buffer);
+    result.add("mem_glob_lnks_lens", state_mem.lnks_lens);
+    result.add("mem_glob_parsing", state_mem.parsing);
+    result.add("mem_glob_phrase_hashes", state_mem.phrase_hashes);
+    result.add("mem_glob", state_mem.total());
+    result.add("mem_trie", trie_mem.total());
+    result.add("mem_trie_nodes", trie_mem.nodes);
+    result.add("mem_trie_phrase_ptrs", trie_mem.phrase_nodes);
+    result.add("mem_trie_nav", trie_mem.nav);
+    result.add("mem_trie_map", trie_mem.map);
+    result.add("mem_window_rev_string", win_mem.reverse_window);
+    result.add("mem_window_lcp_isa", win_mem.lcp_isa);
+    result.add("mem_window_tmp_sa", win_mem.tmp_sa);
+    result.add("mem_window_marked", win_mem.marked);
+    result.add("mem_window_fingerprints", win_mem.fingerprints);
+    result.add("mem_window_rmq", win_mem.rmq);
+    result.add("mem_window", win_mem.total());
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
