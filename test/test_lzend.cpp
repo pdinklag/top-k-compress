@@ -16,22 +16,6 @@ TEST_SUITE("kempa_kosolobov_2017") {
 
         REQUIRE(parsing.size() == 6);
         REQUIRE(parsing.length() == 16);
-        REQUIRE(parsing.phrase_at(0) == 1);
-        REQUIRE(parsing.phrase_at(1) == 2);
-        REQUIRE(parsing.phrase_at(2) == 3);
-        REQUIRE(parsing.phrase_at(3) == 3);
-        REQUIRE(parsing.phrase_at(4) == 4);
-        REQUIRE(parsing.phrase_at(5) == 4);
-        REQUIRE(parsing.phrase_at(6) == 4);
-        REQUIRE(parsing.phrase_at(7) == 5);
-        REQUIRE(parsing.phrase_at(8) == 5);
-        REQUIRE(parsing.phrase_at(9) == 6);
-        REQUIRE(parsing.phrase_at(10) == 6);
-        REQUIRE(parsing.phrase_at(11) == 6);
-        REQUIRE(parsing.phrase_at(12) == 6);
-        REQUIRE(parsing.phrase_at(13) == 6);
-        REQUIRE(parsing.phrase_at(14) == 6);
-        REQUIRE(parsing.phrase_at(15) == 6);
 
         {
             std::string s;

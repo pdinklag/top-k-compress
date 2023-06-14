@@ -5,10 +5,6 @@
 #include <iterator>
 #include <vector>
 
-#include <display.hpp>
-#include <index/binary_search_hybrid.hpp>
-#include <index/btree.hpp>
-
 // represents a dynamically growing LZ-End parsing
 template<std::integral Char, std::unsigned_integral Index>
 class LZEndParsing {
@@ -18,12 +14,6 @@ public:
         Index len;
         Index end;
         Char last;
-
-        // comparators for successor search
-        inline bool operator< (Index x) const { return end <  x; }
-        inline bool operator<=(Index x) const { return end <= x; }
-        inline bool operator>=(Index x) const { return end >= x; }
-        inline bool operator> (Index x) const { return end >  x; }
     } __attribute__((packed));
 
     using Predicate = std::function<bool(Char)>;
@@ -33,19 +23,6 @@ private:
 
     Index text_len_;
     std::vector<Phrase> phrases_;
-
-    KeyValueResult<Index, Index> successor(Index const pos) const {
-        assert(phrases_.size() > 1);
-
-        // we reduce the search range by excluding the first (empty) phrase
-        auto r = BinarySearchHybrid<Phrase>::successor(phrases_.data() + 1, phrases_.size() - 1, pos);
-        if(r.exists) {
-            auto const i = r.pos + 1; // account for smaller search range
-            return { true, phrases_[i].end, (Index)i };
-        } else {
-            return KeyValueResult<Index, Index>::none();
-        }
-    }
 
 public:
     LZEndParsing() : text_len_(0) {
@@ -127,12 +104,6 @@ public:
             *out++ = c;
             return true;
         }, p, num);
-    }
-
-    // gets the number of the phrase (1-based) that the given text position (0-based) lies in
-    Index phrase_at(Index const text_pos) const {
-        auto const r = successor(text_pos);
-        return r.exists ? r.value : 0;
     }
 
     // gets the length of the represented text
