@@ -10,9 +10,6 @@
 #include <type_traits>
 #include <vector>
 
-#include <ankerl/unordered_dense.h>
-#include <ankerl_memory_size.hpp>
-
 #include <idiv_ceil.hpp>
 #include <word_packing.hpp>
 
@@ -40,12 +37,17 @@ private:
     }
 
     struct Bucket {
+        TruncatedKey size_;
         std::unique_ptr<uint64_t[]> data_;
-        ankerl::unordered_dense::map<TruncatedKey, Value> values_;
+        std::unique_ptr<Value[]> values_;
 
         Bucket() {
+            size_ = 0;
+            
             data_ = std::make_unique<uint64_t[]>(packs_per_bucket_);
             for(size_t i = 0; i < packs_per_bucket_; i++) data_[i] = 0;
+            
+            values_ = std::make_unique<Value[]>(sampling_);
         }
 
         auto bits() { return word_packing::bit_accessor(data_.get()); }
@@ -144,7 +146,7 @@ private:
 
         KeyValueResult<Key, Value> get_kv(TruncatedKey const x, Key const bucket_num) const {
             assert(values_.contains(x));
-            return { true, bucket_num * sampling_ + x, values_.find(x)->second };
+            return { true, bucket_num * sampling_ + x, values_[x] };
         }
     };
 
@@ -188,8 +190,10 @@ public:
         }
 
         auto const tkey = truncate(key);
+        assert(!bucket->bits()[tkey]);
         bucket->bits()[tkey] = 1;
-        bucket->values_.emplace(tkey, value);
+        bucket->values_[tkey] = value;
+        ++bucket->size_;
     }
 
     bool remove(Key const key) {
@@ -203,7 +207,7 @@ public:
             auto bits = bucket->bits();
             bool const result = bits[tkey];
             if(result) [[likely]] {
-                if(bucket->values_.size() == 1) {
+                if(bucket->size_ == 1) {
                     // delete bucket completely
                     delete bucket;
                     buckets_[bucket_num] = nullptr;
@@ -211,7 +215,7 @@ public:
                 } else {
                     // only delete key
                     bits[tkey] = 0;
-                    bucket->values_.erase(tkey);
+                    --bucket->size_;
                 }
             }
             return result;
@@ -305,7 +309,7 @@ public:
             if(bucket) {
                 mem += sizeof(Bucket);
                 mem += packs_per_bucket_ * sizeof(uint64_t);
-                mem += memory_size_of(bucket->values_);
+                mem += sampling_ * sizeof(Value);
             }
         }
         return mem;
