@@ -69,31 +69,35 @@ public:
         // LIFO queue
         static std::vector<std::pair<Index, Index>> queue;
         queue.clear();
-        queue.emplace_back(p, num);
 
-        while(!queue.empty()) {
-            std::tie(p, num) = queue.back();
-            queue.pop_back();
+        do {
             assert(p);
             assert(num);
 
-            auto const plen = phrases_[p].len;
-            assert(plen > 0);
-            if(num > plen) {
-                // queue up the part that ends right before the p-th phrase
-                auto const remain = num - plen;
-                queue.emplace_back(p-1, remain);
-                num -= remain;
+            while(num) {
+                auto const& phrase = phrases_[p];
+                assert(phrase.len > 0);
+                
+                // extract the next character
+                if(!predicate(phrase.last)) return;
+                
+                if(num > phrase.len) {
+                    // queue up the part that ends right before the p-th phrase
+                    auto const remain = num - phrase.len;
+                    queue.emplace_back(p - 1, remain);
+                    num -= remain;
+                }
+                
+                // follow link
+                --num;
+                if(num) p = phrase.link;
             }
-
-            // extract the next character
-            if(!predicate(phrases_[p].last)) return;
-
-            // continue by following links
-            if(num > 1) {
-                queue.emplace_back(phrases_[p].link, num-1);
+            
+            if(!queue.empty()) {
+                std::tie(p, num) = queue.back();
+                queue.pop_back();
             }
-        }
+        } while(num);
     }
 
     template<std::output_iterator<Char> Out>
