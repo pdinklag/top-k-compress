@@ -264,7 +264,7 @@ public:
                     if(p > 0 && hash_match > 0) {
                         std::string rsuf;
                         rsuf.reserve(hash_match);
-                        phrases.extract_phrase_suffix<true>(std::back_inserter(rsuf), p, hash_match);
+                        phrases.decode_rev(std::back_inserter(rsuf), p, hash_match);
                         
                         auto const* rstr = rfp.data() + rsuf_begin;
                         for(size_t i = 0; i < hash_match; i++) {
@@ -427,7 +427,7 @@ public:
 
                     std::string rsuf;
                     rsuf.reserve(common_len);
-                    phrases.extract_phrase_suffix<true>(std::back_inserter(rsuf), lnk, common_len);
+                    phrases.decode_rev(std::back_inserter(rsuf), lnk, common_len);
                     
                     auto const offs = windex.pos_to_reverse(m-1);
                     auto const* rstr = rfp.data() + offs;
