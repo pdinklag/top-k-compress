@@ -33,21 +33,14 @@ private:
 
     Index text_len_;
     std::vector<Phrase> phrases_;
-    std::vector<Index> succ_index_;
 
     KeyValueResult<Index, Index> successor(Index const pos) const {
         assert(phrases_.size() > 1);
 
-        // find the search range by using the sampling index
-        auto const pos_s = pos / succ_sampling_;
-        assert(pos_s < succ_index_.size());
-
-        auto const a = succ_index_[pos_s];
-        auto const b = (pos_s + 1 < succ_index_.size()) ? succ_index_[pos_s + 1] : phrases_.size() - 1;
-
-        auto r = BinarySearchHybrid<Phrase>::successor(phrases_.data() + a, b - a + 1, pos);
+        // we reduce the search range by excluding the first (empty) phrase
+        auto r = BinarySearchHybrid<Phrase>::successor(phrases_.data() + 1, phrases_.size() - 1, pos);
         if(r.exists) {
-            auto const i = r.pos + a; // account for smaller search range
+            auto const i = r.pos + 1; // account for smaller search range
             return { true, phrases_[i].end, (Index)i };
         } else {
             return KeyValueResult<Index, Index>::none();
@@ -74,15 +67,6 @@ public:
         text_len_ += len;
         phrases_.emplace_back(link, len, text_len_ - 1, last);
         if(p > 1) assert(phrases_[p].end > phrases_[p-1].end);
-
-        // maintain successor index
-        {
-            auto const end = text_len_ - 1;
-            auto const end_s = end / succ_sampling_;
-            while(end_s >= succ_index_.size()) {
-                succ_index_.emplace_back(p);
-            }
-        }
     }
 
     // pops the last LZ-End phrase
@@ -92,14 +76,6 @@ public:
 
         auto const last = phrases_.back();
         assert(text_len_ >= last.len);
-        
-        // maintain successor index
-        {
-            auto const p = phrases_.size() - 1;
-            while(succ_index_.back() == p) {
-                succ_index_.pop_back();
-            }
-        }
 
         phrases_.pop_back();
         text_len_ -= last.len;
@@ -113,121 +89,44 @@ public:
         emplace_back(link, len, last);
     }
 
-private:
-    bool extract_fwd(Predicate predicate, Index const start, Index const len) const {
-        auto const end = start + len - 1;
-        auto const r = successor(end);
-        assert(r.exists);
-        auto const p = r.value;
-        if(r.key == end) {
-            // we're at a phrase end position
-            if(len > 1 && !extract_fwd(predicate, start, len - 1)) return false;
-            return predicate(phrases_[p].last);
-        } else {
-            // we're somewhere within phrase p and need to extract something from the source
-            auto const pstart = phrases_[p-1].end + 1;
-            auto const lnk_end = phrases_[phrases_[p].link].end;
-
-            if(start < pstart) {
-                // we are trying to extract some part prior to the current phrase, and that must be done separately
-                // first, extract the part prior
-                if(!extract_fwd(predicate, start, pstart - start)) return false;
-
-                // now extract remainder from source
-                auto const suffix_len = end - pstart + 1;
-                return extract_fwd(predicate, lnk_end - suffix_len + 1, suffix_len);
-            } else {
-                // extract from source
-                return extract_fwd(predicate, lnk_end - len + 1, len);
-            }
-        }
-    }
-
-    void extract_rev(Predicate predicate, Index start, Index len) const {
-        // initialize LIFO queue of substrings to extract
+    // decodes a suffix of the original text in reverse, beginning at the end of the given phrase number
+    void decode_rev(Predicate predicate, Index p, Index num) const {
+        // LIFO queue
         static std::vector<std::pair<Index, Index>> queue;
         queue.clear();
-        queue.emplace_back(start, len);
+        queue.emplace_back(p, num);
 
-        // work off stack
         while(!queue.empty()) {
-            // get next parameter set
-            std::tie(start, len) = queue.back();
+            std::tie(p, num) = queue.back();
             queue.pop_back();
+            assert(p);
+            assert(num);
 
-            while(len > 0) {
-                auto const end = start + len - 1;
-                auto const r = successor(end);
-                assert(r.exists);
-                auto const p = r.value;
-                if(r.key == end) {
-                    // we're at a phrase end position
-                    if(!predicate(phrases_[p].last)) return;
-                    --len;
-                } else {
-                    // we're somewhere within phrase p and need to extract something from the source
-                    auto const pstart = phrases_[p-1].end + 1;
-                    auto const lnk_end = phrases_[phrases_[p].link].end;
+            auto const plen = phrases_[p].len;
+            assert(plen > 0);
+            if(num > plen) {
+                // queue up the part that ends right before the p-th phrase
+                auto const remain = num - plen;
+                queue.emplace_back(p-1, remain);
+                num -= remain;
+            }
 
-                    if(start < pstart) {
-                        // we are trying to extract some part prior to the current phrase, and that must be done separately
-                        // queue up the part prior
-                        queue.emplace_back(start, pstart - start);
+            // extract the next character
+            if(!predicate(phrases_[p].last)) return;
 
-                        // extract remainder from source
-                        auto const suffix_len = end - pstart + 1;
-                        start = lnk_end - suffix_len + 1;
-                        len = suffix_len;
-                    } else {
-                        // extract from source
-                        start = lnk_end - len + 1;
-                    }
-                }
+            // continue by following links
+            if(num > 1) {
+                queue.emplace_back(phrases_[p].link, num-1);
             }
         }
     }
 
-public:
-    // extracts the substring of the text of given length and starting at the given position
-    // this is done step by step, asking the given predicate whether or not to stop at a given character
-    // the reverse flag allows extracting original substring or reversed
-    template<bool reverse>
-    void extract(Predicate predicate, Index const start, Index const len) const {
-        if constexpr(reverse) {
-            extract_rev(predicate, start, len);
-        } else {
-            extract_fwd(predicate, start, len);
-        }
-    }
-
-    // extracts the reversed suffix of the given length of the i-th phrase
-    template<bool reverse, std::output_iterator<Char> Out>
-    void extract(Out out, Index const start, Index const len) const {
-        extract<reverse>([&](Char const c){ *out++ = c; return true; }, start, len);
-    }
-
-    // extracts the suffix of the given length of the i-th phrase
-    template<bool reverse>
-    void extract_phrase_suffix(Predicate predicate, Index const i, Index const len) const {
-        extract<reverse>(predicate, phrases_[i].end - len + 1, len);
-    }
-
-    // extracts the reversed suffix of the given length of the i-th phrase
-    template<bool reverse, std::output_iterator<Char> Out>
-    void extract_phrase_suffix(Out out, Index const i, Index const len) const {
-        extract_phrase_suffix<reverse>([&](Char const c){ *out++ = c; return true; }, i, len);
-    }
-
-    // extracts the i-th phrase
-    template<bool reverse>
-    void extract_phrase(Predicate predicate, Index const i) const {
-        extract_phrase_suffix<reverse>(predicate, i, phrases_[i].len);
-    }
-
-    // extracts the i-th phrase
-    template<bool reverse, std::output_iterator<Char> Out>
-    void extract_phrase(Out out, Index const i) const {
-        extract_phrase_suffix<reverse>(out, i, phrases_[i].len);
+    template<std::output_iterator<Char> Out>
+    void decode_rev(Out out, Index const p, Index const num) const {
+        decode_rev([&](Char const c){
+            *out++ = c;
+            return true;
+        }, p, num);
     }
 
     // gets the number of the phrase (1-based) that the given text position (0-based) lies in
@@ -243,6 +142,6 @@ public:
     auto size() const { return phrases_.size() - 1; }
 
     size_t memory_size() const {
-        return phrases_.capacity() * sizeof(Phrase) + succ_index_.capacity() * sizeof(Index);
+        return phrases_.capacity() * sizeof(Phrase);
     }
 };

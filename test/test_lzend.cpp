@@ -7,95 +7,60 @@
 TEST_SUITE("kempa_kosolobov_2017") {
     TEST_CASE("lzend") {
         LZEndParsing<char, uint32_t> parsing;
-        parsing.emplace_back(0, 1, 'a'); // a
-        parsing.emplace_back(0, 1, 'b'); // b
-        parsing.emplace_back(2, 3, 'b'); // abb
-        parsing.emplace_back(3, 5, 'a'); // babba
-        parsing.emplace_back(4, 8, 'a'); // bbbabbaa
-
-        REQUIRE(parsing.size() == 5);
-        REQUIRE(parsing.length() == 18);
-        REQUIRE(parsing.phrase_at(0) == 1);
-        REQUIRE(parsing.phrase_at(1) == 2);
-        REQUIRE(parsing.phrase_at(2) == 3);
-        REQUIRE(parsing.phrase_at(3) == 3);
-        REQUIRE(parsing.phrase_at(4) == 3);
-        REQUIRE(parsing.phrase_at(5) == 4);
-        REQUIRE(parsing.phrase_at(6) == 4);
-        REQUIRE(parsing.phrase_at(7) == 4);
-        REQUIRE(parsing.phrase_at(8) == 4);
-        REQUIRE(parsing.phrase_at(9) == 4);
-        REQUIRE(parsing.phrase_at(10) == 5);
-        REQUIRE(parsing.phrase_at(11) == 5);
-        REQUIRE(parsing.phrase_at(12) == 5);
-        REQUIRE(parsing.phrase_at(13) == 5);
-        REQUIRE(parsing.phrase_at(14) == 5);
-        REQUIRE(parsing.phrase_at(15) == 5);
-        REQUIRE(parsing.phrase_at(16) == 5);
-        REQUIRE(parsing.phrase_at(17) == 5);
-
-        {
-            std::string s;
-            s.reserve(18);
-            {
-                parsing.extract<false>(std::back_inserter(s), 0, 18);
-                REQUIRE(s == "ababbbabbabbbabbaa");
-            }
-            s.clear();
-            {
-                parsing.extract_phrase<false>(std::back_inserter(s), 3);
-                REQUIRE(s == "abb");
-            }
-            s.clear();
-            {
-                parsing.extract_phrase<false>(std::back_inserter(s), 4);
-                REQUIRE(s == "babba");
-            }
-            s.clear();
-            {
-                parsing.extract_phrase<false>(std::back_inserter(s), 5);
-                REQUIRE(s == "bbbabbaa");
-            }
-        }
-    }
-
-    TEST_CASE("extract_reverse") {
-        LZEndParsing<char, uint32_t> parsing;
         parsing.emplace_back(0, 1, 'a'); // 1 - a       => rev suffix: a
         parsing.emplace_back(0, 1, 'b'); // 2 - b       => rev suffix: ba
         parsing.emplace_back(1, 2, 'b'); // 3 - ab      => rev suffix: baba
         parsing.emplace_back(2, 3, 'b'); // 4 - abb     => rev suffix: bbababa
         parsing.emplace_back(2, 2, 'a'); // 5 - ba      => rev suffix: abbbababa
         parsing.emplace_back(5, 7, 'a'); // 6 - babbbaa => rev suffix: aabbbababbbababa
+
+        REQUIRE(parsing.size() == 6);
         REQUIRE(parsing.length() == 16);
+        REQUIRE(parsing.phrase_at(0) == 1);
+        REQUIRE(parsing.phrase_at(1) == 2);
+        REQUIRE(parsing.phrase_at(2) == 3);
+        REQUIRE(parsing.phrase_at(3) == 3);
+        REQUIRE(parsing.phrase_at(4) == 4);
+        REQUIRE(parsing.phrase_at(5) == 4);
+        REQUIRE(parsing.phrase_at(6) == 4);
+        REQUIRE(parsing.phrase_at(7) == 5);
+        REQUIRE(parsing.phrase_at(8) == 5);
+        REQUIRE(parsing.phrase_at(9) == 6);
+        REQUIRE(parsing.phrase_at(10) == 6);
+        REQUIRE(parsing.phrase_at(11) == 6);
+        REQUIRE(parsing.phrase_at(12) == 6);
+        REQUIRE(parsing.phrase_at(13) == 6);
+        REQUIRE(parsing.phrase_at(14) == 6);
+        REQUIRE(parsing.phrase_at(15) == 6);
+
         {
             std::string s;
-            parsing.extract_phrase_suffix<true>(std::back_inserter(s), 1, 1);
+            parsing.decode_rev(std::back_inserter(s), 1, 1);
             REQUIRE(s == "a");
         }
         {
             std::string s;
-            parsing.extract_phrase_suffix<true>(std::back_inserter(s), 2, 2);
+            parsing.decode_rev(std::back_inserter(s), 2, 2);
             REQUIRE(s == "ba");
         }
         {
             std::string s;
-            parsing.extract_phrase_suffix<true>(std::back_inserter(s), 3, 4);
+            parsing.decode_rev(std::back_inserter(s), 3, 4);
             REQUIRE(s == "baba");
         }
         {
             std::string s;
-            parsing.extract_phrase_suffix<true>(std::back_inserter(s), 4, 7);
+            parsing.decode_rev(std::back_inserter(s), 4, 7);
             REQUIRE(s == "bbababa");
         }
         {
             std::string s;
-            parsing.extract_phrase_suffix<true>(std::back_inserter(s), 5, 9);
+            parsing.decode_rev(std::back_inserter(s), 5, 9);
             REQUIRE(s == "abbbababa");
         }
         {
             std::string s;
-            parsing.extract_phrase_suffix<true>(std::back_inserter(s), 6, 16);
+            parsing.decode_rev(std::back_inserter(s), 6, 16);
             REQUIRE(s == "aabbbababbbababa");
         }
     }
