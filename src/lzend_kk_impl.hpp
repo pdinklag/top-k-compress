@@ -42,8 +42,10 @@ struct LZEndKKState {
     static constexpr Index NIL = 0;
 
     // global state
-    size_t max_block;
-    Index z, ztrie;
+    size_t max_block; // the maximum size of a block (input window size)
+    Index z;          // the current number of LZ-End phrases
+    Index ztrie;      // the current number of LZ-End phrases that have been inserted into the trie (< z)
+    Index ztrie_end;  // the ending position of the last LZ-End phrases entered into the trie.
 
     Parsing phrases;
     std::vector<uint64_t> phrase_hashes;
@@ -196,6 +198,7 @@ public:
         : max_block(max_block),
           z(0),
           ztrie(1),
+          ztrie_end(-1), // the empty phrase ends at position -1
           trie(phrases),
           lnks(std::make_unique<Index[]>(3 * max_block)),
           lens(std::make_unique<Index[]>(3 * max_block)),
@@ -227,15 +230,16 @@ public:
         auto const& rfp = windex.reverse_fingerprints();
 
         // preprocess: mark positions of phrases that end in the previous two blocks within the window
-        {
+        if(phase >= 1) {
             if constexpr(DEBUG) {
                 std::cout << "preprocessing next block..." << std::endl;
             }
 
             Index x = z;
-            while(x > 0 && phrases[x].end >= window_begin_glob) {
-                assert(phrases[x].end < phase * max_block); // previously computed phrases cannot end in the new block that we just read from the input
-                windex.mark(phrases[x].end - window_begin_glob, x, true);
+            Index xend = phase * max_block - 1; // the ending position of the x-th LZ-End phrase
+            while(x > 0 && xend >= window_begin_glob) {
+                windex.mark(xend - window_begin_glob, x, true);
+                xend -= phrases[x].len;
                 --x;
             }
         }
@@ -463,20 +467,18 @@ public:
             }
 
             Index const border = window_begin_glob + curblock_window_offs;
-            while(ztrie < z && phrases[ztrie].end <= border) { // we go one phrase beyond the border according to [KK, 2017]
+            while(ztrie < z && ztrie_end + phrases[ztrie].len <= border) { // we go one phrase beyond the border according to [KK, 2017]
                 // we enter phrases[ztrie]
+                ztrie_end += phrases[ztrie].len;
 
                 // insert into trie
-                Index const rend = windex.pos_to_reverse(phrases[ztrie].end - window_begin_glob);
+                Index const rend = windex.pos_to_reverse(ztrie_end - window_begin_glob);
                 Index const rlen = windex.size() - 1 - rend;
-                Index const len = phrases[ztrie].len;
-                // assert(rwindow[rend] == phrases[ztrie].last); // sanity check
-                assert(len < window.size()); // Lemma 9 of [KK, 2017] implies this
 
                 trie.insert(rfp, rend, rlen);
 
                 // mark the phrase end for postprocessing of lnks
-                windex.mark(phrases[ztrie].end - window_begin_glob, ztrie, true);
+                windex.mark(ztrie_end - window_begin_glob, ztrie, true);
 
                 ++ztrie;
             }

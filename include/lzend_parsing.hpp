@@ -12,7 +12,6 @@ public:
     struct Phrase {
         Index link;
         Index len;
-        Index end;
         Char last;
     } __attribute__((packed));
 
@@ -26,7 +25,7 @@ private:
 
 public:
     LZEndParsing() : text_len_(0) {
-        phrases_.emplace_back(0, 0, -1, 0);
+        phrases_.emplace_back(0, 0, 0);
     }
 
     LZEndParsing(LZEndParsing&&) = default;
@@ -42,8 +41,7 @@ public:
 
         auto const p = (Index)phrases_.size();
         text_len_ += len;
-        phrases_.emplace_back(link, len, text_len_ - 1, last);
-        if(p > 1) assert(phrases_[p].end > phrases_[p-1].end);
+        phrases_.emplace_back(link, len, last);
     }
 
     // pops the last LZ-End phrase
