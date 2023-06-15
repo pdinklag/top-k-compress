@@ -100,6 +100,54 @@ public:
         } while(num);
     }
 
+    // matches the reverse suffix of the original text against the given string
+    // returns the number of matching characters, as well as the mismatch character
+    // returns (max+1, next) if ALL characters match
+    std::pair<Index, Char> match_rev(Char const* s, Index p, Index const max) const {
+        // LIFO queue
+        static std::vector<std::pair<Index, Index>> queue;
+        queue.clear();
+
+        Index match = 0;
+        Char mismatch;
+
+        auto num = max + 1;
+        do {
+            assert(p);
+            assert(num);
+
+            while(num) {
+                auto const& phrase = phrases_[p];
+                assert(phrase.len > 0);
+                
+                // extract the next character
+                mismatch = phrase.last;
+                if(match < max && s[match] == mismatch) ++match;
+                else return std::make_pair(match, mismatch);
+                
+                if(num > phrase.len) {
+                    // queue up the part that ends right before the p-th phrase
+                    auto const remain = num - phrase.len;
+                    queue.emplace_back(p - 1, remain);
+                    num -= remain;
+                }
+                
+                // follow link
+                --num;
+                if(num) p = phrase.link;
+            }
+            
+            if(!queue.empty()) {
+                std::tie(p, num) = queue.back();
+                queue.pop_back();
+            }
+        } while(num);
+
+        // nb: should never get here?
+        assert(false);
+        return std::make_pair(max+1, mismatch);
+    }
+
     template<std::output_iterator<Char> Out>
     void decode_rev(Out out, Index const p, Index const num) const {
         decode_rev([&](Char const c){

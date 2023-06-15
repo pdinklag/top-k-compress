@@ -311,20 +311,9 @@ public:
             Index common_suffix_length;
             char mismatch;
 
-            auto const extract_len = std::min(len + 1, nodes_[v].len); // nb: +1, because if we find no mismatch, we want the next character to be a mismatch
             {
                 // extract reverse suffix of phrase v while we're matching with the reverse input string
-                common_suffix_length = 0;
-                lzend_->template decode_rev([&](char const c){
-                    mismatch = c;
-
-                    if(common_suffix_length < len && c == s[pos + common_suffix_length]) {
-                        ++common_suffix_length;
-                        return true;
-                    } else {
-                        return false;
-                    }
-                }, nodes_[v].phr, extract_len);
+                std::tie(common_suffix_length, mismatch) = lzend_->match_rev(s.string_view().data() + pos, nodes_[v].phr, std::min(len, nodes_[v].len));
                 if constexpr(STATS) stats_.num_match_extract += common_suffix_length + 1;;
 
                 assert(common_suffix_length >= 1); // we must have matched the first character in the root, otherwise we wouldn't be here
