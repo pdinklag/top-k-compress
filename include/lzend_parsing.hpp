@@ -102,7 +102,6 @@ public:
 
     // matches the reverse suffix of the original text against the given string
     // returns the number of matching characters, as well as the mismatch character
-    // returns (max+1, next) if ALL characters match
     std::pair<Index, Char> match_rev(Char const* s, Index p, Index const max) const {
         // LIFO queue
         static std::vector<std::pair<Index, Index>> queue;
@@ -141,11 +140,10 @@ public:
                 std::tie(p, num) = queue.back();
                 queue.pop_back();
             }
-        } while(num);
+        } while(num && p);
 
-        // nb: should never get here?
-        assert(false);
-        return std::make_pair(max+1, mismatch);
+        // if we get here, it means that we have fully matched everything
+        return std::make_pair(match, Char());
     }
 
     template<std::output_iterator<Char> Out>
