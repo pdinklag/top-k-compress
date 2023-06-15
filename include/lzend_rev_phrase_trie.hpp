@@ -248,7 +248,7 @@ public:
     }
 #endif
 
-    void insert(StringView const& s, Index const pos, Index const len) {
+    void insert(StringView const& s, Index const pos, Index const len, Index const limit = std::numeric_limits<Index>::max()) {
         auto const phr = (Index)phrase_nodes_.size();
         auto create_new_phrase_node = [&](){
             auto const x = create_node();
@@ -313,11 +313,17 @@ public:
             char mismatch;
 
             {
-                // extract reverse suffix of phrase v while we're matching with the reverse input string
-                std::tie(common_suffix_length, mismatch) = lzend_->match_rev(s.string_view().data() + pos, nodes_[v].phr, std::min(len, nodes_[v].len));
+                // match phrase suffix with the reverse input string
+                auto const& ins_phrase = (*lzend_)[phr];
+                std::tie(common_suffix_length, mismatch) = lzend_->match_rev(s.string_view().data() + pos, nodes_[v].phr, std::min(limit, std::min(len, nodes_[v].len)));
                 if constexpr(STATS) {
                     stats_.num_match_extract += common_suffix_length + 1;
                     stats_.longest_lcs = std::max(stats_.longest_lcs, size_t(common_suffix_length));
+                }
+
+                if(common_suffix_length >= limit) {
+                    phrase_nodes_.emplace_back(v);
+                    return;
                 }
 
                 assert(common_suffix_length >= 1); // we must have matched the first character in the root, otherwise we wouldn't be here

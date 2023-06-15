@@ -467,7 +467,7 @@ public:
                 Index const rend = windex.pos_to_reverse(ztrie_end - window_begin_glob);
                 Index const rlen = windex.size() - 1 - rend;
 
-                trie.insert(rfp, rend, rlen);
+                trie.insert(rfp, rend, rlen, max_block);
 
                 // mark the phrase end for postprocessing of lnks
                 windex.mark(ztrie_end - window_begin_glob, ztrie, true);
