@@ -51,6 +51,7 @@ public:
     struct Stats {
         size_t num_match_extract = 0;
         size_t num_recalc = 0;
+        size_t longest_lcs = 0;
     };
 
 private:
@@ -314,7 +315,10 @@ public:
             {
                 // extract reverse suffix of phrase v while we're matching with the reverse input string
                 std::tie(common_suffix_length, mismatch) = lzend_->match_rev(s.string_view().data() + pos, nodes_[v].phr, std::min(len, nodes_[v].len));
-                if constexpr(STATS) stats_.num_match_extract += common_suffix_length + 1;;
+                if constexpr(STATS) {
+                    stats_.num_match_extract += common_suffix_length + 1;
+                    stats_.longest_lcs = std::max(stats_.longest_lcs, size_t(common_suffix_length));
+                }
 
                 assert(common_suffix_length >= 1); // we must have matched the first character in the root, otherwise we wouldn't be here
                 assert(common_suffix_length <= len); // we cannot have matched more characters than the inserted string has

@@ -669,6 +669,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     result.add("trie_nodes", trie_nodes);
     result.add("trie_num_match_extract", trie_stats.num_match_extract);
     result.add("trie_num_recalc", trie_stats.num_recalc);
+    result.add("trie_longest_lcs", trie_stats.longest_lcs);
     result.add("mem_glob_buffer", state_mem.buffer);
     result.add("mem_glob_lnks_lens", state_mem.lnks_lens);
     result.add("mem_glob_parsing", state_mem.parsing);
