@@ -193,6 +193,27 @@ struct LZEndKKState {
         return false;
     }
 
+    void precompute_absorb2(Index const m, Index const len1, Index const len2, WindowIndex const& windex, Index& lce1, Index& lnk1, Index& lce2, Index& lnk2) const {
+        lce1 = 0, lnk1 = 0, lce2 = 0, lnk2 = 0;
+        if(m > 0 && len1 < max_block) {
+            if(m > len1 && len2 < max_block) {
+                // compute both absorbOne2 and absorbTwo2
+                windex.marked_lcp2(m-1, z-1, lnk1, lce1, lnk2, lce2);
+            } else {
+                // compute just absorbOne2
+                windex.marked_lcp(m-1, lnk1, lce1);
+            }
+        }
+    };
+
+    bool absorbTwo2(Index const m, Index const len1, Index const len2, Index const lce2) const {
+        return m > len1 && len2 < max_block && lce2 >= len2;
+    }
+
+    bool absorbOne2(Index const m, Index const len1, Index const lce1) const {
+        return m > 0 && lce1 >= len1;
+    }
+
 public:
     LZEndKKState(size_t const max_block)
         : max_block(max_block),
@@ -295,45 +316,9 @@ public:
             // furthermore, the number of predecessor and successor queries is minimized this way
             Index lce1, lnk1; // corresponds to absorbOne2
             Index lce2, lnk2; // corresponds to absorbTwo2
-            auto precompute_absorb2 = [&](){
-                if(m > 0 && len1 < window.size()) {
-                    if(m > len1 && len2 < window.size()) {
-                        // compute both absorbOne2 and absorbTwo2
-                        windex.marked_lcp2(m-1, z-1, lnk1, lce1, lnk2, lce2);
-                    } else {
-                        // compute just absorbOne2
-                        lnk2 = 0;
-                        lce2 = 0;
-                        windex.marked_lcp(m-1, lnk1, lce1);
-                    }
-                }
-            };
-
-            // query the marked LCP data structure for the previous position, excluding the most current phrase, and compute LCE
-            auto absorbTwo2 = [&](Index& out_lnk){
-                precompute_absorb2();
-                if(m > len1 && len2 < max_block && lce2 >= len2) {
-                    out_lnk = lnk2;
-                    return true;
-                } else {
-                    return false;
-                }
-            };
-
-            // query the marked LCP data structure for the previous position and compute LCE
-            auto absorbOne2 = [&](Index& out_lnk){
-                // we expect that precompute_absorb2 has already been called
-                if(m > 0 && len1 < max_block && lce1 >= len1) {
-                    out_lnk = lnk1;
-                    return true;
-                } else {
-                    return false;
-                }
-            };
 
             char const next_char = window[m];
 
-            Index ptr;
             bool localTwo = false;
             bool localOne = false;
 
@@ -349,7 +334,14 @@ public:
             AlgorithmCase whence = AlgorithmCase::NONE;
             #endif
 
-            if(absorbTwo(m, p, len2, windex, window_begin_glob) || (localTwo = absorbTwo2(ptr))) {
+            if(absorbTwo(m, p, len2, windex, window_begin_glob)) {
+                localTwo = false;
+            } else {
+                localTwo = true;
+                precompute_absorb2(m, len1, len2, windex, lce1, lnk1, lce2, lnk2);
+            }
+
+            if(!localTwo || absorbTwo2(m, len1, len2, lce2)) {
                 #ifndef NDEBUG
                 whence = localTwo ? AlgorithmCase::ABSORB_TWO2 : AlgorithmCase::ABSORB_TWO;
                 #endif
@@ -370,8 +362,8 @@ public:
                 assert(z); // nb: must still have at least phrase 0
 
                 if(localTwo) {
-                    // we are here because of absorbTwo2 (local index)
-                    p = ptr;
+                    // we are here because of absorbTwo2 (local index), use precomputed link
+                    p = lnk2;
                 } else {
                     // we are here because of absorbTwo (trie)
                     lnks[m] = p;
@@ -380,7 +372,7 @@ public:
 
                 // merge phrases
                 phrases.replace_back(p, len2 + 1, next_char);
-            } else if(absorbOne(m, p, len1, windex, window_begin_glob) || (localOne = absorbOne2(ptr))) {
+            } else if(absorbOne(m, p, len1, windex, window_begin_glob) || (localOne = absorbOne2(m, len1, lce1))) {
                 #ifndef NDEBUG
                 whence = localOne ? AlgorithmCase::ABSORB_ONE2 : AlgorithmCase::ABSORB_ONE;
                 #endif
@@ -392,8 +384,8 @@ public:
                 windex.unmark(m - 1);
 
                 if(localOne) {
-                    // we are here because of absorbOne2 (local index)
-                    p = ptr;
+                    // we are here because of absorbOne2 (local index), use precomputed link
+                    p = lnk1;
                 } else {
                     // we are here because of absorbOne (trie)
                     lnks[m] = p;
