@@ -145,7 +145,6 @@ private:
         }
 
         KeyValueResult<Key, Value> get_kv(TruncatedKey const x, Key const bucket_num) const {
-            assert(values_.contains(x));
             return { true, bucket_num * sampling_ + x, values_[x] };
         }
     };
