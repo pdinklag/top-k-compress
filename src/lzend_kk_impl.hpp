@@ -242,6 +242,7 @@ public:
         }
     }
 
+    template<bool prefer_local>
     void parse_block(
         size_t const phase,
         std::string_view window,
@@ -337,18 +338,34 @@ public:
             };
 
             AlgorithmCase whence;
-            if(absorb_two_trie(m, p, len2, windex, window_begin_glob)) {
-                whence = AlgorithmCase::ABSORB_TWO_TRIE;
-            } else {
+
+            if constexpr(prefer_local) {
                 precompute_absorb_local(m, len1, len2, windex, lce1, lnk1, lce2, lnk2);
                 if(absorb_two_local(m, len1, len2, lce2)) {
                     whence = AlgorithmCase::ABSORB_TWO_LOCAL;
-                } else if(absorb_one_trie(m, p, len1, windex, window_begin_glob)) {
-                    whence = AlgorithmCase::ABSORB_ONE_TRIE;
+                } else if(absorb_two_trie(m, p, len2, windex, window_begin_glob)) {
+                    whence = AlgorithmCase::ABSORB_TWO_TRIE;
                 } else if(absorb_one_local(m, len1, lce1)) {
                     whence = AlgorithmCase::ABSORB_ONE_LOCAL;
+                } else if(absorb_one_trie(m, p, len1, windex, window_begin_glob)) {
+                    whence = AlgorithmCase::ABSORB_ONE_TRIE;
                 } else {
                     whence = AlgorithmCase::NEW_CHAR;
+                }
+            } else {
+                if(absorb_two_trie(m, p, len2, windex, window_begin_glob)) {
+                    whence = AlgorithmCase::ABSORB_TWO_TRIE;
+                } else {
+                    precompute_absorb_local(m, len1, len2, windex, lce1, lnk1, lce2, lnk2);
+                    if(absorb_two_local(m, len1, len2, lce2)) {
+                        whence = AlgorithmCase::ABSORB_TWO_LOCAL;
+                    } else if(absorb_one_trie(m, p, len1, windex, window_begin_glob)) {
+                        whence = AlgorithmCase::ABSORB_ONE_TRIE;
+                    } else if(absorb_one_local(m, len1, lce1)) {
+                        whence = AlgorithmCase::ABSORB_ONE_LOCAL;
+                    } else {
+                        whence = AlgorithmCase::NEW_CHAR;
+                    }
                 }
             }
 
@@ -526,7 +543,7 @@ public:
         }
     }
 
-    template<tdc::InputIterator<char> In>
+    template<bool prefer_local, tdc::InputIterator<char> In>
     void parse(In begin, In const& end) {
         std::string_view window;
         size_t phase = 0;
@@ -582,7 +599,7 @@ public:
             }
 
             // parse block
-            parse_block(phase, window, curblock_size, window_begin_glob, curblock_window_offs, begin == end);
+            parse_block<prefer_local>(phase, window, curblock_size, window_begin_glob, curblock_window_offs, begin == end);
 
             // advance to next phase
             ++phase;
@@ -590,7 +607,7 @@ public:
     }
 };
 
-template<tdc::InputIterator<char> In, iopp::BitSink Out>
+template<bool prefer_local, tdc::InputIterator<char> In, iopp::BitSink Out>
 void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block, size_t const block_size, pm::Result& result) {
     // init parsing and stats
     size_t z;
@@ -606,7 +623,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     // parse
     {
         LZEndKKState state(max_block);
-        state.parse(begin, end);
+        state.parse<prefer_local>(begin, end);
 
         // get parsing stats
         state_mem = state.memory_profile();
@@ -687,6 +704,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     result.add("phrases_avg_dist", std::round(100.0 * ((double)total_ref / (double)num_phrases)) / 100.0);
     result.add("phrases_from_trie", phrases_from_trie);
     result.add("phrases_from_trie_avg_len", std::round(100.0 * ((double)phrases_from_trie_total_len / (double)phrases_from_trie)) / 100.0);
+    result.add("prefer_local", prefer_local);
     result.add("trie_nodes", trie_nodes);
     result.add("trie_num_match_extract", trie_stats.num_match_extract);
     result.add("trie_num_recalc", trie_stats.num_recalc);

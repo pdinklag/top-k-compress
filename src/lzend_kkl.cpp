@@ -5,9 +5,8 @@
 
 struct Compressor : public CompressorBase {
     uint64_t window = 1_Mi;
-    bool prefer_local = false;
 
-    Compressor() : CompressorBase("lzend-kk", "LZEnd compression via Kempa & Kosolobov") {
+    Compressor() : CompressorBase("lzend-kkl", "LZEnd compression via Kempa & Kosolobov (prefer local)") {
         param('w', "window", window, "The window size.");
     }
 
@@ -18,11 +17,11 @@ struct Compressor : public CompressorBase {
     }
 
     virtual std::string file_ext() override {
-        return ".lzendkk";
+        return ".lzendkkl";
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        lzend_kk_compress<false>(in.begin(), in.end(), iopp::bitwise_output_to(out), window, block_size, result);
+        lzend_kk_compress<true>(in.begin(), in.end(), iopp::bitwise_output_to(out), window, block_size, result);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
