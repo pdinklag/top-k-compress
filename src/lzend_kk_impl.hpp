@@ -79,7 +79,8 @@ struct LZEndKKState {
         return profile;
     };
 
-    bool commonPart(Index const m, Index const p, Index const len, WindowIndex const& windex, Index const window_begin_glob) const {
+    // a.k.a. commonPart in [KK, 2017]
+    bool common_part_in_trie(Index const m, Index const p, Index const len, WindowIndex const& windex, Index const window_begin_glob) const {
         auto const plen = phrases[p].len;
         if(p > 0 && m > plen) {
             if constexpr(DEBUG) {
@@ -130,8 +131,9 @@ struct LZEndKKState {
         return false;
     }
 
-    bool absorbTwo(Index const m, Index const p, Index const len2, WindowIndex const& windex, Index const window_begin_glob) const {
-        if(len2 < max_block && commonPart(m, p, len2, windex, window_begin_glob)) {
+    // a.k.a. absorbTwo in [KK, 2017]
+    bool absorb_two_trie(Index const m, Index const p, Index const len2, WindowIndex const& windex, Index const window_begin_glob) const {
+        if(len2 < max_block && common_part_in_trie(m, p, len2, windex, window_begin_glob)) {
             if constexpr(DEBUG) {
                 std::cout << "\tabsorbTwo returned true" << std::endl;
             }
@@ -141,7 +143,8 @@ struct LZEndKKState {
         }
     }
 
-    bool absorbOne(Index const m, Index const p, Index const len1, WindowIndex const& windex, Index const window_begin_glob) const {
+    // a.k.a. absorbOne in [KK, 2017]
+    bool absorb_one_trie(Index const m, Index const p, Index const len1, WindowIndex const& windex, Index const window_begin_glob) const {
         if(p > 0 && m > 0 && len1 < max_block) {
             if constexpr(DEBUG) {
                 std::cout << "\ttesting whether trie phrase " << p << " has a common suffix with current phrase of length " << len1 << std::endl;
@@ -151,7 +154,7 @@ struct LZEndKKState {
                 if constexpr(DEBUG) {
                     std::cout << "\t\ttrie phrase " << p << " is shorter than current phrase, delegating" << std::endl;
                 }
-                if(commonPart(m, p, len1, windex, window_begin_glob)) {
+                if(common_part_in_trie(m, p, len1, windex, window_begin_glob)) {
                     if constexpr(DEBUG) {
                         std::cout << "\tabsorbOne returned true" << std::endl;
                     }
@@ -195,7 +198,7 @@ struct LZEndKKState {
         return false;
     }
 
-    void precompute_absorb2(Index const m, Index const len1, Index const len2, WindowIndex const& windex, Index& lce1, Index& lnk1, Index& lce2, Index& lnk2) const {
+    void precompute_absorb_local(Index const m, Index const len1, Index const len2, WindowIndex const& windex, Index& lce1, Index& lnk1, Index& lce2, Index& lnk2) const {
         lce1 = 0, lnk1 = 0, lce2 = 0, lnk2 = 0;
         if(m > 0 && len1 < max_block) {
             if(m > len1 && len2 < max_block) {
@@ -208,11 +211,13 @@ struct LZEndKKState {
         }
     };
 
-    bool absorbTwo2(Index const m, Index const len1, Index const len2, Index const lce2) const {
+    // a.k.a. absorbTwo2 in [KK, 2017]
+    bool absorb_two_local(Index const m, Index const len1, Index const len2, Index const lce2) const {
         return m > len1 && len2 < max_block && lce2 >= len2;
     }
 
-    bool absorbOne2(Index const m, Index const len1, Index const lce1) const {
+    // a.k.a. absorbTwo2 in [KK, 2017]
+    bool absorb_one_local(Index const m, Index const len1, Index const lce1) const {
         return m > 0 && lce1 >= len1;
     }
 
@@ -273,6 +278,7 @@ public:
         for(Index mblock = 0; mblock < curblock_size; mblock++) {
             auto const m = curblock_window_offs + mblock;  // the current position within the window
             auto const mglob = window_begin_glob + m; // the current global position in the input
+            char const next_char = window[m];
 
             if constexpr(DEBUG) {
                 std::cout << std::endl;
@@ -320,36 +326,33 @@ public:
             // furthermore, the number of predecessor and successor queries is minimized this way
             Index lce1, lnk1; // corresponds to absorbOne2
             Index lce2, lnk2; // corresponds to absorbTwo2
-
-            char const next_char = window[m];
-
-            bool localTwo = false;
-            bool localOne = false;
-
-            #ifndef NDEBUG
+            
+            // figure out what case we are dealing with
             enum AlgorithmCase {
-                NONE,
-                ABSORB_ONE,
-                ABSORB_ONE2,
-                ABSORB_TWO,
-                ABSORB_TWO2,
+                ABSORB_ONE_TRIE,
+                ABSORB_ONE_LOCAL,
+                ABSORB_TWO_TRIE,
+                ABSORB_TWO_LOCAL,
                 NEW_CHAR
             };
-            AlgorithmCase whence = AlgorithmCase::NONE;
-            #endif
 
-            if(absorbTwo(m, p, len2, windex, window_begin_glob)) {
-                localTwo = false;
+            AlgorithmCase whence;
+            if(absorb_two_trie(m, p, len2, windex, window_begin_glob)) {
+                whence = AlgorithmCase::ABSORB_TWO_TRIE;
             } else {
-                localTwo = true;
-                precompute_absorb2(m, len1, len2, windex, lce1, lnk1, lce2, lnk2);
+                precompute_absorb_local(m, len1, len2, windex, lce1, lnk1, lce2, lnk2);
+                if(absorb_two_local(m, len1, len2, lce2)) {
+                    whence = AlgorithmCase::ABSORB_TWO_LOCAL;
+                } else if(absorb_one_trie(m, p, len1, windex, window_begin_glob)) {
+                    whence = AlgorithmCase::ABSORB_ONE_TRIE;
+                } else if(absorb_one_local(m, len1, lce1)) {
+                    whence = AlgorithmCase::ABSORB_ONE_LOCAL;
+                } else {
+                    whence = AlgorithmCase::NEW_CHAR;
+                }
             }
 
-            if(!localTwo || absorbTwo2(m, len1, len2, lce2)) {
-                #ifndef NDEBUG
-                whence = localTwo ? AlgorithmCase::ABSORB_TWO2 : AlgorithmCase::ABSORB_TWO;
-                #endif
-
+            if(whence == AlgorithmCase::ABSORB_TWO_TRIE || whence ==  AlgorithmCase::ABSORB_TWO_LOCAL) {
                 // merge the two current phrases and extend their length by one
                 if constexpr(DEBUG) std::cout << "\tMERGE phrases " << z << " and " << z-1 << " to new phrase of length " << (len2+1) << std::endl;
 
@@ -365,7 +368,7 @@ public:
                 --z;
                 assert(z); // nb: must still have at least phrase 0
 
-                if(localTwo) {
+                if(whence == AlgorithmCase::ABSORB_TWO_LOCAL) {
                     // we are here because of absorbTwo2 (local index), use precomputed link
                     p = lnk2;
                 } else {
@@ -376,18 +379,14 @@ public:
 
                 // merge phrases
                 phrases.replace_back(p, len2 + 1, next_char);
-            } else if(absorbOne(m, p, len1, windex, window_begin_glob) || (localOne = absorbOne2(m, len1, lce1))) {
-                #ifndef NDEBUG
-                whence = localOne ? AlgorithmCase::ABSORB_ONE2 : AlgorithmCase::ABSORB_ONE;
-                #endif
-
+            } else if(whence == AlgorithmCase::ABSORB_ONE_TRIE || whence == AlgorithmCase::ABSORB_ONE_LOCAL) {
                 // extend the current phrase by one character
                 if constexpr(DEBUG) std::cout << "\tEXTEND phrase " << z << " to length " << (len1+1) << std::endl;
 
                 // updateRecent: unregister current phrase
                 windex.unmark(m - 1);
 
-                if(localOne) {
+                if(whence == AlgorithmCase::ABSORB_ONE_LOCAL) {
                     // we are here because of absorbOne2 (local index), use precomputed link
                     p = lnk1;
                 } else {
@@ -399,10 +398,6 @@ public:
                 // extend phrase
                 phrases.replace_back(p, len1 + 1, next_char);
             } else {
-                #ifndef NDEBUG
-                whence = AlgorithmCase::NEW_CHAR;
-                #endif
-
                 // begin a new phrase of initially length one
                 if constexpr(DEBUG) std::cout << "\tNEW phrase " << (z+1) << " of length 1" << std::endl;
                 
