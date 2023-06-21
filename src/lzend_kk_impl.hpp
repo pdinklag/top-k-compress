@@ -58,6 +58,8 @@ struct LZEndKKState {
 
     // stats
     WindowIndex::MemoryProfile max_window_memory;
+    size_t phrases_from_trie_;
+    size_t phrases_from_trie_total_len_;
 
     struct MemoryProfile {
         size_t buffer;
@@ -226,6 +228,8 @@ public:
           buffer(3 * max_block, 0) {
 
         phrase_hashes.emplace_back(0); // phrase 0
+        phrases_from_trie_ = 0;
+        phrases_from_trie_total_len_ = 0;
 
         for(size_t i = 0; i < 3 * max_block; i++) {
             lnks[i] = NIL;
@@ -458,10 +462,17 @@ public:
                 std::cout << "inserting phrases ending in sliding block into trie ..." << std::endl;
             }
 
+            Index const ztrie_before_inserts = ztrie;
             Index const border = window_begin_glob + curblock_window_offs;
             while(ztrie < z && ztrie_end + phrases[ztrie].len <= border) { // we go one phrase beyond the border according to [KK, 2017]
                 // we enter phrases[ztrie]
                 ztrie_end += phrases[ztrie].len;
+
+                // count phrases that we introduced thanks to the trie
+                if(phrases[ztrie].len > 1 && phrases[ztrie].link <= ztrie_before_inserts) {
+                    ++phrases_from_trie_;
+                    phrases_from_trie_total_len_ += phrases[ztrie].len;
+                }
 
                 // insert into trie
                 Index const rend = windex.pos_to_reverse(ztrie_end - window_begin_glob);
@@ -506,6 +517,15 @@ public:
                         auto const qglob = window_begin_glob + q;
                         std::cout << "\tleaving lnks[" << qglob << "] = " << lnks[q] << ", lens[" << qglob << "] = " << lens[q] << std::endl;
                     }
+                }
+            }
+        }
+
+        if(final_block) {
+            for(auto i = ztrie; i < z; i++) {
+                if(phrases[i].len > 0 && phrases[i].link <= ztrie) {
+                    ++phrases_from_trie_;
+                    phrases_from_trie_total_len_ += phrases[i].len;
                 }
             }
         }
@@ -585,6 +605,8 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     LZEndKKState::Trie::Stats trie_stats;
     size_t trie_nodes;
     LZEndKKState::WindowIndex::MemoryProfile win_mem;
+    size_t phrases_from_trie;
+    size_t phrases_from_trie_total_len;
 
     // parse
     {
@@ -597,6 +619,8 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
         trie_stats = state.trie.stats();
         trie_nodes = state.trie.size();
         win_mem = state.max_window_memory;
+        phrases_from_trie = state.phrases_from_trie_;
+        phrases_from_trie_total_len = state.phrases_from_trie_total_len_;
 
         // get parsing
         z = state.z;
@@ -666,6 +690,8 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     result.add("phrases_furthest", furthest);
     result.add("phrases_avg_len", std::round(100.0 * ((double)total_len / (double)num_phrases)) / 100.0);
     result.add("phrases_avg_dist", std::round(100.0 * ((double)total_ref / (double)num_phrases)) / 100.0);
+    result.add("phrases_from_trie", phrases_from_trie);
+    result.add("phrases_from_trie_avg_len", std::round(100.0 * ((double)phrases_from_trie_total_len / (double)phrases_from_trie)) / 100.0);
     result.add("trie_nodes", trie_nodes);
     result.add("trie_num_match_extract", trie_stats.num_match_extract);
     result.add("trie_num_recalc", trie_stats.num_recalc);
