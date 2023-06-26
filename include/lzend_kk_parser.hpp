@@ -38,9 +38,9 @@ private:
     Index ztrie_;      // the current number of LZ-End phrases that have been inserted into the trie (< z)
     Index ztrie_end_;  // the ending position of the last LZ-End phrases entered into the trie.
 
-    Parsing phrases_;
+    Parsing* phrases_;
     std::vector<uint64_t> phrase_hashes_;
-    Trie trie_;
+    Trie* trie_;
 
     // block state
     std::unique_ptr<Index[]> lnks_;
@@ -53,7 +53,7 @@ private:
 
     // a.k.a. commonPart in [KK, 2017]
     bool common_part_in_trie(Index const m, Index const p, Index const len, WindowIndex const& windex, Index const window_begin_glob) const {
-        auto const plen = phrases_[p].len;
+        auto const plen = (*phrases_)[p].len;
         if(p > 0 && m > plen) {
             if constexpr(DEBUG) {
                 std::cout << "\ttesting whether trie phrases " << p << " and " << (p-1) << " have a common suffix of length " << len << " with current input suffix" << std::endl;
@@ -66,7 +66,7 @@ private:
                 if(phrase_hashes_[p] == lhash) {
                     if(lens_[pos] - 1 + plen == len) {
                         if(lnks_[pos] != NIL) {
-                            auto const nca_len = trie_.nca_len(lnks_[pos], p-1);
+                            auto const nca_len = trie_->nca_len(lnks_[pos], p-1);
                             if(nca_len + plen >= len) {
                                 if constexpr(DEBUG) {
                                     std::cout << "\t\tTRUE - combined length of NCA and phrase matches" << std::endl;
@@ -121,7 +121,7 @@ private:
             if constexpr(DEBUG) {
                 std::cout << "\ttesting whether trie phrase " << p << " has a common suffix with current phrase of length " << len1 << std::endl;
             }
-            auto const plen = phrases_[p].len;
+            auto const plen = (*phrases_)[p].len;
             if(plen < len1) {
                 if constexpr(DEBUG) {
                     std::cout << "\t\ttrie phrase " << p << " is shorter than current phrase, delegating" << std::endl;
@@ -133,7 +133,7 @@ private:
                     return true;
                 }
             } else {
-                if(phrases_[p].last == phrases_[z_].last) {
+                if((*phrases_)[p].last == (*phrases_)[z_].last) {
                     if(len1 > 1 && lnks_[m-1] == NIL) {
                         if constexpr(DEBUG) {
                             std::cout << "\t\tFALSE - a phrase ends at the previous position, but the trie link is NIL" << std::endl;
@@ -146,7 +146,7 @@ private:
                             }
                             return true;
                         } else {
-                            auto const nca_len = trie_.nca_len(lnks_[m-1], phrases_[p].link);
+                            auto const nca_len = trie_->nca_len(lnks_[m-1], (*phrases_)[p].link);
                             if(nca_len + 1 >= len1) {
                                 if constexpr(DEBUG) {
                                     std::cout << "\t\tTRUE - NCA length plus 1 exceeds current phrase length" << std::endl;
@@ -220,7 +220,7 @@ private:
             Index xend = phase * max_block_ - 1; // the ending position of the x-th LZ-End phrase
             while(x > 0 && xend >= window_begin_glob) {
                 windex.mark(xend - window_begin_glob, x, true);
-                xend -= phrases_[x].len;
+                xend -= (*phrases_)[x].len;
                 --x;
             }
         }
@@ -243,14 +243,14 @@ private:
                 auto const rsuf_len = windex.size() - 1 - rsuf_begin;
 
                 Index hash_match;
-                p = trie_.approx_find_phr(rfp, rsuf_begin, rsuf_len, hash_match);
+                p = trie_->approx_find_phr(rfp, rsuf_begin, rsuf_len, hash_match);
 
                 #ifndef NDEBUG
                 if constexpr(PARANOID) {
                     if(p > 0 && hash_match > 0) {
                         std::string rsuf;
                         rsuf.reserve(hash_match);
-                        phrases_.decode_rev(std::back_inserter(rsuf), p, hash_match);
+                        phrases_->decode_rev(std::back_inserter(rsuf), p, hash_match);
                         
                         auto const* rstr = rfp.data() + rsuf_begin;
                         for(size_t i = 0; i < hash_match; i++) {
@@ -262,8 +262,8 @@ private:
             }
 
             lnks_[m] = NIL;
-            auto const len1 = phrases_[z_].len;                        // length of the current phrase
-            auto const len2 = len1 + (z_ > 0 ? phrases_[z_-1].len : 0); // total length of the two current phrases
+            auto const len1 = (*phrases_)[z_].len;                        // length of the current phrase
+            auto const len2 = len1 + (z_ > 0 ? (*phrases_)[z_-1].len : 0); // total length of the two current phrases
 
             // sanity
             #ifndef NDEBUG
@@ -330,7 +330,7 @@ private:
                 windex.unmark(m - 1 - len1);
 
                 // delete current phrase
-                phrases_.pop_back();
+                phrases_->pop_back();
                 phrase_hashes_.pop_back();
                 --z_;
                 assert(z_); // nb: must still have at least phrase 0
@@ -345,7 +345,7 @@ private:
                 }
 
                 // merge phrases
-                phrases_.replace_back(p, len2 + 1, next_char);
+                phrases_->replace_back(p, len2 + 1, next_char);
             } else if(whence == AlgorithmCase::ABSORB_ONE_TRIE || whence == AlgorithmCase::ABSORB_ONE_LOCAL) {
                 // extend the current phrase by one character
                 if constexpr(DEBUG) std::cout << "\tEXTEND phrase " << z_ << " to length " << (len1+1) << std::endl;
@@ -363,33 +363,33 @@ private:
                 }
 
                 // extend phrase
-                phrases_.replace_back(p, len1 + 1, next_char);
+                phrases_->replace_back(p, len1 + 1, next_char);
             } else {
                 // begin a new phrase of initially length one
                 if constexpr(DEBUG) std::cout << "\tNEW phrase " << (z_+1) << " of length 1" << std::endl;
                 
                 ++z_;
-                phrases_.emplace_back(p, 1, next_char);
+                phrases_->emplace_back(p, 1, next_char);
                 phrase_hashes_.emplace_back(0);
             }
 
-            if constexpr(DEBUG) std::cout << "\t-> z=" << z_ << ", link=" << phrases_[z_].link << ", len=" << phrases_[z_].len << ", last=" << display(phrases_[z_].last) << std::endl;
+            if constexpr(DEBUG) std::cout << "\t-> z=" << z_ << ", link=" << (*phrases_)[z_].link << ", len=" << (*phrases_)[z_].len << ", last=" << display((*phrases_)[z_].last) << std::endl;
 
             // update lens
-            assert(phrases_[z_].len <= max_block_);
-            lens_[m] = phrases_[z_].len;
+            assert((*phrases_)[z_].len <= max_block_);
+            lens_[m] = (*phrases_)[z_].len;
 
             #ifndef NDEBUG
             if constexpr(PARANOID) {
                 // verify that the current phrase is a valid LZEnd phrase
-                if(phrases_[z_].len > 1) {
-                    auto const lnk = phrases_[z_].link;
+                if((*phrases_)[z_].len > 1) {
+                    auto const lnk = (*phrases_)[z_].link;
                     assert(lnk > 0);
-                    auto const common_len = phrases_[z_].len - 1;
+                    auto const common_len = (*phrases_)[z_].len - 1;
 
                     std::string rsuf;
                     rsuf.reserve(common_len);
-                    phrases_.decode_rev(std::back_inserter(rsuf), lnk, common_len);
+                    (*phrases_).decode_rev(std::back_inserter(rsuf), lnk, common_len);
                     
                     auto const offs = windex.pos_to_reverse(m-1);
                     auto const* rstr = rfp.data() + offs;
@@ -401,7 +401,7 @@ private:
             #endif
 
             // update phrase hash
-            phrase_hashes_[z_] = windex.reverse_fingerprint(m - phrases_[z_].len + 1, m);
+            phrase_hashes_[z_] = windex.reverse_fingerprint(m - (*phrases_)[z_].len + 1, m);
 
             // updateRecent: register updated current phrase
             windex.mark(m, z_);
@@ -426,24 +426,24 @@ private:
 
             Index const ztrie_before_inserts = ztrie_;
             Index const border = window_begin_glob + curblock_window_offs;
-            while(ztrie_ < z_ && ztrie_end_ + phrases_[ztrie_].len <= border) { // we go one phrase beyond the border according to [KK, 2017]
+            while(ztrie_ < z_ && ztrie_end_ + (*phrases_)[ztrie_].len <= border) { // we go one phrase beyond the border according to [KK, 2017]
                 // the phrase may be emitted
-                if(on_emit_phrase) on_emit_phrase(phrases_[ztrie_]);
+                if(on_emit_phrase) on_emit_phrase((*phrases_)[ztrie_]);
 
                 // we enter phrases[ztrie]
-                ztrie_end_ += phrases_[ztrie_].len;
+                ztrie_end_ += (*phrases_)[ztrie_].len;
 
                 // count phrases that we introduced thanks to the trie
-                if(phrases_[ztrie_].len > 1 && phrases_[ztrie_].link <= ztrie_before_inserts) {
+                if((*phrases_)[ztrie_].len > 1 && (*phrases_)[ztrie_].link <= ztrie_before_inserts) {
                     ++stats_.phrases_from_trie;
-                    stats_.phrases_from_trie_total_len += phrases_[ztrie_].len;
+                    stats_.phrases_from_trie_total_len += (*phrases_)[ztrie_].len;
                 }
 
                 // insert into trie
                 Index const rend = windex.pos_to_reverse(ztrie_end_ - window_begin_glob);
                 Index const rlen = windex.size() - 1 - rend;
 
-                trie_.insert(rfp, rend, rlen, max_block_);
+                trie_->insert(rfp, rend, rlen, max_block_);
 
                 // mark the phrase end for postprocessing of lnks
                 windex.mark(ztrie_end_ - window_begin_glob, ztrie_, true);
@@ -489,23 +489,24 @@ private:
         if(final_block) {
             // emit remaining phrases
             for(auto i = ztrie_; i <= z_; i++) {
-                if(on_emit_phrase) on_emit_phrase(phrases_[i]);
+                if(on_emit_phrase) on_emit_phrase((*phrases_)[i]);
 
-                if(phrases_[i].len > 0 && phrases_[i].link <= ztrie_) {
+                if((*phrases_)[i].len > 0 && (*phrases_)[i].link <= ztrie_) {
                     ++stats_.phrases_from_trie;
-                    stats_.phrases_from_trie_total_len += phrases_[i].len;
+                    stats_.phrases_from_trie_total_len += (*phrases_)[i].len;
                 }
             }
         }
     }
 
 public:
-    LZEndKKParser(size_t const max_block)
+    LZEndKKParser(size_t const max_block, Parsing& parsing, Trie& trie)
         : max_block_(max_block),
           z_(0),
           ztrie_(1),
           ztrie_end_(-1), // the empty phrase ends at position -1
-          trie_(phrases_),
+          phrases_(&parsing),
+          trie_(&trie),
           lnks_(std::make_unique<Index[]>(3 * max_block)),
           lens_(std::make_unique<Index[]>(3 * max_block)),
           buffer_(3 * max_block, 0) {
@@ -588,8 +589,8 @@ public:
     }
 
     Index const num_phrases() const { return z_; }
-    Parsing const& parsing() const { return phrases_; }
-    Trie const& trie() const { return trie_; }
+    Parsing const& parsing() const { return *phrases_; }
+    Trie const& trie() const { return *trie_; }
     Stats const& stats() const { return stats_; }
 
     struct MemoryProfile {
@@ -604,7 +605,7 @@ public:
     MemoryProfile memory_profile() const {
         MemoryProfile profile;
         profile.buffer = buffer_.capacity() * sizeof(char);
-        profile.parsing = phrases_.memory_size();
+        profile.parsing = phrases_->memory_size();
         profile.phrase_hashes = phrase_hashes_.capacity() * sizeof(uint64_t);
         profile.lnks_lens = 2 * (sizeof(Index) * 3 * max_block_);
         return profile;

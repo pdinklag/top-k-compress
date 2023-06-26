@@ -74,14 +74,17 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     };
     
     // parse
-    Parser parser(max_block);
+    Parsing parsing;
+    Trie trie(parsing);
+
+    Parser parser(max_block, parsing, trie);
     parser.on_emit_phrase = emit;
     parser.parse(begin, end);
 
     // flush writer
     writer.flush();
 
-    // get parser stats
+    // get stats
     auto const state_mem = parser.memory_profile();
     auto const trie_mem = parser.trie().memory_profile();
     auto const trie_stats = parser.trie().stats();
