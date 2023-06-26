@@ -82,7 +82,7 @@ public:
         return size_++;
     }
 
-    bool try_get_child(NodeIndex const node, Character const label, NodeIndex& out_child) ALWAYS_INLINE {
+    bool try_get_child(NodeIndex const node, Character const label, NodeIndex& out_child) const ALWAYS_INLINE {
         return nodes_[node].children.try_get(label, out_child);
     }
 
