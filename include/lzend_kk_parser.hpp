@@ -181,7 +181,7 @@ private:
                 windex.marked_lcp(m-1, lnk1, lce1);
             }
         }
-    };
+    }
 
     // a.k.a. absorbTwo2 in [KK, 2017]
     bool absorb_two_local(Index const m, Index const len1, Index const len2, Index const lce2) const {
@@ -609,5 +609,5 @@ public:
         profile.phrase_hashes = phrase_hashes_.capacity() * sizeof(uint64_t);
         profile.lnks_lens = 2 * (sizeof(Index) * 3 * max_block_);
         return profile;
-    };
+    }
 };
