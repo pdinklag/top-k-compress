@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -426,6 +427,9 @@ private:
             Index const ztrie_before_inserts = ztrie_;
             Index const border = window_begin_glob + curblock_window_offs;
             while(ztrie_ < z_ && ztrie_end_ + phrases_[ztrie_].len <= border) { // we go one phrase beyond the border according to [KK, 2017]
+                // the phrase may be emitted
+                if(on_emit_phrase) on_emit_phrase(phrases_[ztrie_]);
+
                 // we enter phrases[ztrie]
                 ztrie_end_ += phrases_[ztrie_].len;
 
@@ -483,7 +487,10 @@ private:
         }
 
         if(final_block) {
-            for(auto i = ztrie_; i < z_; i++) {
+            // emit remaining phrases
+            for(auto i = ztrie_; i <= z_; i++) {
+                if(on_emit_phrase) on_emit_phrase(phrases_[i]);
+
                 if(phrases_[i].len > 0 && phrases_[i].link <= ztrie_) {
                     ++stats_.phrases_from_trie;
                     stats_.phrases_from_trie_total_len += phrases_[i].len;
@@ -513,6 +520,9 @@ public:
         stats_.phrases_from_trie = 0;
         stats_.phrases_from_trie_total_len = 0;
     }
+
+    // callbacks
+    std::function<void(typename Parsing::Phrase const&)> on_emit_phrase;
 
     template<tdc::InputIterator<char> In>
     void parse(In begin, In const& end) {

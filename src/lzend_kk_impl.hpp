@@ -1,9 +1,3 @@
-#include <cassert>
-#include <string>
-#include <string_view>
-#include <utility>
-#include <vector>
-
 #include <tdc/code/concepts.hpp>
 
 #include <phrase_block_writer.hpp>
@@ -30,26 +24,9 @@ using Index = uint32_t;
 
 template<bool prefer_local, tdc::InputIterator<char> In, iopp::BitSink Out>
 void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block, size_t const block_size, pm::Result& result) {
-    using Parsing = LZEndParsing<char, Index>;
-    using Trie = LZEndRevPhraseTrie<char, Index>;
-    using WindowIndex = LZEndWindowIndex<Index>;
-
-    using Parser = LZEndKKParser<prefer_local, Parsing, Trie, WindowIndex, Index>;
-
-    // parse
-    Parser parser(max_block);
-    parser.parse(begin, end);
-
-    // get parsing stats
-    auto const state_mem = parser.memory_profile();
-    auto const trie_mem = parser.trie().memory_profile();
-    auto const trie_stats = parser.trie().stats();
-    auto const trie_nodes = parser.trie().size();
-    auto const parser_stats = parser.stats();
-
-    // get parsing
-    auto const z = parser.num_phrases();
-    auto const& parsing = parser.parsing();
+    // initialize encoding
+    out.write(MAGIC, 64);
+    PhraseBlockWriter writer(out, block_size, true);
 
     // init stats
     size_t num_phrases = 0;
@@ -60,47 +37,56 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     size_t furthest = 0;
     size_t total_ref = 0;
 
-    // initialize encoding
-    out.write(MAGIC, 64);
-    PhraseBlockWriter writer(out, block_size, true);
+    // initialize parser
+    using Parsing = LZEndParsing<char, Index>;
+    using Trie = LZEndRevPhraseTrie<char, Index>;
+    using WindowIndex = LZEndWindowIndex<Index>;
 
-    // write phrases
-    {
-        size_t i = 0;
-        for(size_t j = 1; j <= z; j++) {
-            if constexpr(PROTOCOL) {
-                std::cout << "phrase #" << j << ": i=" << i << ", (" << parsing[j].link << ", " << parsing[j].len << ", " << display(parsing[j].last) << std::endl;
-            }
-            
-            i += parsing[j].len;
+    using Parser = LZEndKKParser<prefer_local, Parsing, Trie, WindowIndex, Index>;
 
-            ++num_phrases;
-            if(parsing[j].len > 1) {
-                // referencing phrase
-                writer.write_ref(parsing[j].link);
-                writer.write_len(parsing[j].len - 1);
-                writer.write_literal(parsing[j].last);
-
-                ++num_ref;
-
-            } else {
-                // literal phrase
-                ++num_literal;
-                writer.write_ref(0);
-                writer.write_literal(parsing[j].last);
-            }
-            
-            longest = std::max(longest, size_t(parsing[j].len));
-            total_len += parsing[j].len;
-            furthest = std::max(furthest, size_t(parsing[j].link));
-            total_ref += parsing[j].link;
+    size_t i = 0;
+    auto emit = [&](Parsing::Phrase const& phrase) {
+        if constexpr(PROTOCOL) {
+            std::cout << "phrase #" << (num_phrases+1) << ": i=" << i << ", (" << phrase.link << ", " << phrase.len << ", " << display(phrase.last) << std::endl;
         }
+        
+        i += phrase.len;
 
-        if constexpr(PROTOCOL) std::cout << std::endl;
-    }
+        ++num_phrases;
+        if(phrase.len > 1) {
+            // referencing phrase
+            writer.write_ref(phrase.link);
+            writer.write_len(phrase.len - 1);
+            writer.write_literal(phrase.last);
 
-    // flush
+            ++num_ref;
+        } else {
+            // literal phrase
+            ++num_literal;
+            writer.write_ref(0);
+            writer.write_literal(phrase.last);
+        }
+        
+        longest = std::max(longest, size_t(phrase.len));
+        total_len += phrase.len;
+        furthest = std::max(furthest, size_t(phrase.link));
+        total_ref += phrase.link;
+    };
+    
+    // parse
+    Parser parser(max_block);
+    parser.on_emit_phrase = emit;
+    parser.parse(begin, end);
+
+    // flush writer
     writer.flush();
+
+    // get parser stats
+    auto const state_mem = parser.memory_profile();
+    auto const trie_mem = parser.trie().memory_profile();
+    auto const trie_stats = parser.trie().stats();
+    auto const trie_nodes = parser.trie().size();
+    auto const parser_stats = parser.stats();
 
     result.add("phrases_total", num_phrases);
     result.add("phrases_ref", num_ref);
