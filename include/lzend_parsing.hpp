@@ -5,16 +5,13 @@
 #include <iterator>
 #include <vector>
 
+#include <lzend_phrase.hpp>
+
 // represents a dynamically growing LZ-End parsing
 template<std::integral Char, std::unsigned_integral Index>
 class LZEndParsing {
 public:
-    struct Phrase {
-        Index link;
-        Index len;
-        Char last;
-    } __attribute__((packed));
-
+    using Phrase = LZEndPhrase<Char, Index>;
     using Predicate = std::function<bool(Char)>;
 
 private:
