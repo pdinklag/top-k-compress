@@ -64,7 +64,10 @@ private:
 
     RollingKarpRabin hash_;
 
+protected:
     using FilterIndex = typename FilterNode::Index;
+
+private:
     Trie<FilterNode> filter_;
     MinPQ<size_t, FilterIndex> min_pq_;
 
@@ -258,11 +261,15 @@ public:
     // extends a string to the right by a new character
     // modifies the fingerprint window
     StringState extend(StringState const& s, char const c) ALWAYS_INLINE {
+        auto const ext_fp = hash_.push(s.fingerprint, c);
+        return extend(s, c, ext_fp);
+    }
+
+    // extends a string to the right by a new character
+    // uses the passed fingerprint
+    StringState extend(StringState const& s, char const c, uint64_t const ext_fp) ALWAYS_INLINE {
         if constexpr(gather_stats_) ++stats_.num_strings_total;
         auto const i = s.len;
-
-        // update fingerprint
-        auto const ext_fp = hash_.push(s.fingerprint, c);
 
         // try and find extension in filter
         StringState ext;
@@ -353,6 +360,10 @@ public:
             --len;
         }
         return v;
+    }
+
+    auto const& filter() const {
+        return filter_;
     }
 
     FilterNode& filter_node(FilterIndex const node) {
