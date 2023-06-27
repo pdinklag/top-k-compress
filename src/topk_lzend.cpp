@@ -5,7 +5,6 @@
 
 struct Compressor : public TopkCompressor {
     uint64_t window = 1_Mi;
-    bool prefer_local = false;
 
     Compressor() : TopkCompressor("topk-lzend", "Implements the top-k LZEnd compression algorithm") {
         param('w', "window", window, "The window size.");
