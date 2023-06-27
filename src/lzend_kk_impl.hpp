@@ -14,9 +14,9 @@
 #include <lzend_window_index.hpp>
 
 #include <phrase_block_writer.hpp>
-#include <phrase_block_reader.hpp>
-
 #include <tdc/code/concepts.hpp>
+
+#include "lzend_decompress.hpp"
 
 constexpr uint64_t MAGIC =
     ((uint64_t)'L') << 56 |
@@ -740,43 +740,4 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
-void lzend_kk_decompress(In in, Out out) {
-    uint64_t const magic = in.read(64);
-    if(magic != MAGIC) {
-        std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << MAGIC << ")" << std::endl;
-        std::abort();
-    }
-    
-    std::string dec;
-    std::vector<size_t> factors;
-    
-    PhraseBlockReader reader(in, true);
-    while(in) {
-        auto const q = reader.read_ref();
-        auto const len = (q > 0) ? reader.read_len() : 0;
-
-        if(len > 0) {
-            auto p = factors[q-1] + 1 - len;
-            for(size_t i = 0; i < len; i++) {
-                dec.push_back(dec[p++]);
-            }
-        }
-        
-        if(in) {
-            auto const c = reader.read_literal();
-            factors.push_back(dec.length());
-            dec.push_back(c);
-
-            if constexpr(PROTOCOL) {
-                std::cout << "factor #" << factors.size() << ": i=" << (dec.size() - len - 1) << ", (" << q << ", " << len << ", " << display(c) << ")" << std::endl;
-            }
-        } else {
-            if constexpr(PROTOCOL) {
-                std::cout << "factor #" << factors.size() << ": i=" << (dec.size() - len - 1) << ", (" << q << ", " << len << ", <EOF>)" << std::endl;
-            }
-        }
-    }
-
-    // output
-    std::copy(dec.begin(), dec.end(), out);
-}
+void lzend_kk_decompress(In in, Out out) { lzend_decompress_offline<PROTOCOL>(in, out, MAGIC); }
