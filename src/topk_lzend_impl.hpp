@@ -28,6 +28,7 @@ constexpr uint64_t MAGIC =
     ((uint64_t)'D');
 
 constexpr bool PROTOCOL = false;
+constexpr bool DEBUG = false;
 
 using Index = uint32_t;
 
@@ -48,8 +49,6 @@ public:
     };
 
 private:
-    static constexpr bool DEBUG = false;
-
     static constexpr Index NIL = 0;
 
     // global state
@@ -488,8 +487,10 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
             std::cout << "phrase #" << (num_phrases+1) << ": i=" << i << ", (" << phrase.link;
             if(parser.is_trie_ref(phrase.link)) {
                 std::cout << "*";
+            } else {
+                std::cout << ", " << phrase.len;
             }
-            std::cout << ", " << phrase.len << ", " << display(phrase.last) << ")" << std::endl;
+            std::cout << ", " << display(phrase.last) << ")" << std::endl;
         }
         
         i += phrase.len;
@@ -498,7 +499,9 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
         if(phrase.len > 1) {
             // referencing phrase
             writer.write_ref(phrase.link);
-            writer.write_len(parser.is_trie_ref(phrase.link) ? 0 : phrase.len - 1); // 
+            if(!parser.is_trie_ref(phrase.link)) { // if the link is a trie node, there is no need to encode a length
+                writer.write_len(phrase.len - 1);
+            }
             writer.write_literal(phrase.last);
 
             ++num_ref;
@@ -538,12 +541,5 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
 void topk_lzend_decompress(In in, Out out) {
-    uint64_t const magic = in.read(64);
-    if(magic != MAGIC) {
-        std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << MAGIC << ")" << std::endl;
-        std::abort();
-    }
-    
-    std::cerr << "not yet implemented" << std::endl;
-    std::abort();
+    // TODO
 }
