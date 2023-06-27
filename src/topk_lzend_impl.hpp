@@ -2,11 +2,7 @@
 
 #include "topk_common.hpp"
 
-#include <lzend_parsing.hpp>
-#include <lzend_window_index.hpp>
 #include <lzend_topk_parser.hpp>
-
-#include <topk_lzend_trie.hpp>
 
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
@@ -40,10 +36,8 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
     size_t total_ref = 0;
 
     // initialize parser
-    using Trie = TopKLZEndTrie<Index>;
-    using WindowIndex = LZEndWindowIndex<Index>;
-
-    using Parser = LZEndTopkParser<prefer_local, Trie, WindowIndex, Index>;
+    using Parser = LZEndTopkParser<prefer_local, Index>;
+    using Trie = Parser::Trie;
     
     // parse
     Trie trie(k, num_sketches, sketch_rows, sketch_columns);

@@ -12,15 +12,17 @@
 #include <display.hpp>
 #include <tdc/util/concepts.hpp>
 
-#include <lzend_phrase.hpp>
+#include <lzend_parsing.hpp>
+#include <lzend_window_index.hpp>
+#include <topk_lzend_trie.hpp>
 
 // computes the LZ-End parsing of an input according to [Kempa & Kosolobov, 2017]
 // using a trie on the reversed LZ-End phrases as well as a local index similar to that of [Kreft & Navarro, 2015]
-template<bool prefer_local_, typename Trie_, typename WindowIndex_, std::unsigned_integral Index = uint32_t>
+template<bool prefer_local_, std::unsigned_integral Index = uint32_t>
 class LZEndTopkParser {
 public:
-    using Trie = Trie_;
-    using WindowIndex = WindowIndex_;
+    using Trie = TopKLZEndTrie<Index>;
+    using WindowIndex = LZEndWindowIndex<Index>;
 
     using Phrase = LZEndPhrase<char, Index>;
 

@@ -3,9 +3,6 @@
 #include <phrase_block_writer.hpp>
 #include <phrase_block_reader.hpp>
 
-#include <lzend_parsing.hpp>
-#include <lzend_rev_phrase_trie.hpp>
-#include <lzend_window_index.hpp>
 #include <lzend_kk_parser.hpp>
 
 constexpr uint64_t MAGIC =
@@ -39,11 +36,9 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     size_t total_ref = 0;
 
     // initialize parser
-    using Parsing = LZEndParsing<char, Index>;
-    using Trie = LZEndRevPhraseTrie<char, Index>;
-    using WindowIndex = LZEndWindowIndex<Index>;
-
-    using Parser = LZEndKKParser<prefer_local, Parsing, Trie, WindowIndex, Index>;
+    using Parser = LZEndKKParser<prefer_local, Index>;
+    using Parsing = Parser::Parsing;
+    using Trie = Parser::Trie;
 
     size_t i = 0;
     auto emit = [&](Parsing::Phrase const& phrase) {
