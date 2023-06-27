@@ -19,6 +19,7 @@ constexpr uint64_t MAGIC =
     ((uint64_t)'K');
 
 constexpr bool PROTOCOL = false;
+constexpr bool EXTENDED_STATS = false;
 
 using Index = uint32_t;
 
@@ -101,29 +102,32 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     result.add("phrases_from_trie", parser_stats.phrases_from_trie);
     result.add("phrases_from_trie_avg_len", std::round(100.0 * ((double)parser_stats.phrases_from_trie_total_len / (double)parser_stats.phrases_from_trie)) / 100.0);
     result.add("prefer_local", prefer_local);
-    result.add("trie_nodes", trie_nodes);
-    result.add("trie_num_match_extract", trie_stats.num_match_extract);
-    result.add("trie_num_recalc", trie_stats.num_recalc);
-    result.add("trie_longest_lcs", trie_stats.longest_lcs);
-    result.add("mem_glob_buffer", state_mem.buffer);
-    result.add("mem_glob_lnks_lens", state_mem.lnks_lens);
-    result.add("mem_glob_parsing", state_mem.parsing);
-    result.add("mem_glob_phrase_hashes", state_mem.phrase_hashes);
-    result.add("mem_glob", state_mem.total());
-    result.add("mem_trie", trie_mem.total());
-    result.add("mem_trie_nodes", trie_mem.nodes);
-    result.add("mem_trie_phrase_ptrs", trie_mem.phrase_nodes);
-    result.add("mem_trie_nav", trie_mem.nav);
-    result.add("mem_trie_map", trie_mem.map);
 
-    auto const& win_mem = parser_stats.max_window_memory;
-    result.add("mem_window_rev_string", win_mem.reverse_window);
-    result.add("mem_window_lcp_isa", win_mem.lcp_isa);
-    result.add("mem_window_tmp_sa", win_mem.tmp_sa);
-    result.add("mem_window_marked", win_mem.marked);
-    result.add("mem_window_fingerprints", win_mem.fingerprints);
-    result.add("mem_window_rmq", win_mem.rmq);
-    result.add("mem_window", win_mem.total());
+    if constexpr(EXTENDED_STATS) {
+        result.add("trie_nodes", trie_nodes);
+        result.add("trie_num_match_extract", trie_stats.num_match_extract);
+        result.add("trie_num_recalc", trie_stats.num_recalc);
+        result.add("trie_longest_lcs", trie_stats.longest_lcs);
+        result.add("mem_glob_buffer", state_mem.buffer);
+        result.add("mem_glob_lnks_lens", state_mem.lnks_lens);
+        result.add("mem_glob_parsing", state_mem.parsing);
+        result.add("mem_glob_phrase_hashes", state_mem.phrase_hashes);
+        result.add("mem_glob", state_mem.total());
+        result.add("mem_trie", trie_mem.total());
+        result.add("mem_trie_nodes", trie_mem.nodes);
+        result.add("mem_trie_phrase_ptrs", trie_mem.phrase_nodes);
+        result.add("mem_trie_nav", trie_mem.nav);
+        result.add("mem_trie_map", trie_mem.map);
+
+        auto const& win_mem = parser_stats.max_window_memory;
+        result.add("mem_window_rev_string", win_mem.reverse_window);
+        result.add("mem_window_lcp_isa", win_mem.lcp_isa);
+        result.add("mem_window_tmp_sa", win_mem.tmp_sa);
+        result.add("mem_window_marked", win_mem.marked);
+        result.add("mem_window_fingerprints", win_mem.fingerprints);
+        result.add("mem_window_rmq", win_mem.rmq);
+        result.add("mem_window", win_mem.total());
+    }
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
