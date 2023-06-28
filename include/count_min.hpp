@@ -73,12 +73,12 @@ public:
     CountMin(CountMin const&) = delete;
     CountMin& operator=(CountMin const&) = delete;
 
-    inline Frequency increment_and_estimate(uintmax_t const item) {
+    inline Frequency increment_and_estimate(uintmax_t const item, Frequency const inc) {
         Frequency freq = std::numeric_limits<Frequency>::max();
         for(size_t i = 0; i < num_rows_; i++) {
             size_t const j = hash(i, item);
 
-            ++table_[i][j];
+            table_[i][j] += inc;
 
             // std::cout << "\th_" << i << "(fp) = " << j << " -> " << table_[i][j] << std::endl;
             freq = std::min(freq, table_[i][j]);

@@ -21,7 +21,22 @@
 #include "rolling_karp_rabin.hpp"
 #include "display.hpp"
 
-template<typename FilterNode>
+// when encountering a string, weigh it with weight 1 no matter what
+struct Weigh1 {
+    size_t operator()(size_t const len) const { return 1; }
+};
+
+// when encountering a string, weigh it with its length
+struct WeighLength {
+    size_t operator()(size_t const len) const { return len; }
+};
+
+// when encountering a string, weigh it with its squared length
+struct WeighLengthSq {
+    size_t operator()(size_t const len) const { return len * len; }
+};
+
+template<typename FilterNode, typename WeightFunc = Weigh1>
 requires requires {
     typename FilterNode::Index;
 } && requires(FilterNode node) {
@@ -29,6 +44,8 @@ requires requires {
     { node.insert_freq };
     { node.fingerprint };
     { node.minpq };
+} && requires(WeightFunc weight, size_t const len) {
+    { weight(len) } -> std::convertible_to<size_t>;
 }
 class TopKSubstrings {
 private:
@@ -68,6 +85,8 @@ protected:
     using FilterIndex = typename FilterNode::Index;
 
 private:
+    WeightFunc weight_;
+
     Trie<FilterNode> filter_;
     MinPQ<size_t, FilterIndex> min_pq_;
 
@@ -92,24 +111,27 @@ private:
         }
     }
 
-    void increment_in_filter(FilterIndex const v) ALWAYS_INLINE {
+    void increment_in_filter(FilterIndex const v, FilterIndex const weight) ALWAYS_INLINE {
         if constexpr(gather_stats_) ++stats_.num_filter_inc;
         if constexpr(measure_time_) stats_.t_filter_inc.resume();
 
         // increment frequency
         bool const maximal = filter_.is_leaf(v);
         auto& data = filter_.node(v);
-        ++data.freq;
+
+        data.freq += weight;
         if(maximal) {
             // prefix is maximal frequent string, increase in min pq
             assert((bool)data.minpq);
-            data.minpq = min_pq_.increase_key(data.minpq);
+            for(size_t i = 0; i < weight; i++) {
+                data.minpq = min_pq_.increase_key(data.minpq);
+            }
         }
 
         if constexpr(measure_time_) stats_.t_filter_inc.pause();
     }
 
-    FilterIndex insert_into_filter(FilterIndex const parent, char const label, uint64_t const fingerprint) ALWAYS_INLINE {
+    FilterIndex insert_into_filter(FilterIndex const parent, char const label, uint64_t const fingerprint, FilterIndex const weight) ALWAYS_INLINE {
         if constexpr(gather_stats_) ++stats_.num_filter_inc;
 
         auto const v = filter_.new_node();
@@ -117,12 +139,12 @@ private:
 
         // insert into min PQ as a maximal string
         auto& data = filter_.node(v);
-        data.freq = 1;
-        data.insert_freq = 1;
+        data.freq = weight;
+        data.insert_freq = weight;
         data.fingerprint = fingerprint;
-        data.minpq = min_pq_.insert(v, 1);
+        data.minpq = min_pq_.insert(v, weight);
 
-        assert(min_pq_.freq(data.minpq) == 1);
+        assert(min_pq_.freq(data.minpq) == weight);
 
         // mark the parent no longer maximal
         auto& parent_data = filter_.node(parent);
@@ -295,7 +317,7 @@ public:
             // the current prefix is non-frequent
 
             // lazily increment immediate prefix in filter
-            if(s.node) increment_in_filter(s.node);
+            if(s.node) increment_in_filter(s.node, weight_(s.len));
 
             if(filter_.full()) {
                 // the filter is full, count current prefix in the sketch
@@ -305,7 +327,7 @@ public:
                 if constexpr(measure_time_) stats_.t_sketch_inc.resume();
 
                 auto& sketch = sketches_[ext.sketch];
-                auto est = sketch.increment_and_estimate(ext_fp);
+                auto est = sketch.increment_and_estimate(ext_fp, weight_(s.len));
                 if constexpr(measure_time_) stats_.t_sketch_inc.pause();
 
                 // test if it is now frequent
@@ -331,7 +353,7 @@ public:
                 }
             } else {
                 // insert into filter, which is not yet full
-                ext.node = insert_into_filter(s.node, c, ext_fp);
+                ext.node = insert_into_filter(s.node, c, ext_fp, weight_(s.len));
                 ext.new_node = true;
             }
 
@@ -349,7 +371,7 @@ public:
 
     // forcefully drop out of the filter, causing an increment at the corresponding node if the current state is frequent
     void drop_out(StringState const& s) ALWAYS_INLINE {
-        if(s.frequent && s.node) increment_in_filter(s.node);
+        if(s.frequent && s.node) increment_in_filter(s.node, weight_(s.len));
     }
 
     size_t limit(StringState const& s, size_t const max_len) const {
