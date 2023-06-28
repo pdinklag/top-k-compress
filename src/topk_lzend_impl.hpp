@@ -310,7 +310,6 @@ private:
                 std::cout << "inserting phrases ending in sliding block into trie ..." << std::endl;
             }
 
-            Index const ztrie_before_inserts = ztrie_;
             Index const border = window_begin_glob + curblock_window_offs;
             while(ztrie_ < z_ && ztrie_end_ + local_phrases_[ztrie_].len <= border) { // we go one phrase beyond the border according to [KK, 2017]
                 // the phrase may be emitted
@@ -484,11 +483,15 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
     size_t i = 0;
     auto emit = [&](Parser::Phrase const& phrase) {
         if constexpr(PROTOCOL) {
-            std::cout << "phrase #" << (num_phrases+1) << ": i=" << i << ", (" << phrase.link;
-            if(parser.is_trie_ref(phrase.link)) {
-                std::cout << "*";
+            std::cout << "phrase #" << (num_phrases+1) << ": i=" << i << ", (";
+            if(phrase.len > 1) {
+                if(parser.is_trie_ref(phrase.link)) {
+                    std::cout << (phrase.link - 3 * max_block) << "*, " << phrase.len;
+                } else {
+                    std::cout << phrase.link << ", " << phrase.len;
+                }
             } else {
-                std::cout << ", " << phrase.len;
+                std::cout << "0, 1";
             }
             std::cout << ", " << display(phrase.last) << ")" << std::endl;
         }
@@ -499,9 +502,7 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
         if(phrase.len > 1) {
             // referencing phrase
             writer.write_ref(phrase.link);
-            if(!parser.is_trie_ref(phrase.link)) { // if the link is a trie node, there is no need to encode a length
-                writer.write_len(phrase.len - 1);
-            }
+            writer.write_len(phrase.len - 1);
             writer.write_literal(phrase.last);
 
             ++num_ref;
@@ -541,5 +542,207 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
 void topk_lzend_decompress(In in, Out out) {
-    // TODO
+    // header
+    TopkHeader header(in, MAGIC);
+    auto const k = header.k;
+    auto const max_block = header.window_size;
+    auto const num_sketches = header.num_sketches;
+    auto const sketch_rows = header.sketch_rows;
+    auto const sketch_columns = header.sketch_columns;
+
+    auto const max_window = 3 * max_block;
+    auto const trie_ref_offs = max_window;
+    auto is_trie_ref = [&](Index const p){ return p >= trie_ref_offs; };
+    
+    // initialize top-k framework
+    using Trie = TopKLZEndTrie<Index>;
+    Trie topk(k, num_sketches, sketch_rows, sketch_columns);
+
+    // initialize buffers
+    auto window = std::make_unique<char[]>(max_window);
+    size_t wsize = 0; // current size of the window
+
+    std::string rwindow;
+    rwindow.reserve(max_window);
+    auto phrase_buffer = std::make_unique<char[]>(max_window);
+
+    auto local_phrases = std::make_unique<Index[]>(3 * max_window);
+    Index z = 0;          // number of local phrases
+    Index ztrie = 0;      // number of local phrases already in trie
+
+    // decode
+    size_t num_phrases = 0;
+    size_t n = 0;     // number of decoded characters
+    size_t phase = 0; // the current phase (a.k.a. "block")
+
+    auto flush_trie = [&](Index const next_phase){
+        if(next_phase < 2) return; // nothing to do yet
+
+        Index const border = (next_phase >= 3) ? 2 * max_block : max_block;
+        if constexpr(DEBUG) std::cout << "flushing trie preparing phase " << next_phase << " -> border=" << border << std::endl;
+
+        auto beg = ztrie ? local_phrases[ztrie-1] + 1 : 0;
+        if(ztrie >= z || beg >= border) {
+            if constexpr(DEBUG) {
+                std::cout << "nothing to flush";
+                if(ztrie >= z) {
+                    std::cout << " (no new phrases)";
+                } else {
+                    std::cout << " (latest non-trie phrase #" << ztrie << " begins at position " << beg << ")";
+                }
+                std::cout << std::endl;
+            }
+            return;
+        }
+
+        // for this, we first need to build a fingerprint index over the reverse window
+        rwindow.clear();
+        std::copy(window.get(), window.get() + wsize, std::back_inserter(rwindow));
+        std::reverse(rwindow.begin(), rwindow.end());
+        Trie::StringView rfp(rwindow);
+
+        // now, we enter the relevant reverse strings beginning at the phrase end positions
+        auto pos_to_reverse = [&](Index const pos){ return wsize - 1 - pos; };
+        auto const rend = pos_to_reverse(0);
+
+        while(ztrie < z && beg < border) {
+            if constexpr(DEBUG) std::cout << "inserting string for phrase #" << (ztrie+1) << " (begins at " << beg << ", ends at " << local_phrases[ztrie] << ") into trie" << std::endl;
+            auto const rpos = pos_to_reverse(local_phrases[ztrie]);
+            topk.insert(rfp, rpos, rend - rpos + 1, max_block);
+
+            beg = local_phrases[ztrie] + 1;
+            ++ztrie;
+        }
+
+        if constexpr(DEBUG) {
+            if(ztrie >= z) {
+                std::cout << "(all phrases have been inserted)" << std::endl;
+            } else {
+                std::cout << "(next non-trie phrase #" << ztrie << " begins at position " << beg << " and is not inserted)" << std::endl;
+            }
+        }
+    };
+
+    auto slide_window = [&](Index const next_phase){
+        if(next_phase < 3) return; // nothing to do, still filling up the window
+
+        // slide window
+        assert(wsize >= max_block);
+        for(Index i = 0; i < 2 * max_block; i++) {
+            window[i] = window[i + max_block];
+        }
+        wsize -= max_block;
+
+        // slide local phrases
+        Index discard = 0;
+        while(discard < z && local_phrases[discard] < max_block) ++discard;
+
+        if constexpr(DEBUG) std::cout << "discarding " << discard << " phrases that end before the window" << std::endl;
+
+        assert(z >= discard);
+        assert(ztrie >= discard);
+
+        if(discard > 0) {
+            for(Index x = 0; x + discard < z; x++) {
+                assert(local_phrases[x + discard] >= max_block);
+
+                if constexpr(DEBUG) std::cout << "\tdiscarding local phrase #" << x << " (ends at " << local_phrases[x] << ")" << std::endl;
+                local_phrases[x] = local_phrases[x + discard] - max_block; // nb: also adjust end positions to new window
+            }
+
+            z -= discard;
+            ztrie -= discard;
+        }
+    };
+
+    auto prepare_phase = [&](Index const next_phase){
+        if(next_phase > phase) {
+            if constexpr(DEBUG) std::cout << "preparing next block: n=" << n << ", next_phase=" << next_phase << std::endl;
+
+            assert(next_phase == phase + 1);
+            flush_trie(next_phase);
+            slide_window(next_phase);
+
+            phase = next_phase;
+        }
+    };
+
+    auto emit = [&](char const c){
+        if constexpr(DEBUG) std::cout << "\temit character (i=" << n << "): " << display(c) << std::endl;
+
+        // emit character
+        *out++ = c;
+        
+        window[wsize++] = c;
+        assert(wsize <= max_window);
+
+        ++n;
+        if(in) prepare_phase(n / max_block);
+    };
+
+    PhraseBlockReader reader(in, true);
+    while(in) {
+        auto const p = reader.read_ref();
+        auto const len = (p > 0) ? reader.read_len() : 0;
+        auto const c = reader.read_literal();
+
+        assert(len <= max_block);
+
+        if constexpr(PROTOCOL) {
+            std::cout << "phrase #" << (num_phrases+1) << ": i=" << n << ", (";
+            if(p) {
+                if(is_trie_ref(p)) {
+                    std::cout << (p-trie_ref_offs) << "*, " << (len+1);
+                } else {
+                    std::cout << p << ", " << (len+1);
+                }
+            } else {
+                std::cout << "0, 1";
+            }
+            std::cout << ", " << display(c) << ")" << std::endl;
+        }
+
+        if(p) {
+            // referencing phrase
+
+            // the phrase to decode may cross a block boundary
+            // if it is a trie reference, it may then refer to a node that the encoder created while postprocessing the current block
+            // if it is a local phrase reference, it may then refer to a phrase that lies in the first block AFTER the encoder slid the window
+            // in any event, we would need to simulate the boundary crossing RIGHT NOW
+            auto const next_phase = (n + len) / max_block;
+            prepare_phase(next_phase);
+
+            if(is_trie_ref(p)) {
+                // spell trie string in reverse (which is forward again) and emit characters
+                auto const d = topk.filter().spell_reverse(p - trie_ref_offs, phrase_buffer.get());
+                assert(d >= len); // must have spelled at least len characters
+
+                auto const beg = d - len;
+                for(size_t i = 0; i < len; i++) {
+                    emit(phrase_buffer[beg + i]);
+                }
+            } else {
+                // copy characters from current window, because the calls to emit may proceed to the next window
+                assert(local_phrases[p - 1] >= len - 1);
+                auto const beg = local_phrases[p - 1] - len + 1;
+                for(size_t i = 0; i < len; i++) {
+                    phrase_buffer[i] = window[beg + i];
+                }
+
+                // now emit from buffer                
+                for(size_t i = 0; i < len; i++) {
+                    emit(phrase_buffer[i]);
+                }
+            }
+        }
+
+        // append literal
+        emit(c);
+
+        // count phrase
+        if constexpr(DEBUG) std::cout << "-> ends at position " << (n - 1) << " (local " << wsize - 1 << ")" << std::endl;
+        local_phrases[z++] = wsize - 1;
+        if(z > 1) assert(local_phrases[z-1] - local_phrases[z-2] <= max_block);
+        ++num_phrases;
+    }
 }
