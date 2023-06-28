@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <display.hpp>
 
 #include <topk_substrings.hpp>
 #include <topk_trie_node.hpp>
@@ -16,6 +17,8 @@ private:
     using FilterIndex = Base::FilterIndex;
 
     std::unique_ptr<Index[]> depth_;
+
+    size_t insert_seq_ = 0;
 
 #ifndef NDEBUG
     Index naive_depth(Index v) const {
@@ -74,23 +77,25 @@ public:
     }
 
     void insert(StringView const& str, Index const pos, Index const len, Index const limit = std::numeric_limits<Index>::max()) {
+        auto const max = std::min(len, limit);
         if constexpr(DEBUG) {
-            std::cout << "\tinsert string \"" << str.string_view().substr(pos, len) << "\"" << std::endl;
+            ++insert_seq_;
+            std::cout << "\tinsert string [seq=" << insert_seq_ << "] \"" << str.string_view().substr(pos, max) << "\"" << std::endl;
         }
 
-        auto const max = std::min(len, limit);
         auto s = Base::empty_string();
 
         while((s.frequent || s.new_node) && s.len < max) {
             assert(depth_[s.node] == s.len);
-            s = Base::extend(s, str[pos + s.len], str.fingerprint(pos, pos + s.len));
+            auto const c = str[pos + s.len];
+            s = Base::extend(s, c, str.fingerprint(pos, pos + s.len));
 
             if(s.new_node) {
-                if constexpr(DEBUG) std::cout << "\tcreated new node " << s.node << std::endl;
+                if constexpr(DEBUG) std::cout << "\t\tcreated new node " << s.node << " for " << display(c) << std::endl;
 
                 // TODO: update fast navigation
             } else {
-                if constexpr(DEBUG) std::cout << "\tnavigated to node " << s.node << std::endl;
+                if constexpr(DEBUG) std::cout << "\t\tnavigated to node " << s.node << " for " << display(c) << std::endl;
             }
         }
     }
