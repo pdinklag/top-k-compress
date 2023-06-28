@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <bit>
 #include <cassert>
-#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -11,22 +10,9 @@
 #include <string>
 
 #include "always_inline.hpp"
+#include "trie_concepts.hpp"
 
-template<typename Node> requires 
-    requires {
-        typename Node::Character;
-        typename Node::Index;
-    }
-    && std::constructible_from<Node> // default
-    && std::constructible_from<Node, typename Node::Index, typename Node::Character> // parent / label
-    && requires(Node node) {
-        { node.children };
-        { node.inlabel };
-        { node.parent };
-    } && requires(Node const& node) {
-        { node.size() } -> std::convertible_to<size_t>;
-        { node.is_leaf() } -> std::same_as<bool>;
-    }
+template<trie_node Node>
 class Trie {
 private:
     using Character = typename Node::Character;
