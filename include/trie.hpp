@@ -6,6 +6,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -110,17 +111,19 @@ public:
         return nodes_[v];
     }
 
-    size_t spell(NodeIndex const node, Character* buffer) const {
-        // spell reverse
+    size_t spell_reverse(NodeIndex const node, Character* buffer) const {
         size_t d = 0;
         auto v = node;
         while(v) {
             buffer[d++] = nodes_[v].inlabel;
             v = nodes_[v].parent;
         }
+        return d;
+    }
 
-        // reverse and return length
-        std::reverse(buffer, buffer + d);
+    size_t spell(NodeIndex const node, Character* buffer) const {
+        auto const d = spell_reverse(node, buffer);
+        std::reverse(buffer, buffer +  d);
         return d;
     }
 
