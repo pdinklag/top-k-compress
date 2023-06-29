@@ -13,9 +13,6 @@ target_link_libraries(topk-lz78 topk)
 add_executable(topk-lzend topk_lzend.cpp)
 target_link_libraries(topk-lzend topk word-packing rmq)
 
-add_executable(topk-lzendl topk_lzendl.cpp)
-target_link_libraries(topk-lzendl topk word-packing rmq)
-
 add_executable(topk-sel topk_sel.cpp)
 target_link_libraries(topk-sel topk)
 
@@ -36,3 +33,6 @@ target_link_libraries(lzend-kk topk word-packing rmq)
 
 add_executable(lzend-kkl lzend_kkl.cpp)
 target_link_libraries(lzend-kkl topk word-packing rmq)
+
+add_executable(lzend-blockwise lzend_blockwise.cpp)
+target_link_libraries(lzend-blockwise topk word-packing rmq)

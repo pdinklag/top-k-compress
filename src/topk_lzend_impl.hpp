@@ -34,7 +34,8 @@ using Index = uint32_t;
 
 // computes the LZ-End parsing of an input using a modified version of the [Kempa & Kosolobov, 2017] algorithm
 // replacing their compact trie by a top-k trie
-template<bool prefer_local_>
+// setting "use_trie_" to "false" effectively sets k := 0
+template<bool use_trie_ = true>
 class LZEndTopkParser {
 public:
     using Trie = TopKLZEndTrie<Index>;
@@ -69,11 +70,19 @@ private:
     Stats stats_;
 
     bool absorb_two_trie(Index const m, Index const p, Index const len1, Index const len2) const {
-        return p > 0 && m > len1 && len2 < max_block_ && trie_->depth(p) >= len2;
+        if constexpr(use_trie_) {
+            return p > 0 && m > len1 && len2 < max_block_ && trie_->depth(p) >= len2;
+        } else {
+            return false;
+        }
     }
 
     bool absorb_one_trie(Index const m, Index const p, Index const len1) const {
-        return p > 0 && m > 0 && len1 < max_block_ && trie_->depth(p) >= len1;
+        if constexpr(use_trie_) {
+            return p > 0 && m > 0 && len1 < max_block_ && trie_->depth(p) >= len1;
+        } else {
+            return false;
+        }
     }
 
     void precompute_absorb_local(Index const m, Index const len1, Index const len2, WindowIndex const& windex, Index& lce1, Index& lnk1, Index& lce2, Index& lnk2) const {
@@ -169,10 +178,12 @@ private:
             }
 
             Index p = 0;
-            if(phase >= 2) {
-                auto const rsuf_begin = windex.pos_to_reverse(m-1);
-                auto const rsuf_len = windex.size() - 1 - rsuf_begin;
-                p = trie_->find_prefix(rfp, rsuf_begin, rsuf_len);
+            if constexpr(use_trie_) {
+                if(phase >= 2) {
+                    auto const rsuf_begin = windex.pos_to_reverse(m-1);
+                    auto const rsuf_len = windex.size() - 1 - rsuf_begin;
+                    p = trie_->find_prefix(rfp, rsuf_begin, rsuf_len);
+                }
             }
 
             auto const len1 = local_phrases_[z_].len;                         // length of the current phrase
@@ -202,7 +213,7 @@ private:
             };
 
             AlgorithmCase whence;
-            {
+            if constexpr(use_trie_) {
                 precompute_absorb_local(m, len1, len2, windex, lce1, lnk1, lce2, lnk2);
 
                 auto const _absorb_two_local = absorb_two_local(m, len1, len2, lce2);
@@ -239,6 +250,15 @@ private:
                     } else {
                         whence = AlgorithmCase::NEW_CHAR;
                     }
+                }
+            } else {
+                precompute_absorb_local(m, len1, len2, windex, lce1, lnk1, lce2, lnk2);
+                if(absorb_two_local(m, len1, len2, lce2)) {
+                    whence = AlgorithmCase::ABSORB_TWO_LOCAL;
+                } else if(absorb_one_local(m, len1, lce1)) {
+                    whence = AlgorithmCase::ABSORB_ONE_LOCAL;
+                } else {
+                    whence = AlgorithmCase::NEW_CHAR;
                 }
             }
 
@@ -327,17 +347,19 @@ private:
                 // we enter phrases[ztrie]
                 ztrie_end_ += local_phrases_[ztrie_].len;
 
-                // count phrases that we introduced thanks to the trie
-                if(is_trie_ref(local_phrases_[ztrie_].link)) {
-                    ++stats_.phrases_from_trie;
-                    stats_.phrases_from_trie_total_len += local_phrases_[ztrie_].len;
+                if constexpr(use_trie_) {
+                    // count phrases that we introduced thanks to the trie
+                    if(is_trie_ref(local_phrases_[ztrie_].link)) {
+                        ++stats_.phrases_from_trie;
+                        stats_.phrases_from_trie_total_len += local_phrases_[ztrie_].len;
+                    }
+
+                    // insert into trie
+                    Index const rend = windex.pos_to_reverse(ztrie_end_ - window_begin_glob);
+                    Index const rlen = windex.size() - 1 - rend;
+
+                    trie_->insert(rfp, rend, rlen, max_block_);
                 }
-
-                // insert into trie
-                Index const rend = windex.pos_to_reverse(ztrie_end_ - window_begin_glob);
-                Index const rlen = windex.size() - 1 - rend;
-
-                trie_->insert(rfp, rend, rlen, max_block_);
 
                 // mark the phrase end for postprocessing of lnks
                 windex.mark(ztrie_end_ - window_begin_glob, ztrie_, true);
@@ -351,9 +373,11 @@ private:
             for(auto i = ztrie_; i <= z_; i++) {
                 if(on_emit_phrase) on_emit_phrase(local_phrases_[i]);
 
-                if(is_trie_ref(local_phrases_[i].link)) {
-                    ++stats_.phrases_from_trie;
-                    stats_.phrases_from_trie_total_len += local_phrases_[i].len;
+                if constexpr(use_trie_) {
+                    if(is_trie_ref(local_phrases_[i].link)) {
+                        ++stats_.phrases_from_trie;
+                        stats_.phrases_from_trie_total_len += local_phrases_[i].len;
+                    }
                 }
             }
         }
@@ -464,7 +488,7 @@ public:
     }
 };
 
-template<bool prefer_local, tdc::InputIterator<char> In, iopp::BitSink Out>
+template<bool use_trie, tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_block, size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     // initialize encoding
     TopkHeader header(k, max_block, num_sketches, sketch_rows, sketch_columns);
@@ -482,7 +506,7 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
     size_t total_ref = 0;
 
     // initialize parser
-    using Parser = LZEndTopkParser<prefer_local>;
+    using Parser = LZEndTopkParser<use_trie>;
     using Trie = Parser::Trie;
     
     // parse
@@ -546,10 +570,9 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
     result.add("phrases_avg_dist", std::round(100.0 * ((double)total_ref / (double)num_phrases)) / 100.0);
     result.add("phrases_from_trie", parser_stats.phrases_from_trie);
     result.add("phrases_from_trie_avg_len", std::round(100.0 * ((double)parser_stats.phrases_from_trie_total_len / (double)parser_stats.phrases_from_trie)) / 100.0);
-    result.add("prefer_local", prefer_local);
 }
 
-template<iopp::BitSource In, std::output_iterator<char> Out>
+template<bool use_trie, iopp::BitSource In, std::output_iterator<char> Out>
 void topk_lzend_decompress(In in, Out out) {
     // header
     TopkHeader header(in, MAGIC);
@@ -561,7 +584,7 @@ void topk_lzend_decompress(In in, Out out) {
 
     auto const max_window = 3 * max_block;
     auto const trie_ref_offs = max_window;
-    auto is_trie_ref = [&](Index const p){ return p >= trie_ref_offs; };
+    auto is_trie_ref = [&](Index const p){ return use_trie && p >= trie_ref_offs; };
     
     // initialize top-k framework
     using Trie = TopKLZEndTrie<Index>;
@@ -669,7 +692,7 @@ void topk_lzend_decompress(In in, Out out) {
             if constexpr(DEBUG) std::cout << "preparing next block: n=" << n << ", next_phase=" << next_phase << std::endl;
 
             assert(next_phase == phase + 1);
-            flush_trie(next_phase);
+            if constexpr(use_trie) flush_trie(next_phase);
             slide_window(next_phase);
 
             phase = next_phase;
