@@ -40,10 +40,13 @@ private:
         return result;
     }
 
-    uint64_t const base_;
+    uint64_t base_;
     std::array<uint128_t, 256> pop_left_precomp_;
 
 public:
+    RollingKarpRabin() : base_(0) {
+    }
+
     RollingKarpRabin(uint64_t const window, uint64_t const base) : base_(modulo(base)) {
         auto const max_exponent_exclusive = power(base_, window);
         for(uint64_t c = 0; c < 256; c++) {
