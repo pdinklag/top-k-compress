@@ -156,7 +156,7 @@ private:
             assert(xend == phase * max_block_ - 1); // we should end up back at the final position of the previous block
         }
 
-        // begin LZEnd algorithm by [Kempa & Kosolobov, 2017]
+        // begin modified LZEnd algorithm based on [Kempa & Kosolobov, 2017]
         for(Index mblock = 0; mblock < curblock_size; mblock++) {
             auto const m = curblock_window_offs + mblock;  // the current position within the window
             auto const mglob = window_begin_glob + m; // the current global position in the input
@@ -202,31 +202,40 @@ private:
             };
 
             AlgorithmCase whence;
-
-            if constexpr(prefer_local_) {
+            {
                 precompute_absorb_local(m, len1, len2, windex, lce1, lnk1, lce2, lnk2);
-                if(absorb_two_local(m, len1, len2, lce2)) {
-                    whence = AlgorithmCase::ABSORB_TWO_LOCAL;
-                } else if(absorb_two_trie(m, p, len1, len2)) {
-                    whence = AlgorithmCase::ABSORB_TWO_TRIE;
-                } else if(absorb_one_local(m, len1, lce1)) {
-                    whence = AlgorithmCase::ABSORB_ONE_LOCAL;
-                } else if(absorb_one_trie(m, p, len1)) {
-                    whence = AlgorithmCase::ABSORB_ONE_TRIE;
-                } else {
-                    whence = AlgorithmCase::NEW_CHAR;
-                }
-            } else {
-                if(absorb_two_trie(m, p, len1, len2)) {
-                    whence = AlgorithmCase::ABSORB_TWO_TRIE;
-                } else {
-                    precompute_absorb_local(m, len1, len2, windex, lce1, lnk1, lce2, lnk2);
-                    if(absorb_two_local(m, len1, len2, lce2)) {
+
+                auto const _absorb_two_local = absorb_two_local(m, len1, len2, lce2);
+                auto const _absorb_two_trie = absorb_two_trie(m, p, len1, len2);
+                if(_absorb_two_local || _absorb_two_trie) {
+                    if(_absorb_two_trie && _absorb_two_local) {
+                        // greedily pick the longer replacement
+                        if(trie_->depth(p) > lce2) {
+                            whence = AlgorithmCase::ABSORB_TWO_TRIE;
+                        } else {
+                            whence = AlgorithmCase::ABSORB_TWO_LOCAL;
+                        }
+                    } else if(_absorb_two_trie) {
+                        whence = AlgorithmCase::ABSORB_TWO_TRIE;
+                    } else {
                         whence = AlgorithmCase::ABSORB_TWO_LOCAL;
-                    } else if(absorb_one_trie(m, p, len1)) {
-                        whence = AlgorithmCase::ABSORB_ONE_TRIE;
-                    } else if(absorb_one_local(m, len1, lce1)) {
-                        whence = AlgorithmCase::ABSORB_ONE_LOCAL;
+                    }
+                } else {
+                    auto const _absorb_one_local = absorb_one_local(m, len1, lce1);
+                    auto const _absorb_one_trie = absorb_one_trie(m, p, len1);
+                    if(_absorb_one_local || _absorb_one_trie) {
+                        if(_absorb_one_local && _absorb_one_trie) {
+                            // greedily pick the longer replacement
+                            if(trie_->depth(p) > lce1) {
+                                whence = AlgorithmCase::ABSORB_ONE_TRIE;
+                            } else {
+                                whence = AlgorithmCase::ABSORB_ONE_LOCAL;
+                            }
+                        } else if(_absorb_one_trie) {
+                            whence = AlgorithmCase::ABSORB_ONE_TRIE;
+                        } else {
+                            whence = AlgorithmCase::ABSORB_ONE_LOCAL;
+                        }
                     } else {
                         whence = AlgorithmCase::NEW_CHAR;
                     }
