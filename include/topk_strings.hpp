@@ -7,6 +7,8 @@
 
 #include <word_packing.hpp>
 
+#include <ankerl/unordered_dense.h>
+
 #include "count_min.hpp"
 #include "min_pq.hpp"
 
@@ -21,15 +23,12 @@ private:
     using Hash = uint64_t;
     using BitPack = uint64_t;
 
-    static constexpr size_t CAPACITY_FACTOR = 2;
-
     static constexpr Hash hash(Fingerprint const fp, Length const len) {
         return Hash(len) * 68719476377ULL + Hash(fp) * 2621271ULL;
     }
 
-    size_t k_;
-    size_t size_;
-    size_t capacity_;
+    Index k_;
+    Index size_;
 
     MinPQ<size_t> min_pq_;
     CountMin<size_t> sketch_;
@@ -41,30 +40,26 @@ private:
         MinPQ<size_t>::Location min_pq_loc;
     } __attribute__((packed));
 
+    ankerl::unordered_dense::map<Hash, Index> filter_map_;
     std::unique_ptr<FilterEntry[]> filter_;
     std::unique_ptr<BitPack[]> used_;
-
-    Index slot(Hash const h) const { return h % capacity_; }
-    Index probe(Index const i) const { return (i + 1) % capacity_; }
 
     bool find(Fingerprint const fp, Length const len, Hash& h, Index& out_slot) const {
         auto used = word_packing::bit_accessor(used_.get());
 
         h = hash(fp, len);
-        out_slot = slot(h);
-        while(used[out_slot]) {
-            if(filter_[out_slot].h == h) {
-                return true;
-            } else {
-                out_slot = probe(out_slot);
-            }
+        auto it = filter_map_.find(h);
+        if(it != filter_map_.end()) {
+            out_slot = it->second;
+            assert(used[out_slot]);
+            return true;
+        } else {
+            return false;
         }
-        return false;
     }
 
     void erase(Index i) {
         assert(size_ > 0);
-
         auto used = word_packing::bit_accessor(used_.get());
         assert(used[i]);
         
@@ -72,31 +67,25 @@ private:
         auto const h = filter_[i].h;
         sketch_.increment(h, filter_[i].freq - filter_[i].insert_freq);
 
-        // remove from probe chain
-        auto const initial_slot = slot(h);
-        auto j = probe(i);
-        while(used[j] && slot(filter_[j].h) == initial_slot) {
-            filter_[i] = filter_[j];
-            i = j;
-            j = probe(i);
-        }
-        used[i] = false;
-
-        // register
+        // remove from table
+        filter_map_.erase(h);
         --size_;
+        assert(filter_map_.size() == size_);
+
+        used[i] = false;
     }
 
 public:
-    TopKStrings(size_t const k, size_t const sketch_rows, size_t const sketch_columns)
+    TopKStrings(Index const k, size_t const sketch_rows, size_t const sketch_columns)
         : k_(k),
           size_(0),
-          capacity_(CAPACITY_FACTOR * k),
           min_pq_(k),
           sketch_(sketch_rows, sketch_columns) {
 
-        filter_ = std::make_unique<FilterEntry[]>(capacity_);
+        filter_ = std::make_unique<FilterEntry[]>(k);
+        filter_map_.reserve(k);
 
-        auto const num_packs = word_packing::num_packs_required<BitPack>(capacity_, 1);
+        auto const num_packs = word_packing::num_packs_required<BitPack>(k, 1);
         used_ = std::make_unique<BitPack[]>(num_packs);
         for(size_t i = 0; i < num_packs; i++) {
             used_[i] = 0;
@@ -113,10 +102,11 @@ public:
         } else {
             // string is not frequent
             auto used = word_packing::bit_accessor(used_.get());
-            assert(!used[i]);
 
             if(size_ < k_) {
                 // filter is not yet full, insert
+                i = size_;
+
                 FilterEntry e;
                 e.h = h;
                 e.freq = 1;
@@ -125,7 +115,9 @@ public:
 
                 used[i] = 1;
                 filter_[i] = e;
+                filter_map_.emplace(h, i);
                 ++size_;
+                assert(filter_map_.size() == size_);
             } else {
                 // filter is full, sketch
                 auto const est = sketch_.increment_and_estimate(h, 1);
@@ -133,8 +125,10 @@ public:
                     // estimated frequency is higher than minimum, swap!
 
                     // erase minimum
-                    erase(min_pq_.extract_min());
+                    i = min_pq_.extract_min();
+                    erase(i);
                     assert(size_ == k_ - 1);
+                    assert(!used[i]);
 
                     // move from sketch
                     FilterEntry e;
@@ -145,8 +139,10 @@ public:
 
                     used[i] = 1;
                     filter_[i] = e;
+                    filter_map_.emplace(h, i);
                     ++size_;
                     assert(size_ == k_);
+                    assert(filter_map_.size() == size_);
                 }
             }
         }
