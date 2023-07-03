@@ -11,7 +11,7 @@ struct Compressor : public CompressorBase {
     uint64_t len_exp_min = 2;
     uint64_t len_exp_max = 6;
 
-    Compressor() : CompressorBase("lzend-blockwise", "Implements blockwise LZ-End (basically top-0 LZ-End)") {
+    Compressor() : CompressorBase("topk-sample", "Samples strings in regular intervals and uses them as a top-k dictionary") {
         
         param('k', "num-frequent", k, "The number of frequent substrings to maintain.");
         param('r', "sketch-rows", sketch_rows, "The number of rows in the Count-Min sketch.");
@@ -22,7 +22,7 @@ struct Compressor : public CompressorBase {
     }
 
     virtual void init_result(pm::Result& result) override {
-        result.add("algo", "lzend-blockwise");
+        result.add("algo", "topk-sample");
         result.add("k", k);
         result.add("sketch_columns", sketch_columns);
         result.add("sketch_rows", sketch_rows);
@@ -33,7 +33,7 @@ struct Compressor : public CompressorBase {
     }
 
     virtual std::string file_ext() override {
-        return ".lzendblock";
+        return ".topksample";
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {

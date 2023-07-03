@@ -32,6 +32,8 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
 
     size_t num_refs = 0;
     size_t num_literals = 0;
+    size_t longest = 0;
+    size_t total_len = 0;
 
     // initialize encoding
     TopkHeader header(k, len_exp_min, len_exp_max, sketch_rows, sketch_columns);
@@ -86,6 +88,9 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
                     ++num_refs;
                     writer.write_ref(slot+1);
 
+                    longest = std::max(longest, len);
+                    total_len += len;
+
                     // increase its frequency
                     topk.insert(fp[i], len);
                 }
@@ -126,9 +131,13 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
     writer.flush();
 
     // stats
-    result.add("phrases_total", num_refs + num_literals);
+    auto const num_phrases = num_refs + num_literals;
+    result.add("phrases_total", num_phrases);
     result.add("phrases_ref", num_refs);
     result.add("phrases_literal", num_literals);
+    result.add("phrases_longest", longest);
+    result.add("phrases_avg_len", std::round(100.0 * ((double)total_len / (double)num_phrases)) / 100.0);
+    result.add("phrases_avg_ref_len", std::round(100.0 * ((double)total_len / (double)num_refs)) / 100.0);
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
