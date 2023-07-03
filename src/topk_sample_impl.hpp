@@ -23,6 +23,17 @@ constexpr bool DEBUG = false;
 
 constexpr size_t rolling_fp_base = (1ULL << 16) - 39;
 
+constexpr size_t CHAR_BITS = 8;
+constexpr size_t REF_BITS = 32;
+
+template<iopp::BitSink Out>
+void write_signal(Out out) {
+    static std::string signal("$!REF!$");
+    for(size_t i = 0; i < signal.length(); i++) {
+        out.write(signal[i], CHAR_BITS);
+    }
+}
+
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_exp, size_t const len_exp_min, size_t const len_exp_max, size_t const k, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     assert(len_exp_max >= len_exp_min);
@@ -38,8 +49,6 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
     // initialize encoding
     TopkHeader header(k, len_exp_min, len_exp_max, sketch_rows, sketch_columns);
     header.encode(out, MAGIC);
-
-    PhraseBlockWriter writer(out, block_size, true);
 
     // init buffers
     size_t const max_len = 1ULL << len_exp_max;
@@ -86,7 +95,9 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
                     if constexpr(DEBUG) std::cout << "pos=" << pos << ": found [" << (pos - len) << " .. " << pos - 1 << "] = 0x" << std::hex << fp[i] << " / " << std::dec << len << " at slot #" << slot << std::endl;
                     next += len;
                     ++num_refs;
-                    writer.write_ref(slot+1);
+
+                    write_signal(out);
+                    out.write(slot, REF_BITS);
 
                     longest = std::max(longest, len);
                     total_len += len;
@@ -118,8 +129,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
 
         // potentially encode literal
         if(pos >= next) {
-            writer.write_ref(0);
-            writer.write_literal(c);
+            out.write(c, CHAR_BITS);
             ++num_literals;
             ++next;
         }
@@ -127,8 +137,6 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
         // advance
         ++pos;
     }
-
-    writer.flush();
 
     // stats
     auto const num_phrases = num_refs + num_literals;
