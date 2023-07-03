@@ -24,9 +24,11 @@ constexpr bool DEBUG = false;
 constexpr size_t rolling_fp_base = (1ULL << 16) - 39;
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_sample(In begin, In const& end, Out out, size_t const sample, size_t const len_exp_min, size_t const len_exp_max, size_t const k, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
+void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_exp, size_t const len_exp_min, size_t const len_exp_max, size_t const k, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     assert(len_exp_max >= len_exp_min);
     assert(len_exp_max <= 31);
+
+    auto const sample_mask = (1ULL << sample_exp) - 1;
 
     size_t num_refs = 0;
     size_t num_literals = 0;
@@ -88,7 +90,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample,
                     topk.insert(fp[i], len);
                 }
 
-                if(pos % sample == 0) {
+                if((pos & sample_mask) == 0) {
                     // this is a sampling position, sample the current state
                     // which represents the string s[pos-len .. pos-1]
                     // if constexpr(DEBUG) std::cout << "pos=" << pos << ": sample [" << (pos - len) << " .. " << pos - 1 << "] = 0x" << std::hex << fp[i] << " / " << std::dec << len << std::endl;

@@ -7,7 +7,7 @@ struct Compressor : public CompressorBase {
     uint64_t k = 1'000'000;
     uint64_t sketch_rows = 2;
     uint64_t sketch_columns = 1'000'000;
-    uint64_t sample = 64;
+    uint64_t sample_exp = 7;
     uint64_t len_exp_min = 2;
     uint64_t len_exp_max = 6;
 
@@ -16,7 +16,7 @@ struct Compressor : public CompressorBase {
         param('k', "num-frequent", k, "The number of frequent substrings to maintain.");
         param('r', "sketch-rows", sketch_rows, "The number of rows in the Count-Min sketch.");
         param('c', "sketch-columns", sketch_columns, "The total number of columns in each Count-Min row.");
-        param('s', "sample", sample, "Sample at these positions");
+        param('s', "sample", sample_exp, "sample_exp");
         param("min", len_exp_min, "len_exp_min");
         param("max", len_exp_max, "len_exp_max");
     }
@@ -26,7 +26,7 @@ struct Compressor : public CompressorBase {
         result.add("k", k);
         result.add("sketch_columns", sketch_columns);
         result.add("sketch_rows", sketch_rows);
-        result.add("sample", sample);
+        result.add("sample_exp", sample_exp);
         result.add("len_exp_min", len_exp_min);
         result.add("len_exp_max", len_exp_max);
         CompressorBase::init_result(result);
@@ -37,7 +37,7 @@ struct Compressor : public CompressorBase {
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_compress_sample(in.begin(), in.end(), iopp::bitwise_output_to(out), sample, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns, block_size, result);
+        topk_compress_sample(in.begin(), in.end(), iopp::bitwise_output_to(out), sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns, block_size, result);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
