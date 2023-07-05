@@ -93,31 +93,37 @@ public:
     }
 
     void insert(Fingerprint const fp, Length const len) {
+        Index discard;
+        insert(fp, len, discard);
+    }
+
+    bool insert(Fingerprint const fp, Length const len, Index& slot) {
         Hash h;
-        Index i;
-        if(find(fp, len, h, i)) {
+        if(find(fp, len, h, slot)) {
             // string is frequent, increment
-            ++filter_[i].freq;
-            filter_[i].min_pq_loc = min_pq_.increase_key(filter_[i].min_pq_loc);
+            ++filter_[slot].freq;
+            filter_[slot].min_pq_loc = min_pq_.increase_key(filter_[slot].min_pq_loc);
+            return true;
         } else {
             // string is not frequent
             auto used = word_packing::bit_accessor(used_.get());
 
             if(size_ < k_) {
                 // filter is not yet full, insert
-                i = size_;
+                slot = size_;
 
                 FilterEntry e;
                 e.h = h;
                 e.freq = 1;
                 e.insert_freq = 0;
-                e.min_pq_loc = min_pq_.insert(i, 1);
+                e.min_pq_loc = min_pq_.insert(slot, 1);
 
-                used[i] = 1;
-                filter_[i] = e;
-                filter_map_.emplace(h, i);
+                used[slot] = 1;
+                filter_[slot] = e;
+                filter_map_.emplace(h, slot);
                 ++size_;
                 assert(filter_map_.size() == size_);
+                return true;
             } else {
                 // filter is full, sketch
                 auto const est = sketch_.increment_and_estimate(h, 1);
@@ -125,8 +131,8 @@ public:
                     // estimated frequency is higher than minimum, swap!
 
                     // erase minimum
-                    i = min_pq_.extract_min();
-                    erase(i);
+                    slot = min_pq_.extract_min();
+                    erase(slot);
                     assert(size_ == k_ - 1);
                     assert(!used[i]);
 
@@ -135,17 +141,19 @@ public:
                     e.h = h;
                     e.freq = est;
                     e.insert_freq = est;
-                    e.min_pq_loc = min_pq_.insert(i, est);
+                    e.min_pq_loc = min_pq_.insert(slot, est);
 
-                    used[i] = 1;
-                    filter_[i] = e;
-                    filter_map_.emplace(h, i);
+                    used[slot] = 1;
+                    filter_[slot] = e;
+                    filter_map_.emplace(h, slot);
                     ++size_;
                     assert(size_ == k_);
                     assert(filter_map_.size() == size_);
+                    return true;
                 }
             }
         }
+        return false;
     }
 
     // attempts to find the given string

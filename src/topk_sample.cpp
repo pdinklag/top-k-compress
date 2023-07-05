@@ -37,7 +37,7 @@ struct Compressor : public CompressorBase {
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_compress_sample(in.begin(), in.end(), iopp::bitwise_output_to(out), sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns, block_size, result);
+        topk_compress_sample(in.begin(), in.end(), iopp::bitwise_output_to(out), sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns, result);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
