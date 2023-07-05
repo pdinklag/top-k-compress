@@ -21,6 +21,8 @@ constexpr uint64_t MAGIC =
 
 constexpr bool DEBUG = false;
 
+using TopK = TopKStrings<true>;
+
 constexpr size_t rolling_fp_base = (1ULL << 16) - 39;
 
 using Index = uint32_t;
@@ -36,7 +38,7 @@ struct Buffers {
     size_t len_exp_min_;
 
     tlx::RingBuffer<char> buffer;
-    std::unique_ptr<std::unique_ptr<TopKStrings>[]> topk;
+    std::unique_ptr<std::unique_ptr<TopK>[]> topk;
     std::unique_ptr<RollingKarpRabin[]> hash;
     std::unique_ptr<uint64_t[]> fp;
 
@@ -45,7 +47,7 @@ struct Buffers {
           max_len(1ULL << len_exp_max),
           len_exp_min_(len_exp_min),
           buffer(max_len),
-          topk(std::make_unique<std::unique_ptr<TopKStrings>[]>(num_lens)),
+          topk(std::make_unique<std::unique_ptr<TopK>[]>(num_lens)),
           hash(std::make_unique<RollingKarpRabin[]>(num_lens)),
           fp(std::make_unique<uint64_t[]>(num_lens)) {
 
@@ -60,7 +62,7 @@ struct Buffers {
                     return;
                 }
 
-                topk[i] = std::make_unique<TopKStrings>(num, sketch_rows, cols);
+                topk[i] = std::make_unique<TopK>(num, sketch_rows, cols);
 
                 num >>= 1;
                 cols >>= 1;
@@ -141,7 +143,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
                 // we have read enough characters to do meaningful things
 
                 // lookup
-                TopKStrings::Index slot;
+                TopK::Index slot;
                 if(pos >= next && b.topk[i]->find(b.fp[i], len, slot)) {
                     // we found it
                     if constexpr(DEBUG) std::cout << "pos=" << pos << ": found [" << (pos - len) << " .. " << pos - 1 << "] = 0x" << std::hex << b.fp[i] << " / " << std::dec << len << " at slot #" << slot << std::endl;

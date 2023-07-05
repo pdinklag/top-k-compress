@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bit>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -12,6 +13,7 @@
 #include "count_min.hpp"
 #include "min_pq.hpp"
 
+template<bool approx_minpq_ = false>
 class TopKStrings {
 public:
     using Fingerprint = uint64_t;
@@ -58,7 +60,7 @@ private:
         }
     }
 
-    void erase(Index i) {
+    void erase(Index const i) {
         assert(size_ > 0);
         auto used = word_packing::bit_accessor(used_.get());
         assert(used[i]);
@@ -102,7 +104,14 @@ public:
         if(find(fp, len, h, slot)) {
             // string is frequent, increment
             ++filter_[slot].freq;
-            filter_[slot].min_pq_loc = min_pq_.increase_key(filter_[slot].min_pq_loc);
+
+            if constexpr(approx_minpq_) {
+                if(std::has_single_bit(filter_[slot].freq)) {
+                    filter_[slot].min_pq_loc = min_pq_.increase_key(filter_[slot].min_pq_loc);    
+                }
+            } else {
+                filter_[slot].min_pq_loc = min_pq_.increase_key(filter_[slot].min_pq_loc);
+            }
             return true;
         } else {
             // string is not frequent
@@ -127,21 +136,27 @@ public:
             } else {
                 // filter is full, sketch
                 auto const est = sketch_.increment_and_estimate(h, 1);
-                if(est > min_pq_.min_frequency()) {
+                auto const swap = (approx_minpq_ ? std::bit_width(est) : est) > min_pq_.min_frequency();
+                if(swap) {
                     // estimated frequency is higher than minimum, swap!
 
                     // erase minimum
                     slot = min_pq_.extract_min();
                     erase(slot);
                     assert(size_ == k_ - 1);
-                    assert(!used[i]);
+                    assert(!used[slot]);
 
                     // move from sketch
                     FilterEntry e;
                     e.h = h;
                     e.freq = est;
                     e.insert_freq = est;
-                    e.min_pq_loc = min_pq_.insert(slot, est);
+
+                    if constexpr(approx_minpq_) {
+                        e.min_pq_loc = min_pq_.insert(slot, std::bit_width(est));
+                    } else {
+                        e.min_pq_loc = min_pq_.insert(slot, est);
+                    }
 
                     used[slot] = 1;
                     filter_[slot] = e;
