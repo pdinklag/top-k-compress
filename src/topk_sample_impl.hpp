@@ -23,15 +23,14 @@ constexpr bool DEBUG = false;
 
 constexpr size_t rolling_fp_base = (1ULL << 16) - 39;
 
+constexpr size_t BYTE_BITS = 8;
 constexpr size_t CHAR_BITS = 8;
 constexpr size_t REF_BITS = 32;
 
-template<iopp::BitSink Out>
-void write_signal(Out out) {
-    static std::string signal("$!REF!$");
-    for(size_t i = 0; i < signal.length(); i++) {
-        out.write(signal[i], CHAR_BITS);
-    }
+constexpr char SIGNAL = '$';
+
+inline constexpr size_t get_len(size_t const i, size_t const len_exp_min) {
+    return 1ULL << (i + len_exp_min);
 }
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
@@ -55,16 +54,30 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
     tlx::RingBuffer<char> buffer(max_len);
 
     auto const num_lens = len_exp_max - len_exp_min + 1;
-    auto get_len = [&](size_t const i){ return 1ULL << (i + len_exp_min); };
+    std::unique_ptr<TopKStrings> topk[num_lens];
+    {
+        size_t num = k >> 1;
+        size_t cols = sketch_columns >> 1;
+
+        for(size_t i = 0; i < num_lens; i++) {
+            if(num == 0 || cols == 0) {
+                std::cerr << "please choose a greater k and/or number of sketch columns" << std::endl;
+                return;
+            }
+
+            topk[i] = std::make_unique<TopKStrings>(num, sketch_rows, cols);
+
+            num >>= 1;
+            cols >>= 1;
+        }
+    }
 
     RollingKarpRabin hash[num_lens];
     uint64_t fp[num_lens];
     for(size_t i = 0; i < num_lens; i++) {
-        hash[i] = RollingKarpRabin(get_len(i), rolling_fp_base);
+        hash[i] = RollingKarpRabin(get_len(i, len_exp_min), rolling_fp_base);
         fp[i] = 0;
     }
-    
-    TopKStrings topk(k, sketch_rows, sketch_columns);
 
     // process
     size_t pos = 0; // the current position in the input
@@ -84,33 +97,34 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
 
         for(size_t i_ = num_lens; i_ > 0; i_--) {
             auto const i = i_ - 1;
-            size_t const len = get_len(i);
+            size_t const len = get_len(i, len_exp_min);
             if(pos >= len) {
                 // we have read enough characters to do meaningful things
 
                 // lookup
                 TopKStrings::Index slot;
-                if(pos >= next && topk.find(fp[i], len, slot)) {
+                if(pos >= next && topk[i]->find(fp[i], len, slot)) {
                     // we found it
                     if constexpr(DEBUG) std::cout << "pos=" << pos << ": found [" << (pos - len) << " .. " << pos - 1 << "] = 0x" << std::hex << fp[i] << " / " << std::dec << len << " at slot #" << slot << std::endl;
                     next += len;
                     ++num_refs;
 
-                    write_signal(out);
+                    out.write(SIGNAL, CHAR_BITS);
                     out.write(slot, REF_BITS);
+                    out.write(i, BYTE_BITS);
 
                     longest = std::max(longest, len);
                     total_len += len;
 
                     // increase its frequency
-                    topk.insert(fp[i], len);
+                    topk[i]->insert(fp[i], len);
                 }
 
                 if((pos & sample_mask) == 0) {
                     // this is a sampling position, sample the current state
                     // which represents the string s[pos-len .. pos-1]
                     // if constexpr(DEBUG) std::cout << "pos=" << pos << ": sample [" << (pos - len) << " .. " << pos - 1 << "] = 0x" << std::hex << fp[i] << " / " << std::dec << len << std::endl;
-                    topk.insert(fp[i], len);
+                    topk[i]->insert(fp[i], len);
                 }
             }
 
@@ -130,6 +144,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
         // potentially encode literal
         if(pos >= next) {
             out.write(c, CHAR_BITS);
+            if(c == SIGNAL) out.write(SIGNAL, CHAR_BITS); // nb: make signal characters decodable
             ++num_literals;
             ++next;
         }
