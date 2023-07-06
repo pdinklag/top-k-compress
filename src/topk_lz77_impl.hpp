@@ -35,7 +35,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
-    using Topk = TopKSubstrings<TopkLZ77TrieNode>;
+    using Topk = TopKSubstrings<TopkLZ77TrieNode, true>;
     using FilterIndex = TopkLZ77TrieNode::Index;
     static constexpr FilterIndex DOES_NOT_EXIST = TopkLZ77TrieNode::DOES_NOT_EXIST;
 
