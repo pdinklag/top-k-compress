@@ -21,7 +21,7 @@
 #include "rolling_karp_rabin.hpp"
 #include "display.hpp"
 
-template<typename FilterNode>
+template<typename FilterNode, bool approx_minpq_ = false>
 requires requires {
     typename FilterNode::Index;
 } && requires(FilterNode node) {
@@ -97,14 +97,21 @@ private:
         if constexpr(measure_time_) stats_.t_filter_inc.resume();
 
         // increment frequency
-        bool const maximal = filter_.is_leaf(v);
         auto& data = filter_.node(v);
 
         ++data.freq;
-        if(maximal) {
-            // prefix is maximal frequent string, increase in min pq
-            assert((bool)data.minpq);
-            data.minpq = min_pq_.increase_key(data.minpq);
+        if constexpr(approx_minpq_) {
+            if(std::has_single_bit(data.freq) && filter_.is_leaf(v)) {
+                // prefix is maximal frequent string, increase in min pq
+                assert((bool)data.minpq);
+                data.minpq = min_pq_.increase_key(data.minpq);
+            }
+        } else {
+            if(filter_.is_leaf(v)) {
+                // prefix is maximal frequent string, increase in min pq
+                assert((bool)data.minpq);
+                data.minpq = min_pq_.increase_key(data.minpq);
+            }
         }
 
         if constexpr(measure_time_) stats_.t_filter_inc.pause();
@@ -158,8 +165,7 @@ private:
             // the old parent may now be maximal
             if(old_parent_data.is_leaf()) {
                 // insert into min PQ
-                old_parent_data.minpq = min_pq_.insert(old_parent, old_parent_data.freq);
-                assert(min_pq_.freq(old_parent_data.minpq) == old_parent_data.freq);
+                old_parent_data.minpq = min_pq_.insert(old_parent, approx_minpq_ ? std::bit_width(old_parent_data.freq) : old_parent_data.freq);
             }
         }
 
@@ -177,8 +183,7 @@ private:
         assert(filter_.is_leaf(swap));
 
         // also insert it into the min PQ
-        swap_data.minpq = min_pq_.insert(swap, frequency);
-        assert(min_pq_.freq(swap_data.minpq) == frequency);
+        swap_data.minpq = min_pq_.insert(swap, approx_minpq_ ? std::bit_width(frequency) : frequency);
         
         // the parent is no longer maximal, remove from min PQ
         if(parent) {
@@ -310,7 +315,8 @@ public:
                 if constexpr(measure_time_) stats_.t_sketch_inc.pause();
 
                 // test if it is now frequent
-                if(est > min_pq_.min_frequency()) {
+                auto const swap = (approx_minpq_ ? std::bit_width(est) : est) > min_pq_.min_frequency();
+                if(swap) {
                     // it is now frequent according to just the numbers, test if we can swap
                     if(i == 0 || (s.node && filter_.node(s.node).freq >= est)) {
                         // the immediate prefix was frequent, so yes, we can!
