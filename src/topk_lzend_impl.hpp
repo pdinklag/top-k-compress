@@ -15,7 +15,7 @@
 #include <lzend_window_index.hpp>
 #include <topk_lzend_trie.hpp>
 
-#include <tdc/code/concepts.hpp>
+#include <code/concepts.hpp>
 
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |

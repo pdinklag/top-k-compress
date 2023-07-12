@@ -4,15 +4,15 @@
 #include <iostream>
 #include <stdexcept>
 
-#include <tdc/code/universal/binary.hpp>
+#include <code/binary.hpp>
 
 #include "always_inline.hpp"
 #include "vitter87.hpp"
 
 class TopkHeader {
 private:
-    using Binary = tdc::code::Binary;
-    using Universe = tdc::code::Universe;
+    using Binary = code::Binary;
+    using Universe = code::Universe;
 
 public:
     uint64_t k;
@@ -25,7 +25,7 @@ public:
         : k(_k), window_size(_window_size), num_sketches(_num_sketches), sketch_rows(_sketch_rows), sketch_columns(_sketch_columns) {
     }
 
-    template<tdc::code::BitSource In>
+    template<code::BitSource In>
     TopkHeader(In& in, uint64_t const expected_magic) {
         uint64_t const magic = Binary::decode(in, Universe::of<uint64_t>());
         if(magic != expected_magic) {
@@ -40,7 +40,7 @@ public:
         sketch_columns = Binary::decode(in, Universe::of<uint64_t>());
     }
 
-    template<tdc::code::BitSink Out>
+    template<code::BitSink Out>
     void encode(Out& out, uint64_t const magic) {
         Binary::encode(out, magic, Universe::of<uint64_t>());
         Binary::encode(out, k, Universe::of<uint64_t>());

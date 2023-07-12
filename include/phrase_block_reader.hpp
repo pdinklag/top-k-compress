@@ -4,9 +4,8 @@
 
 #include <iopp/concepts.hpp>
 
-#include <tdc/code/universal/binary.hpp>
-#include <tdc/code/universal/elias_delta.hpp>
-#include <tdc/code/entropical/huffman.hpp>
+#include <code/binary.hpp>
+#include <code/huffman.hpp>
 
 #include <vector>
 
@@ -23,9 +22,9 @@ private:
     bool use_len_;
     size_t read_;
 
-    tdc::code::Universe u_refs_;
-    tdc::code::HuffmanTree<Char> huff_lits_;
-    tdc::code::HuffmanTree<Len> huff_lens_;
+    code::Universe u_refs_;
+    code::HuffmanTree<Char> huff_lits_;
+    code::HuffmanTree<Len> huff_lens_;
 
     void advance_block() {
         if constexpr(DEBUG) std::cout << "advance block" << std::endl;
@@ -34,9 +33,9 @@ private:
         read_ = 0;
 
         // load block header
-        auto const ref_min = tdc::code::Binary::decode(*in_, tdc::code::Universe::of<Ref>());
-        auto const ref_max = tdc::code::Binary::decode(*in_, tdc::code::Universe::of<Ref>());
-        u_refs_ = tdc::code::Universe(ref_min, ref_max);
+        auto const ref_min = code::Binary::decode(*in_, code::Universe::of<Ref>());
+        auto const ref_max = code::Binary::decode(*in_, code::Universe::of<Ref>());
+        u_refs_ = code::Universe(ref_min, ref_max);
 
         if(use_len_) {
             huff_lens_ = decltype(huff_lens_)(*in_);
@@ -54,7 +53,7 @@ private:
 public:
     PhraseBlockReader(In& in, bool const use_len = false) : in_(&in), use_len_(use_len) {
         // load header
-        block_size_ = tdc::code::Binary::decode(*in_, tdc::code::Universe::of<uint64_t>());
+        block_size_ = code::Binary::decode(*in_, code::Universe::of<uint64_t>());
         
         // make sure we underflow on the very first read
         read_ = block_size_;
@@ -63,18 +62,18 @@ public:
     Ref read_ref() {
         check_underflow();
         ++read_;
-        return tdc::code::Binary::decode(*in_, u_refs_);
+        return code::Binary::decode(*in_, u_refs_);
     }
 
     char read_literal() {
         check_underflow();
         ++read_;
-        return (char)tdc::code::Huffman::decode(*in_, huff_lits_.root());
+        return (char)code::Huffman::decode(*in_, huff_lits_.root());
     }
 
     Ref read_len() {
         check_underflow();
         ++read_;
-        return (Ref)tdc::code::Huffman::decode(*in_, huff_lens_.root());
+        return (Ref)code::Huffman::decode(*in_, huff_lens_.root());
     }
 };

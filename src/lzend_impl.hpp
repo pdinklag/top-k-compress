@@ -1,7 +1,6 @@
 #include <cassert>
 #include <vector>
 
-#include <tdc/code/concepts.hpp>
 #include <tdc/util/concepts.hpp>
 
 #include <tdc/text/suffix_array.hpp>

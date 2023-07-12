@@ -14,8 +14,6 @@ constexpr bool PROTOCOL = false;
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
-    using namespace tdc::code;
-
     TopkHeader header(k, 0 /* indicator for LZ78 compression :-) */, num_sketches, sketch_rows, sketch_columns);
     header.encode(out, MAGIC);
 
@@ -80,8 +78,6 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
 void topk_decompress_lz78(In in, Out out) {
-    using namespace tdc::code;
-
     // decode header
     TopkHeader header(in, MAGIC);
     auto const k = header.k;

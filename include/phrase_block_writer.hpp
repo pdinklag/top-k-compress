@@ -9,9 +9,8 @@
 
 #include <iopp/concepts.hpp>
 
-#include <tdc/code/entropical/huffman.hpp>
-#include <tdc/code/universal/binary.hpp>
-#include <tdc/code/universal/elias_delta.hpp>
+#include <code/huffman.hpp>
+#include <code/binary.hpp>
 
 template<iopp::BitSink Out, std::unsigned_integral Ref = uint32_t, std::unsigned_integral Len = uint32_t>
 class PhraseBlockWriter {
@@ -40,19 +39,19 @@ private:
         if constexpr(DEBUG) std::cout << "write block of size " << cur_block_.size() << ": refs=" << cur_refs_.size() << ", lens=" << cur_lens_.size() << ", literals=" << cur_literals_.size() << std::endl;
 
         // encode block header
-        tdc::code::Binary::encode(*out_, ref_min_, tdc::code::Universe::of<Ref>());
-        tdc::code::Binary::encode(*out_, ref_max_, tdc::code::Universe::of<Ref>());
-        tdc::code::Universe u_refs(ref_min_, ref_max_);
+        code::Binary::encode(*out_, ref_min_, code::Universe::of<Ref>());
+        code::Binary::encode(*out_, ref_max_, code::Universe::of<Ref>());
+        code::Universe u_refs(ref_min_, ref_max_);
 
-        tdc::code::HuffmanTree<Len> huff_len_tree;    
+        code::HuffmanTree<Len> huff_len_tree;    
         if(use_len_) {
-            huff_len_tree = tdc::code::HuffmanTree<Len>(cur_lens_.begin(), cur_lens_.end());
+            huff_len_tree = code::HuffmanTree<Len>(cur_lens_.begin(), cur_lens_.end());
             huff_len_tree.encode(*out_);
         }
         auto const huff_len = huff_len_tree.table();
         huff_len_tree = decltype(huff_len_tree)();
 
-        tdc::code::HuffmanTree<Char> huff_lit_tree(cur_literals_.begin(), cur_literals_.end());
+        code::HuffmanTree<Char> huff_lit_tree(cur_literals_.begin(), cur_literals_.end());
         huff_lit_tree.encode(*out_);
         auto const huff_lit = huff_lit_tree.table();
         huff_lit_tree = decltype(huff_lit_tree)();
@@ -64,15 +63,15 @@ private:
         for(auto const type : cur_block_) {
             switch(type) {
                 case TYPE_REF:
-                    tdc::code::Binary::encode(*out_, cur_refs_[next_ref++], u_refs);
+                    code::Binary::encode(*out_, cur_refs_[next_ref++], u_refs);
                     break;
                 
                 case TYPE_LIT:
-                    tdc::code::Huffman::encode(*out_, cur_literals_[next_lit++], huff_lit);
+                    code::Huffman::encode(*out_, cur_literals_[next_lit++], huff_lit);
                     break;
 
                 case TYPE_LEN:
-                    tdc::code::Huffman::encode(*out_, cur_lens_[next_len++], huff_len);
+                    code::Huffman::encode(*out_, cur_lens_[next_len++], huff_len);
                     break;
             }
         }
@@ -107,7 +106,7 @@ public:
         reset_universe();
 
         // encode header
-        tdc::code::Binary::encode(*out_, block_size, tdc::code::Universe::of<uint64_t>());
+        code::Binary::encode(*out_, block_size, code::Universe::of<uint64_t>());
     }
 
     ~PhraseBlockWriter() {

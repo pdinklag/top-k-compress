@@ -14,7 +14,6 @@
 #include <lzend_window_index.hpp>
 
 #include <phrase_block_writer.hpp>
-#include <tdc/code/concepts.hpp>
 
 #include "lzend_decompress.hpp"
 

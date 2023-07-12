@@ -1,6 +1,5 @@
 #include <vector>
 
-#include <tdc/code/concepts.hpp>
 #include <tdc/util/concepts.hpp>
 
 #include <phrase_block_writer.hpp>

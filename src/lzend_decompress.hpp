@@ -1,5 +1,3 @@
-#include <tdc/code/concepts.hpp>
-
 #include <phrase_block_reader.hpp>
 #include <vector>
 

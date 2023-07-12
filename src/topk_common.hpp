@@ -5,7 +5,6 @@
 #include <iostream>
 #include <list>
 
-#include <tdc/code/universal/binary.hpp>
 #include <tdc/util/concepts.hpp>
 #include <tdc/util/math.hpp>
 
