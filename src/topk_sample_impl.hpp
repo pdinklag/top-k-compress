@@ -223,9 +223,6 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
 
                     longest = std::max(longest, len);
                     total_len += len;
-
-                    // increase its frequency
-                    b.topk[i]->insert(b.fp[i], len);
                 }
 
                 if(b.is_sampling_pos(i)) {
@@ -307,7 +304,7 @@ void topk_decompress_sample(In in, Out out) {
                 auto const i = in.read(BYTE_BITS);
                 auto const len = b.get_len(i);
 
-                auto const src = ref[i][slot];
+                auto const src = ref[i][slot - 1];
                 for(size_t j = 0; j < len; j++) {
                     emit(s[src + j]);
                 }
