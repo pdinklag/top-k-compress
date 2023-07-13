@@ -1,6 +1,7 @@
 #include <pm/result.hpp>
 
 #include <limits>
+#include <queue>
 
 #include <display.hpp>
 #include <topk_strings.hpp>
@@ -20,7 +21,7 @@ constexpr uint64_t MAGIC =
     ((uint64_t)'P');
 
 constexpr bool DEBUG = false;
-constexpr bool PROTOCOL = true;
+constexpr bool PROTOCOL = false;
 
 using TopK = TopKStrings<true>;
 
@@ -143,7 +144,18 @@ struct Buffers {
         return drop;
     }
 
-    void roll_hash(size_t const i, char const c, char const drop) {
+    void roll_hash(size_t const i, char const drop) {
+        auto const len = get_len(i);
+        char const c = (total >= len) ? buffer[len - 1] : buffer.back();
+        fp[i] = hash[i].roll(fp[i], drop, c);
+
+        // if constexpr(DEBUG) std::cout << "\troll_hash for len=" << len << ": total=" << total << ", drop=" << display(drop) << ", c=" << display(c) << " -> 0x" << std::hex << fp[i] << std::dec << std::endl;
+
+        // update SSS
+        if constexpr(use_sss) sync[i].push(fp[i]);
+    }
+
+    void roll_hash_retrospective(size_t const i, char const c, char const drop) {
         auto const len = get_len(i);
         if(len == max_len) {
             fp[i] = hash[i].roll(fp[i], drop, c);
@@ -154,9 +166,7 @@ struct Buffers {
         }
 
         // update SSS
-        if constexpr(use_sss) {
-            sync[i].push(fp[i]);
-        }
+        if constexpr(use_sss) sync[i].push(fp[i]);
     }
 
     bool is_sampling_pos(size_t const i) const {
@@ -174,9 +184,6 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
     assert(len_exp_max <= 31);
     assert(sample_exp < 64);
 
-    auto const sample = (1ULL << sample_exp);
-    auto const sample_mask = sample - 1;
-
     size_t num_refs = 0;
     size_t num_literals = 0;
     size_t longest = 0;
@@ -192,60 +199,106 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
     out.write(sketch_columns, REF_BITS);
 
     // init buffers
-    Buffers<use_sss> b(sample, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns);
+    Buffers<use_sss> b(sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns);
+    
+    struct SampleQueueEntry {
+        size_t   pos;
+        uint64_t fp;
+    };
+    auto smpq = std::make_unique<std::queue<SampleQueueEntry>[]>(b.num_lens);
 
     // process
-    size_t pos = 0; // the current position in the input
+    size_t n = 0;    // the input position at which the current buffer ends
+    size_t pos = 0;  // the current parsing position in the input
     size_t next = 0; // the next position that must be encoded
+    size_t num_sampled = 0;
 
-    while(begin != end) {
-        // read and push next character
-        auto const c = *begin++;
+    auto advance = [&](char const c){
+        // if constexpr(DEBUG) std::cout << "advance: " << display(c) << std::endl;
         auto const drop = b.push(c);
+        for(size_t i = 0; i < b.num_lens; i++) {
+            b.roll_hash(i, drop);
+        }
+    };
 
-        // try and find a reference
+    // fill initial buffer and fingerprints
+    while(n < b.max_len && begin != end) {
+        auto const c = *begin++;
+        // if constexpr(DEBUG) std::cout << "init: " << display(c) << std::endl;
+        b.push(c);
+        for(size_t i = 0; i < b.num_lens; i++) {
+            size_t const len = b.get_len(i);
+            if(len > n) b.roll_hash(i, 0);
+        }
+        ++n;
+    }
+
+    if(begin == end && n < b.max_len) {
+        std::cerr << "input too short" << std::endl;
+        std::abort();
+    }
+
+    while(pos < n) {
+        auto const max_len = std::min(b.max_len, n - pos + 1);
+
         for(size_t i_ = b.num_lens; i_ > 0; i_--) {
             auto const i = i_ - 1;
             size_t const len = b.get_len(i);
-            if(pos >= len) {
-                // we have read enough characters to do meaningful things
+            if(len > max_len)[[unlikely]] continue;
 
-                // lookup
-                TopK::Index slot;
-                if(pos >= next && b.topk[i]->find(b.fp[i], len, slot)) {
-                    // we found it
-                    if constexpr(DEBUG) std::cout << "pos=" << pos << ": found [" << (pos - len) << " .. " << pos - 1 << "] = 0x" << std::hex << b.fp[i] << " / " << std::dec << len << " at slot #" << slot << std::endl;
-                    next += len;
-                    ++num_refs;
+            // lookup and possibly encode reference
+            TopK::Index slot;
+            if(pos >= next && b.topk[i]->find(b.fp[i], len, slot)) {
+                // we found it
+                next += len;
+                ++num_refs;
 
-                    out.write(SIGNAL, CHAR_BITS);
-                    out.write(slot + 1, REF_BITS);
-                    out.write(i, BYTE_BITS);
-                    if constexpr(PROTOCOL) std::cout << "pos=" << pos << ": (#" << slot << ", " << len << ")" << std::endl;
+                out.write(SIGNAL, CHAR_BITS);
+                out.write(slot + 1, REF_BITS);
+                out.write(i, BYTE_BITS);
 
-                    longest = std::max(longest, len);
-                    total_len += len;
-                }
+                if constexpr(DEBUG) std::cout << "pos=" << pos << ": encode [" << pos << " .. " << pos + len - 1 << "] = 0x" << std::hex << b.fp[i] << " / " << std::dec << len << " as slot #" << slot << std::endl;
+                if constexpr(PROTOCOL) std::cout << "pos=" << pos << ": (#" << slot << ", " << len << ")" << std::endl;
 
-                if(b.is_sampling_pos(i)) {
-                    // this is a sampling position, sample the current state
-                    // which represents the string s[pos-len .. pos-1]
-                    if constexpr(DEBUG) std::cout << "pos=" << pos << ": sample [" << (pos - len) << " .. " << pos - 1 << "] = 0x" << std::hex << b.fp[i] << " / " << std::dec << len;
-                    if(b.topk[i]->insert(b.fp[i], len, slot)) {
-                        if constexpr(DEBUG) std::cout << " -> slot #" << slot;
-                    } else {
-                        if constexpr(DEBUG) std::cout << " -> not frequent";
-                    }
-                    if constexpr(DEBUG) std::cout << std::endl;
-                }
+                longest = std::max(longest, len);
+                total_len += len;
             }
 
-            // update the rolling hash
-            b.roll_hash(i, c, drop);
+            // process sample queue
+            if(!smpq[i].empty() && pos >= smpq[i].front().pos) {
+                auto const q = smpq[i].front();
+                smpq[i].pop();
+
+                assert(pos == q.pos);
+                
+                TopK::Index slot;
+                auto const frequent = b.topk[i]->insert(q.fp, len, slot);
+
+                if constexpr(DEBUG) {
+                    std::cout << "pos=" << pos << ": sample [" << q.pos - len << " .. " << q.pos - 1 << "] = 0x" << std::hex << q.fp << " / " << std::dec << len;
+                    if(frequent) {
+                        std::cout << " -> slot #" << slot;
+                    } else {
+                        std::cout << " -> not frequent" << slot;
+                    }
+                    std::cout << std::endl;
+                }
+
+                ++num_sampled;
+            }
+
+            // sample
+            if(b.is_sampling_pos(i)) {
+                // this is a sampling position, and we want to sample the string [pos .. pos + len - 1]
+                // however, we must not do that before we reach that position in retrospective, because the decoder would not know about it yet
+                // if constexpr(DEBUG) std::cout << "pos=" << pos << ": queue sampling of [" << pos << " .. " << pos + len - 1 << "] = 0x" << std::hex << b.fp[i] << " / " << std::dec << len << std::endl;
+                smpq[i].push({pos + len, b.fp[i]});
+            }
         }
 
         // potentially encode literal
         if(pos >= next) {
+            auto const c = b.buffer.front();
             if constexpr(PROTOCOL) std::cout << "pos=" << pos << ": " << display(c) << std::endl;
             out.write(c, CHAR_BITS);
             if(c == SIGNAL) out.write(0, REF_BITS); // nb: make signal characters decodable
@@ -255,10 +308,17 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
 
         // advance
         ++pos;
+        if(begin != end) {
+            advance(*begin++);
+            ++n;
+        } else {
+            advance(0);
+        }
     }
 
     // stats
     auto const num_phrases = num_refs + num_literals;
+    result.add("num_sampled", num_sampled);
     result.add("phrases_total", num_phrases);
     result.add("phrases_ref", num_refs);
     result.add("phrases_literal", num_literals);
@@ -284,7 +344,7 @@ void topk_decompress_sample(In in, Out out) {
     size_t const sketch_columns = in.read(REF_BITS);
 
     // init buffers
-    Buffers<use_sss> b(1ULL << sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns);
+    Buffers<use_sss> b(sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns);
 
     // other than the encoder, we also need to keep reference positions
     std::unique_ptr<Index[]> ref[b.num_lens];
@@ -307,17 +367,23 @@ void topk_decompress_sample(In in, Out out) {
             auto const i = i_ - 1;
             size_t const len = b.get_len(i);
             if(pos >= len && b.is_sampling_pos(i)) {
-                if constexpr(DEBUG) std::cout << "pos=" << pos << ": sample [" << (pos - len) << " .. " << pos - 1 << "] = 0x" << std::hex << b.fp[i] << " / " << std::dec << len;
-                Index slot;
-                if(b.topk[i]->insert(b.fp[i], len, slot)) {
+                TopK::Index slot;
+                auto const frequent = b.topk[i]->insert(b.fp[i], len, slot);
+                if(frequent) {
                     ref[i][slot] = pos - len;
-                    if constexpr(DEBUG) std::cout << " -> slot #" << slot;
-                } else {
-                    if constexpr(DEBUG) std::cout << " -> not frequent";
                 }
-                if constexpr(DEBUG) std::cout << std::endl;
+
+                if constexpr(DEBUG) {
+                    std::cout << "pos=" << pos << ": sample [" << pos - len << " .. " << pos - 1 << "] = 0x" << std::hex << b.fp[i] << " / " << std::dec << len;
+                    if(frequent) {
+                        std::cout << " -> slot #" << slot;
+                    } else {
+                        std::cout << " -> not frequent" << slot;
+                    }
+                    std::cout << std::endl;
+                }
             }
-            b.roll_hash(i, c, drop);
+            b.roll_hash_retrospective(i, c, drop);
         }
 
         ++pos;
@@ -335,19 +401,19 @@ void topk_decompress_sample(In in, Out out) {
                 if constexpr(PROTOCOL) std::cout << "pos=" << pos << ": (#" << slot << ", " << len << ")" << std::endl;
 
                 auto const src = ref[i][slot];
-                if constexpr(DEBUG) std::cout << "pos=" << pos << ": decode [" << src << " .. " << src + len - 1 << "] = 0x" << std::hex << b.fp[i] << " / " << std::dec << len << " from slot #" << slot << std::endl;
+                if constexpr(DEBUG) std::cout << "pos=" << pos << ": decode [" << src << " .. " << src + len - 1 << "] from slot #" << slot << std::endl;
                 for(size_t j = 0; j < len; j++) {
                     emit(s[src + j]);
                 }
             } else {
                 // we decoded a signal character
-                emit(SIGNAL);
                 if constexpr(PROTOCOL) std::cout << "pos=" << pos << ": " << display(SIGNAL) << std::endl;
+                emit(SIGNAL);
             }
         } else {
             // we decoded a simple literal
-            emit(c);
             if constexpr(PROTOCOL) std::cout << "pos=" << pos << ": " << display(c) << std::endl;
+            emit(c);
         }
     }
 
