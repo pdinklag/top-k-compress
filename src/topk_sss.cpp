@@ -11,7 +11,7 @@ struct Compressor : public CompressorBase {
     uint64_t len_exp_min = 2;
     uint64_t len_exp_max = 6;
 
-    Compressor() : CompressorBase("topk-sample", "Samples strings in expectedly regular synchronizing intervals and uses them as a top-k dictionary") {
+    Compressor() : CompressorBase("topk-sss", "Samples strings according to backward minimization rules and uses them as a top-k dictionary") {
         param('k', "num-frequent", k, "The number of frequent substrings to maintain.");
         param('r', "sketch-rows", sketch_rows, "The number of rows in the Count-Min sketch.");
         param('c', "sketch-columns", sketch_columns, "The total number of columns in each Count-Min row.");
@@ -32,15 +32,15 @@ struct Compressor : public CompressorBase {
     }
 
     virtual std::string file_ext() override {
-        return ".topksample";
+        return ".topksss";
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_compress_sample<false>(in.begin(), in.end(), iopp::bitwise_output_to(out), sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns, result);
+        topk_compress_sample<true>(in.begin(), in.end(), iopp::bitwise_output_to(out), sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns, result);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_decompress_sample<false>(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
+        topk_decompress_sample<true>(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
     }
 };
 

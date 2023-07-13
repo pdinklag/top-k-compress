@@ -32,21 +32,64 @@ constexpr size_t REF_BITS = std::numeric_limits<Index>::digits;
 
 constexpr char SIGNAL = '$';
 
+template<bool use_sss>
 struct Buffers {
+    size_t sample;
     size_t max_len;
     size_t num_lens;
-    size_t len_exp_min_;
+    size_t len_exp_min;
 
     tlx::RingBuffer<char> buffer;
+    size_t total;
     std::unique_ptr<std::unique_ptr<TopK>[]> topk;
     std::unique_ptr<RollingKarpRabin[]> hash;
     std::unique_ptr<uint64_t[]> fp;
 
-    Buffers(size_t const len_exp_min, size_t const len_exp_max, size_t const k, size_t const sketch_rows, size_t const sketch_columns)
-        : num_lens(len_exp_max - len_exp_min + 1),
+    // nb: we use an alternative definition of the SSS that looks for minimizers of the tau most recent fingerprints,
+    // (rather than looking forward as in the original definition)
+    struct Synchronizer {
+        size_t sample;
+        tlx::RingBuffer<uint64_t> recent;
+        uint64_t min;
+        size_t total;
+
+        Synchronizer() {
+        }
+
+        Synchronizer(size_t const sample) : sample(sample), recent(sample), min(UINT64_MAX), total(0) {
+        }
+
+        void push(uint64_t const fp) {
+            if(total >= sample) {
+                auto const pop = recent.front();
+                recent.pop_front();
+
+                if(pop == min) {
+                    // scan for new minimum
+                    assert(recent.size() == sample - 1);
+
+                    min = UINT64_MAX;
+                    for(size_t i = 0; i < sample - 1; i++) {
+                        min = std::min(min, recent[i]);
+                    }
+                }
+            }
+
+            recent.push_back(fp);
+            ++total;
+            min = std::min(min, fp);
+        }
+    };
+
+    std::unique_ptr<Synchronizer[]> sync;
+
+    Buffers(size_t const sample_exp, size_t const len_exp_min, size_t const len_exp_max, size_t const k, size_t const sketch_rows, size_t const sketch_columns)
+        : sample(1ULL << sample_exp),
+          num_lens(len_exp_max - len_exp_min + 1),
           max_len(1ULL << len_exp_max),
-          len_exp_min_(len_exp_min),
+          len_exp_min(len_exp_min),
           buffer(max_len),
+          total(0),
           topk(std::make_unique<std::unique_ptr<TopK>[]>(num_lens)),
           hash(std::make_unique<RollingKarpRabin[]>(num_lens)),
           fp(std::make_unique<uint64_t[]>(num_lens)) {
@@ -74,18 +117,27 @@ struct Buffers {
             hash[i] = RollingKarpRabin(get_len(i), rolling_fp_base);
             fp[i] = 0;
         }
+
+        // init fingerprint history for sss
+        if constexpr(use_sss) {
+            sync = std::make_unique<Synchronizer[]>(num_lens);
+            for(size_t i = 0; i < num_lens; i++) {
+                sync[i] = Synchronizer(sample);
+            }
+        }
     }
 
     size_t get_len(size_t const i) const {
-        return 1ULL << (i + len_exp_min_);
+        return 1ULL << (i + len_exp_min);
     }
 
     char push(char const c) {
-        auto const buffer_full = (buffer.size() == buffer.max_size());
+        auto const buffer_full = (total >= max_len);
         auto const drop = buffer_full ? buffer[0] : char(0);
 
         if(buffer_full) buffer.pop_front();
         buffer.push_back(c);
+        ++total;
 
         return drop;
     }
@@ -99,15 +151,30 @@ struct Buffers {
             char const x = buffer.size() > len ? buffer[buffer.size() - len - 1] : 0;
             fp[i] = hash[i].roll(fp[i], x, c);
         }
+
+        // update SSS
+        if constexpr(use_sss) {
+            sync[i].push(fp[i]);
+        }
+    }
+
+    bool is_sampling_pos(size_t const i) const {
+        if constexpr(use_sss) {
+            return fp[i] == sync[i].min;
+        } else {
+            return (fp[i] & (sample - 1)) == 0;
+        }
     }
 };
 
-template<tdc::InputIterator<char> In, iopp::BitSink Out>
+template<bool use_sss, tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_exp, size_t const len_exp_min, size_t const len_exp_max, size_t const k, size_t const sketch_rows, size_t const sketch_columns, pm::Result& result) {
     assert(len_exp_max >= len_exp_min);
     assert(len_exp_max <= 31);
+    assert(sample_exp < 64);
 
-    auto const sample_mask = (1ULL << sample_exp) - 1;
+    auto const sample = (1ULL << sample_exp);
+    auto const sample_mask = sample - 1;
 
     size_t num_refs = 0;
     size_t num_literals = 0;
@@ -124,7 +191,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
     out.write(sketch_columns, REF_BITS);
 
     // init buffers
-    Buffers b(len_exp_min, len_exp_max, k, sketch_rows, sketch_columns);
+    Buffers<use_sss> b(sample, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns);
 
     // process
     size_t pos = 0; // the current position in the input
@@ -161,7 +228,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
                     b.topk[i]->insert(b.fp[i], len);
                 }
 
-                if((b.fp[i] & sample_mask) == 0) {
+                if(b.is_sampling_pos(i)) {
                     // this is a sampling position, sample the current state
                     // which represents the string s[pos-len .. pos-1]
                     // if constexpr(DEBUG) std::cout << "pos=" << pos << ": sample [" << (pos - len) << " .. " << pos - 1 << "] = 0x" << std::hex << fp[i] << " / " << std::dec << len << std::endl;
@@ -195,7 +262,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
     result.add("phrases_avg_ref_len", std::round(100.0 * ((double)total_len / (double)num_refs)) / 100.0);
 }
 
-template<iopp::BitSource In, std::output_iterator<char> Out>
+template<bool use_sss, iopp::BitSource In, std::output_iterator<char> Out>
 void topk_decompress_sample(In in, Out out) {
     uint64_t const magic = in.read(64);
     if(magic != MAGIC) {
@@ -212,7 +279,7 @@ void topk_decompress_sample(In in, Out out) {
     size_t const sketch_columns = in.read(REF_BITS);
 
     // init buffers
-    Buffers b(len_exp_min, len_exp_max, k, sketch_rows, sketch_columns);
+    Buffers<use_sss> b(1ULL << sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns);
 
     // other than the encoder, we also need to keep reference positions
     std::unique_ptr<Index[]> ref[b.num_lens];
