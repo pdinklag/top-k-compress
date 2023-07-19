@@ -10,6 +10,8 @@
 #include <tdc/util/concepts.hpp>
 #include <tlx/container/ring_buffer.hpp>
 
+#include <code/vbyte.hpp>
+
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
     ((uint64_t)'O') << 48 |
@@ -254,7 +256,8 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
                 ++num_refs;
 
                 out.write(SIGNAL, CHAR_BITS);
-                out.write(slot + 1, REF_BITS);
+                code::Vbyte::encode(out, slot + 1, 8);
+                // out.write(slot + 1, REF_BITS);
                 out.write(i, BYTE_BITS);
 
                 if constexpr(DEBUG) std::cout << "pos=" << pos << ": encode [" << pos << " .. " << pos + len - 1 << "] = 0x" << std::hex << b.fp[i] << " / " << std::dec << len << " as slot #" << slot << std::endl;
@@ -301,7 +304,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
             auto const c = b.buffer.front();
             if constexpr(PROTOCOL) std::cout << "pos=" << pos << ": " << display(c) << std::endl;
             out.write(c, CHAR_BITS);
-            if(c == SIGNAL) out.write(0, REF_BITS); // nb: make signal characters decodable
+            if(c == SIGNAL) code::Vbyte::encode(out, 0, 8); // nb: make signal characters decodable
             ++num_literals;
             ++next;
         }
@@ -392,7 +395,7 @@ void topk_decompress_sample(In in, Out out) {
     while(in) {
         char const c = in.read(CHAR_BITS);
         if(c == SIGNAL) {
-            auto const x = in.read(REF_BITS);
+            auto const x = code::Vbyte::decode(in, 8);
             if(x > 0) {
                 // we decoded an actual reference, copy characters
                 auto const slot = x - 1;
