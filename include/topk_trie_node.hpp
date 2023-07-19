@@ -14,4 +14,8 @@ struct TopkTrieNode : public TrieNode<NodeIndex> {
     uint64_t fingerprint;           // the 64-bit fingerprint of the represented string
     MinPQ<size_t>::Location minpq;  // the entry in the minimum PQ, if any
 
+    void dump_extra_info() const {
+        std::cout << " [freq=" << freq << "]";
+    }
+
 } __attribute__((packed));

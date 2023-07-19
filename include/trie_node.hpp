@@ -30,4 +30,7 @@ struct TrieNode {
     bool is_leaf() const ALWAYS_INLINE {
         return size() == 0;
     }
+
+    void dump_extra_info() const {
+    }
 } __attribute__((packed));

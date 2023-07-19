@@ -26,7 +26,7 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
     Topk topk(k, num_sketches, sketch_rows, sketch_columns);
 
     // initialize encoding
-    PhraseBlockWriter writer(out, block_size, false, false);
+    PhraseBlockWriter writer(out, block_size, false, true);
 
     struct NewNode {
         size_t index;
@@ -180,6 +180,8 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
     result.add("phrases_furthest", max_freq_val);
     result.add("phrases_avg_len", std::round(100.0 * ((double)total_freq_len / (double)num_frequent)) / 100.0);
     result.add("phrases_avg_dist", std::round(100.0 * ((double)total_freq_val / (double)num_frequent)) / 100.0);
+
+    // topk.dump();
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>

@@ -430,6 +430,29 @@ public:
         return filter_.spell(index, buffer);
     }
 
+
+    void dump() const {
+        std::vector<FilterIndex> nodes_by_freq;
+        nodes_by_freq.reserve(filter_.size());
+        for(size_t i = 1; i < filter_.size(); i++) {
+            nodes_by_freq.emplace_back(i);
+        }
+        std::sort(nodes_by_freq.begin(), nodes_by_freq.end(), [&](auto a, auto b){
+            return filter_node(a).freq > filter_node(b).freq;
+        });
+
+        auto buffer = std::make_unique<char[]>(1024);
+        for(FilterIndex i : nodes_by_freq) {
+            auto const d = filter_.spell(i, buffer.get());
+
+            std::cout << i << ": \"";
+            for(size_t j = 0; j < d; j++) std::cout << display_inline(buffer[j]);
+            std::cout << "\" (" << d << ")";
+            filter_node(i).dump_extra_info();
+            std::cout << std::endl;
+        }
+    }
+
     void print_debug_info() const {
         if constexpr(!gather_stats_) return;
 

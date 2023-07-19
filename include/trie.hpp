@@ -89,6 +89,10 @@ public:
         return size_ == capacity_;
     }
 
+    NodeIndex size() const {
+        return size_;
+    }
+
     Node& node(NodeIndex const v) {
         return nodes_[v];
     }
