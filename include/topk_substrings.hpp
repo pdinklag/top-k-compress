@@ -16,12 +16,13 @@
 
 #include "always_inline.hpp"
 #include "trie.hpp"
+#include "truncated_trie.hpp"
 #include "min_pq.hpp"
 #include "count_min.hpp"
 #include "rolling_karp_rabin.hpp"
 #include "display.hpp"
 
-template<typename FilterNode, bool approx_minpq_ = false>
+template<typename FilterNode, bool approx_minpq_ = false, size_t cut_ = 0>
 requires requires {
     typename FilterNode::Index;
 } && requires(FilterNode node) {
@@ -68,7 +69,10 @@ protected:
     using FilterIndex = typename FilterNode::Index;
 
 private:
-    Trie<FilterNode> filter_;
+    static constexpr bool is_truncated_ = (cut_ > 1);
+    using Filter = std::conditional_t<is_truncated_, TruncatedTrie<FilterNode, cut_>, Trie<FilterNode>>;
+
+    Filter filter_;
     MinPQ<size_t, FilterIndex> min_pq_;
 
     using Sketch = CountMin<size_t>;
@@ -117,11 +121,19 @@ private:
         if constexpr(measure_time_) stats_.t_filter_inc.pause();
     }
 
-    FilterIndex insert_into_filter(FilterIndex const parent, char const label, uint64_t const fingerprint) ALWAYS_INLINE {
+    FilterIndex insert_into_filter(FilterIndex const parent, char const label, uint64_t const fingerprint, char const* context) ALWAYS_INLINE {
         if constexpr(gather_stats_) ++stats_.num_filter_inc;
 
         auto const v = filter_.new_node();
-        filter_.insert_child(v, parent, label);
+        if constexpr(is_truncated_) {
+            if(parent == filter_.root()) {
+                filter_.insert_root_child(v, context);
+            } else {
+                filter_.insert_child(v, parent, label);
+            }
+        } else {
+            filter_.insert_child(v, parent, label);
+        }
 
         // insert into min PQ as a maximal string
         auto& data = filter_.node(v);
@@ -142,7 +154,7 @@ private:
         return v;
     }
 
-    FilterIndex swap_into_filter(FilterIndex const parent, char const label, uint64_t const fingerprint, size_t const frequency, Sketch& sketch) ALWAYS_INLINE {
+    FilterIndex swap_into_filter(FilterIndex const parent, char const label, uint64_t const fingerprint, size_t const frequency, Sketch& sketch, char const* context) ALWAYS_INLINE {
         if constexpr(gather_stats_) ++stats_.num_swaps;
         if constexpr(measure_time_) stats_.t_swaps.resume();
 
@@ -176,7 +188,16 @@ private:
         if(on_delete_node) on_delete_node(swap);
 
         // insert the current string into the filter, reusing the old entries' node ID
-        filter_.insert_child(swap, parent, label);
+        if constexpr(is_truncated_) {
+            if(parent == filter_.root()) {
+                filter_.insert_root_child(swap, context);
+            } else {
+                filter_.insert_child(swap, parent, label);
+            }
+        } else {
+            filter_.insert_child(swap, parent, label);
+        }
+
         swap_data.freq = frequency;
         swap_data.insert_freq = frequency;
         swap_data.fingerprint = fingerprint;
@@ -229,6 +250,7 @@ public:
         uint8_t     sketch;      // which sketch is used for this string
         bool        frequent;    // whether or not the string is frequent
         bool        new_node;    // did the last extension cause a new filter entry to be created?
+        char        context[cut_];
     };
 
     // construct a string state for a specific node in the filter
@@ -285,10 +307,35 @@ public:
         ext.sketch = (i == 0) ? select_sketch(c) : s.sketch;
         ext.new_node = false;
 
-        if constexpr(measure_time_) if(s.frequent) stats_.t_filter_find.resume();
-        if(s.frequent && filter_.try_get_child(s.node, c, ext.node)) {
+        bool edge_exists;
+        if constexpr(is_truncated_) {
+            // copy / extend context
+            for(size_t j = 0; j < cut_; j++) {
+                ext.context[j] = s.context[j];
+            }
+            if(s.len < cut_) ext.context[s.len] = c;
+
+            if(ext.len < cut_) {
+                // we are in the truncated level range, extend context and act as if we were frequent
+                ext.frequent = true;
+                ext.node = filter_.root();
+                return ext;
+            } else if (ext.len == cut_) {
+                // we are now entering the actual trie node level range, find the entry point
+                edge_exists = filter_.try_get_root_child(ext.context, ext.node);
+            } else {
+                // common case
+                if constexpr(measure_time_) if(s.frequent) stats_.t_filter_find.resume();
+                edge_exists = s.frequent && filter_.try_get_child(s.node, c, ext.node);
+                if constexpr(measure_time_) stats_.t_filter_find.pause();
+            }
+        } else {
+            if constexpr(measure_time_) if(s.frequent) stats_.t_filter_find.resume();
+            edge_exists = s.frequent && filter_.try_get_child(s.node, c, ext.node);
             if constexpr(measure_time_) stats_.t_filter_find.pause();
-            
+        }
+
+        if(edge_exists) {
             // the current prefix is frequent
             // we do not increment it in the filter directly, but do that lazily when we drop out of it
             // whenever a node is swapped out of the filter, the increment will be propagated
@@ -296,8 +343,6 @@ public:
             // done
             ext.frequent = true;
         } else {
-            if constexpr(measure_time_) if(s.frequent) stats_.t_filter_find.pause();
-            
             // the current prefix is non-frequent
 
             // lazily increment immediate prefix in filter
@@ -320,7 +365,7 @@ public:
                     // it is now frequent according to just the numbers, test if we can swap
                     if(i == 0 || (s.node && filter_.node(s.node).freq >= est)) {
                         // the immediate prefix was frequent, so yes, we can!
-                        ext.node = swap_into_filter(s.node, c, ext_fp, est, sketch);
+                        ext.node = swap_into_filter(s.node, c, ext_fp, est, sketch, ext.context);
 
                         // swapped in, so it's new
                         ext.new_node = true;
@@ -338,7 +383,7 @@ public:
                 }
             } else {
                 // insert into filter, which is not yet full
-                ext.node = insert_into_filter(s.node, c, ext_fp);
+                ext.node = insert_into_filter(s.node, c, ext_fp, ext.context);
                 ext.new_node = true;
             }
 

@@ -22,10 +22,10 @@ private:
     using NodeIndex = typename Node::Index;
 
     static_assert(cut_ > 1, "please just use a trie");
-    static_assert(cut_ <= 8, "we use 64-bit words to pack a cut-off label");
+    static_assert(cut_ <= 8, "we use at most 64-bit words to pack a cut-off label");
     static_assert(sizeof(Character) == 1, "only 8-bit characters are supported");
 
-    using RootEdgeLabel = uint64_t;
+    using RootEdgeLabel = std::conditional_t<cut_ <= 4, uint32_t, uint64_t>;
 
     static RootEdgeLabel pack(Character const* str) {
         RootEdgeLabel packed = 0;
@@ -190,5 +190,25 @@ public:
         auto const d = spell_reverse(node, buffer);
         std::reverse(buffer, buffer + d);
         return d;
+    }
+    
+    void print_debug_info() const {
+        size_t num_leaves = 0;
+        size_t num_small = 0;
+        
+        for(size_t i = 0; i < capacity_; i++) {
+            auto& v = nodes_[i];
+
+            if(v.size() == 0) ++num_leaves;
+            if(v.size() <= Node::ChildArray::inline_size_) ++num_small;
+        }
+
+        std::cout << "trie info"
+                  << ": sizeof(Node)=" << sizeof(Node)
+                  << ", small_node_size_=" << Node::ChildArray::inline_size_
+                  << ", small_node_align_=" << Node::ChildArray::inline_align_
+                  << ", num_leaves=" << num_leaves
+                  << ", num_small=" << num_small
+                  << std::endl;
     }
 };

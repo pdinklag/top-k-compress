@@ -84,7 +84,7 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
                 auto phrase_index = match[longest].node;
                 auto phrase_len = match[longest].len;
 
-                if(phrase_len >= 1) {
+                if(phrase_len >= 1 && phrase_index > 0) {
                     // check if the phrase node was only recently created
                     for(size_t j = 0; j < new_nodes.size(); j++) {
                         auto const& recent = new_nodes[j];
