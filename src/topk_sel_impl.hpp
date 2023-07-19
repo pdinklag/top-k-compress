@@ -14,6 +14,8 @@ constexpr uint64_t MAGIC =
 constexpr bool DEBUG = false;
 constexpr bool PROTOCOL = false;
 
+constexpr size_t MIN_REF = 1;
+
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     // write header
@@ -26,7 +28,7 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
     Topk topk(k, num_sketches, sketch_rows, sketch_columns);
 
     // initialize encoding
-    PhraseBlockWriter writer(out, block_size, false, true);
+    PhraseBlockWriter writer(out, block_size, false, false);
 
     struct NewNode {
         size_t index;
@@ -84,7 +86,7 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
                 auto phrase_index = match[longest].node;
                 auto phrase_len = match[longest].len;
 
-                if(phrase_len >= 1 && phrase_index > 0) {
+                if(phrase_len >= MIN_REF && phrase_index > 0) {
                     // check if the phrase node was only recently created
                     for(size_t j = 0; j < new_nodes.size(); j++) {
                         auto const& recent = new_nodes[j];
