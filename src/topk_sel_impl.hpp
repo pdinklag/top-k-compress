@@ -26,7 +26,7 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
     Topk topk(k, num_sketches, sketch_rows, sketch_columns);
 
     // initialize encoding
-    PhraseBlockWriter writer(out, block_size);
+    PhraseBlockWriter writer(out, block_size, false, false);
 
     struct NewNode {
         size_t index;

@@ -28,6 +28,7 @@ private:
     
     size_t block_size_;
     bool use_len_;
+    bool huff_literals_;
     std::vector<Ref> cur_refs_;
     std::vector<Len> cur_lens_;
     std::vector<Char> cur_literals_;
@@ -50,11 +51,14 @@ private:
         }
         auto const huff_len = huff_len_tree.table();
         huff_len_tree = decltype(huff_len_tree)();
-
-        code::HuffmanTree<Char> huff_lit_tree(cur_literals_.begin(), cur_literals_.end());
-        huff_lit_tree.encode(*out_);
-        auto const huff_lit = huff_lit_tree.table();
-        huff_lit_tree = decltype(huff_lit_tree)();
+        
+        using HuffmanTable = decltype(std::declval<code::HuffmanTree<Char>>().table());
+        HuffmanTable huff_lit;
+        if(huff_literals_) {
+            code::HuffmanTree<Char> huff_lit_tree(cur_literals_.begin(), cur_literals_.end());
+            huff_lit_tree.encode(*out_);
+            huff_lit = huff_lit_tree.table();
+        }
 
         // encode current block
         size_t next_lit = 0;
@@ -67,7 +71,11 @@ private:
                     break;
                 
                 case TYPE_LIT:
-                    code::Huffman::encode(*out_, cur_literals_[next_lit++], huff_lit);
+                    if(huff_literals_) {
+                        code::Huffman::encode(*out_, cur_literals_[next_lit++], huff_lit);
+                    } else {
+                        code::Binary::encode(*out_, cur_literals_[next_lit++], code::Universe::of<Char>());
+                    }
                     break;
 
                 case TYPE_LEN:
@@ -96,7 +104,9 @@ private:
     }
 
 public:
-    PhraseBlockWriter(Out& out, size_t const block_size, bool const use_len = false) : out_(&out), block_size_(block_size), use_len_(use_len) {
+    PhraseBlockWriter(Out& out, size_t const block_size, bool const use_len = false, bool huff_literals = true)
+        : out_(&out), block_size_(block_size), use_len_(use_len), huff_literals_(huff_literals) {
+        
         // allocate
         cur_block_.reserve(block_size);
         cur_refs_.reserve(block_size);
