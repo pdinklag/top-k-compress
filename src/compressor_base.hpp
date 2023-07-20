@@ -49,7 +49,7 @@ struct CompressorBase : public ConfigObject {
 
             pm::Result result;
             result.add("file", std::filesystem::path(input).filename().string());
-            result.add("n", std::filesystem::file_size(input));
+            result.add("n", std::min(std::filesystem::file_size(input), prefix));
             this->init_result(result);
 
             {
