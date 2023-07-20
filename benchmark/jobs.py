@@ -10,7 +10,7 @@ class Task:
 
 class CopyFileTask(Task):
     def __init__(self, fromfile: str, tofile: str):
-        super().__init__(["cp", fromfile, tofile], 0)
+        super().__init__(["cp", fromfile, tofile], 1)
 
 class Job:
     def __init__(self):
