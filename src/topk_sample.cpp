@@ -10,6 +10,7 @@ struct Compressor : public CompressorBase {
     uint64_t sample_exp = 7;
     uint64_t len_exp_min = 2;
     uint64_t len_exp_max = 6;
+    uint64_t min_dist = 0;
 
     Compressor() : CompressorBase("topk-sample", "Samples strings in expectedly regular synchronizing intervals and uses them as a top-k dictionary") {
         param('k', "num-frequent", k, "The number of frequent substrings to maintain.");
@@ -18,6 +19,7 @@ struct Compressor : public CompressorBase {
         param('s', "sample", sample_exp, "sample_exp");
         param("min", len_exp_min, "len_exp_min");
         param("max", len_exp_max, "len_exp_max");
+        param("dist", min_dist, "The minimum distance of references.");
     }
 
     virtual void init_result(pm::Result& result) override {
@@ -28,6 +30,7 @@ struct Compressor : public CompressorBase {
         result.add("sample_exp", sample_exp);
         result.add("len_exp_min", len_exp_min);
         result.add("len_exp_max", len_exp_max);
+        result.add("min_dist", min_dist);
         CompressorBase::init_result(result);
     }
 
@@ -36,7 +39,7 @@ struct Compressor : public CompressorBase {
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_compress_sample<false>(in.begin(), in.end(), iopp::bitwise_output_to(out), sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns, result);
+        topk_compress_sample<false>(in.begin(), in.end(), iopp::bitwise_output_to(out), sample_exp, len_exp_min, len_exp_max, min_dist, k, sketch_rows, sketch_columns, result);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {

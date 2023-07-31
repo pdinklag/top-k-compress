@@ -48,6 +48,7 @@ struct Buffers {
     std::unique_ptr<std::unique_ptr<TopK>[]> topk;
     std::unique_ptr<RollingKarpRabin[]> hash;
     std::unique_ptr<uint64_t[]> fp;
+    std::unique_ptr<std::unique_ptr<Index[]>[]> ref;
 
     // nb: we use an alternative definition of the SSS that looks for minimizers of the tau most recent fingerprints,
     // (rather than looking forward as in the original definition)
@@ -96,7 +97,8 @@ struct Buffers {
           total(0),
           topk(std::make_unique<std::unique_ptr<TopK>[]>(num_lens)),
           hash(std::make_unique<RollingKarpRabin[]>(num_lens)),
-          fp(std::make_unique<uint64_t[]>(num_lens)) {
+          fp(std::make_unique<uint64_t[]>(num_lens)),
+          ref(std::make_unique<std::unique_ptr<Index[]>[]>(num_lens)) {
 
         // init top-k
         {
@@ -127,6 +129,15 @@ struct Buffers {
             sync = std::make_unique<Synchronizer[]>(num_lens);
             for(size_t i = 0; i < num_lens; i++) {
                 sync[i] = Synchronizer(sample);
+            }
+        }
+
+        // init ref buffers
+        {
+            auto num_slots = k >> 1;
+            for(size_t i = 0; i < num_lens; i++) {
+                ref[i] = std::make_unique<Index[]>(num_slots);
+                num_slots >>= 1;
             }
         }
     }
@@ -181,7 +192,7 @@ struct Buffers {
 };
 
 template<bool use_sss, tdc::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_exp, size_t const len_exp_min, size_t const len_exp_max, size_t const k, size_t const sketch_rows, size_t const sketch_columns, pm::Result& result) {
+void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_exp, size_t const len_exp_min, size_t const len_exp_max, size_t const min_dist, size_t const k, size_t const sketch_rows, size_t const sketch_columns, pm::Result& result) {
     assert(len_exp_max >= len_exp_min);
     assert(len_exp_max <= 31);
     assert(sample_exp < 64);
@@ -190,6 +201,8 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
     size_t num_literals = 0;
     size_t longest = 0;
     size_t total_len = 0;
+    size_t furthest = 0;
+    size_t total_ref_dist = 0;
 
     // initialize encoding
     out.write(MAGIC, 64);
@@ -214,6 +227,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
     size_t pos = 0;  // the current parsing position in the input
     size_t next = 0; // the next position that must be encoded
     size_t num_sampled = 0;
+    size_t num_filtered = 0; // the number of references not emitted because they were too near
 
     auto advance = [&](char const c){
         // if constexpr(DEBUG) std::cout << "advance: " << display(c) << std::endl;
@@ -252,19 +266,30 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
             TopK::Index slot;
             if(pos >= next && b.topk[i]->find(b.fp[i], len, slot)) {
                 // we found it
-                next += len;
-                ++num_refs;
+                // make sure it is far enough away
+                auto const src = b.ref[i][slot];
+                assert(pos > src);
+                auto const dist = pos - src;
+                if(dist >= min_dist) {
+                    next += len;
+                    ++num_refs;
 
-                out.write(SIGNAL, CHAR_BITS);
-                code::Vbyte::encode(out, slot + 1, 8);
-                // out.write(slot + 1, REF_BITS);
-                out.write(i, BYTE_BITS);
+                    total_ref_dist += dist;
+                    furthest = std::max(furthest, dist);
 
-                if constexpr(DEBUG) std::cout << "pos=" << pos << ": encode [" << pos << " .. " << pos + len - 1 << "] = 0x" << std::hex << b.fp[i] << " / " << std::dec << len << " as slot #" << slot << std::endl;
-                if constexpr(PROTOCOL) std::cout << "pos=" << pos << ": (#" << slot << ", " << len << ")" << std::endl;
+                    out.write(SIGNAL, CHAR_BITS);
+                    code::Vbyte::encode(out, slot + 1, 8);
+                    // out.write(slot + 1, REF_BITS);
+                    out.write(i, BYTE_BITS);
 
-                longest = std::max(longest, len);
-                total_len += len;
+                    if constexpr(DEBUG) std::cout << "pos=" << pos << ": encode [" << pos << " .. " << pos + len - 1 << "] = 0x" << std::hex << b.fp[i] << " / " << std::dec << len << " as slot #" << slot << std::endl;
+                    if constexpr(PROTOCOL) std::cout << "pos=" << pos << ": (#" << slot << ", " << len << ")" << std::endl;
+
+                    longest = std::max(longest, len);
+                    total_len += len;
+                } else {
+                    ++num_filtered;
+                }
             }
 
             // process sample queue
@@ -276,6 +301,9 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
                 
                 TopK::Index slot;
                 auto const frequent = b.topk[i]->insert(q.fp, len, slot);
+                if(frequent) {
+                    b.ref[i][slot] = pos - len;
+                }
 
                 if constexpr(DEBUG) {
                     std::cout << "pos=" << pos << ": sample [" << q.pos - len << " .. " << q.pos - 1 << "] = 0x" << std::hex << q.fp << " / " << std::dec << len;
@@ -322,12 +350,15 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
     // stats
     auto const num_phrases = num_refs + num_literals;
     result.add("num_sampled", num_sampled);
+    result.add("num_filtered", num_filtered);
     result.add("phrases_total", num_phrases);
     result.add("phrases_ref", num_refs);
     result.add("phrases_literal", num_literals);
     result.add("phrases_longest", longest);
+    result.add("phrases_furthest", furthest);
     result.add("phrases_avg_len", std::round(100.0 * ((double)total_len / (double)num_phrases)) / 100.0);
     result.add("phrases_avg_ref_len", std::round(100.0 * ((double)total_len / (double)num_refs)) / 100.0);
+    result.add("phrases_avg_dist", std::round(100.0 * ((double)total_ref_dist / (double)num_refs)) / 100.0);
 }
 
 template<bool use_sss, iopp::BitSource In, std::output_iterator<char> Out>
@@ -349,16 +380,6 @@ void topk_decompress_sample(In in, Out out) {
     // init buffers
     Buffers<use_sss> b(sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns);
 
-    // other than the encoder, we also need to keep reference positions
-    std::unique_ptr<Index[]> ref[b.num_lens];
-    {
-        auto num_slots = k >> 1;
-        for(size_t i = 0; i < b.num_lens; i++) {
-            ref[i] = std::make_unique<Index[]>(num_slots);
-            num_slots >>= 1;
-        }
-    }
-
     // decode
     std::string s;
     size_t pos = 0;
@@ -373,7 +394,7 @@ void topk_decompress_sample(In in, Out out) {
                 TopK::Index slot;
                 auto const frequent = b.topk[i]->insert(b.fp[i], len, slot);
                 if(frequent) {
-                    ref[i][slot] = pos - len;
+                    b.ref[i][slot] = pos - len;
                 }
 
                 if constexpr(DEBUG) {
@@ -403,7 +424,7 @@ void topk_decompress_sample(In in, Out out) {
                 auto const len = b.get_len(i);
                 if constexpr(PROTOCOL) std::cout << "pos=" << pos << ": (#" << slot << ", " << len << ")" << std::endl;
 
-                auto const src = ref[i][slot];
+                auto const src = b.ref[i][slot];
                 if constexpr(DEBUG) std::cout << "pos=" << pos << ": decode [" << src << " .. " << src + len - 1 << "] from slot #" << slot << std::endl;
                 for(size_t j = 0; j < len; j++) {
                     emit(s[src + j]);
