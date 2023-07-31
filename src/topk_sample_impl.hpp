@@ -30,9 +30,7 @@ using TopK = TopKStrings<true>;
 constexpr size_t rolling_fp_base = (1ULL << 16) - 39;
 
 using Index = uint32_t;
-constexpr size_t BYTE_BITS = 8;
-constexpr size_t CHAR_BITS = 8;
-constexpr size_t REF_BITS = std::numeric_limits<Index>::digits;
+constexpr size_t REF_BYTES = std::numeric_limits<Index>::digits >> 3;
 
 constexpr char SIGNAL = '$';
 
@@ -191,7 +189,28 @@ struct Buffers {
     }
 };
 
-template<bool use_sss, tdc::InputIterator<char> In, iopp::BitSink Out>
+template<std::output_iterator<char> Out>
+void write_uint(Out& out, uint64_t const x, size_t const num_bytes) {
+    static_assert(std::endian::native == std::endian::little);
+    assert(num_bytes <= 8);
+    char const* s = (char const*)&x;
+    for(size_t i = 0; i < num_bytes; i++) {
+        *out++ = s[i];
+    }
+}
+
+template<tdc::InputIterator<char> In>
+uint64_t read_uint(In& in, size_t const num_bytes) {
+    assert(num_bytes <= 8);
+    uint64_t x = 0;
+    char* s = (char*)&x;
+    for(size_t i = 0; i < num_bytes; i++) {
+        s[i] = *in++;
+    }
+    return x;
+}
+
+template<bool use_sss, tdc::InputIterator<char> In, std::output_iterator<char> Out>
 void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_exp, size_t const len_exp_min, size_t const len_exp_max, size_t const min_dist, size_t const k, size_t const sketch_rows, size_t const sketch_columns, pm::Result& result) {
     assert(len_exp_max >= len_exp_min);
     assert(len_exp_max <= 31);
@@ -205,13 +224,13 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
     size_t total_ref_dist = 0;
 
     // initialize encoding
-    out.write(MAGIC, 64);
-    out.write(sample_exp, BYTE_BITS);
-    out.write(len_exp_min, BYTE_BITS);
-    out.write(len_exp_max, BYTE_BITS);
-    out.write(k, REF_BITS);
-    out.write(sketch_rows, BYTE_BITS);
-    out.write(sketch_columns, REF_BITS);
+    write_uint(out, MAGIC, 8);
+    write_uint(out, sample_exp, 1);
+    write_uint(out, len_exp_min, 1);
+    write_uint(out, len_exp_max, 1);
+    write_uint(out, k, REF_BYTES);
+    write_uint(out, sketch_rows, 1);
+    write_uint(out, sketch_columns, REF_BYTES);
 
     // init buffers
     Buffers<use_sss> b(sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns);
@@ -277,10 +296,9 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
                     total_ref_dist += dist;
                     furthest = std::max(furthest, dist);
 
-                    out.write(SIGNAL, CHAR_BITS);
-                    code::Vbyte::encode(out, slot + 1, 8);
-                    // out.write(slot + 1, REF_BITS);
-                    out.write(i, BYTE_BITS);
+                    *out++ = SIGNAL;
+                    write_uint(out, slot + 1, REF_BYTES);
+                    write_uint(out, i, 1);
 
                     if constexpr(DEBUG) std::cout << "pos=" << pos << ": encode [" << pos << " .. " << pos + len - 1 << "] = 0x" << std::hex << b.fp[i] << " / " << std::dec << len << " as slot #" << slot << std::endl;
                     if constexpr(PROTOCOL) std::cout << "pos=" << pos << ": (#" << slot << ", " << len << ")" << std::endl;
@@ -331,8 +349,8 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
         if(pos >= next) {
             auto const c = b.buffer.front();
             if constexpr(PROTOCOL) std::cout << "pos=" << pos << ": " << display(c) << std::endl;
-            out.write(c, CHAR_BITS);
-            if(c == SIGNAL) code::Vbyte::encode(out, 0, 8); // nb: make signal characters decodable
+            *out++ = c;
+            if(c == SIGNAL) write_uint(out, 0, REF_BYTES);
             ++num_literals;
             ++next;
         }
@@ -361,21 +379,21 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
     result.add("phrases_avg_dist", std::round(100.0 * ((double)total_ref_dist / (double)num_refs)) / 100.0);
 }
 
-template<bool use_sss, iopp::BitSource In, std::output_iterator<char> Out>
-void topk_decompress_sample(In in, Out out) {
-    uint64_t const magic = in.read(64);
+template<bool use_sss, tdc::InputIterator<char> In, std::output_iterator<char> Out>
+void topk_decompress_sample(In in, In const end, Out out) {
+    uint64_t const magic = read_uint(in, 8);
     if(magic != MAGIC) {
         std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << MAGIC << ")" << std::endl;
         std::abort();
     }
 
     // init decoding
-    size_t const sample_exp = in.read(BYTE_BITS);
-    size_t const len_exp_min = in.read(BYTE_BITS);
-    size_t const len_exp_max = in.read(BYTE_BITS);
-    size_t const k = in.read(REF_BITS);
-    size_t const sketch_rows = in.read(BYTE_BITS);
-    size_t const sketch_columns = in.read(REF_BITS);
+    size_t const sample_exp = read_uint(in, 1);
+    size_t const len_exp_min = read_uint(in, 1);
+    size_t const len_exp_max = read_uint(in, 1);
+    size_t const k = read_uint(in, REF_BYTES);
+    size_t const sketch_rows = read_uint(in, 1);
+    size_t const sketch_columns = read_uint(in, REF_BYTES);
 
     // init buffers
     Buffers<use_sss> b(sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns);
@@ -409,18 +427,17 @@ void topk_decompress_sample(In in, Out out) {
             }
             b.roll_hash_retrospective(i, c, drop);
         }
-
         ++pos;
     };
     
-    while(in) {
-        char const c = in.read(CHAR_BITS);
+    while(in != end) {
+        char const c = *in++;
         if(c == SIGNAL) {
-            auto const x = code::Vbyte::decode(in, 8);
+            auto const x = read_uint(in, REF_BYTES);
             if(x > 0) {
                 // we decoded an actual reference, copy characters
                 auto const slot = x - 1;
-                auto const i = in.read(BYTE_BITS);
+                auto const i = read_uint(in, 1);
                 auto const len = b.get_len(i);
                 if constexpr(PROTOCOL) std::cout << "pos=" << pos << ": (#" << slot << ", " << len << ")" << std::endl;
 

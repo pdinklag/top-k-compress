@@ -38,11 +38,11 @@ struct Compressor : public CompressorBase {
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_compress_sample<true>(in.begin(), in.end(), iopp::bitwise_output_to(out), sample_exp, len_exp_min, len_exp_max, min_dist, k, sketch_rows, sketch_columns, result);
+        topk_compress_sample<true>(in.begin(), in.end(), iopp::StreamOutputIterator(out), sample_exp, len_exp_min, len_exp_max, min_dist, k, sketch_rows, sketch_columns, result);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_decompress_sample<true>(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
+        topk_decompress_sample<true>(in.begin(), in.end(), iopp::StreamOutputIterator(out));
     }
 };
 
