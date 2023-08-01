@@ -4,7 +4,7 @@
 #include <tdc/util/concepts.hpp>
 
 #include <tdc/text/suffix_array.hpp>
-#include <RMQRMM64.h>
+#include <alx_rmq.hpp>
 
 #include <pm/stopwatch.hpp>
 
@@ -60,13 +60,14 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
     if constexpr(TIME_PHASES) { result.add("t_sa", (uint64_t)sw.elapsed_time_millis()); }
     
     // build rMq index on suffix array
-    // Ferrada's RMQ library only allows range MINIMUM queries, but we need range MAXIMUM
-    // to resolve this, we create a temporary copy of the suffix array with all values negated
+    // the RMQ library only allows range MINIMUM queries, but we need range MAXIMUM
+    // to resolve this, we create a copy of the suffix array with all values negated
+    using RMQ = alx::rmq::rmq_n<Index, Index>;
     if constexpr(TIME_PHASES) sw.start();
-    auto sa_neg = std::make_unique<SIndex[]>(n+1);
+    auto sa_neg = std::make_unique<Index[]>(n+1);
     for(size_t i = 0; i < n+1; i++) sa_neg[i] = -SIndex(sa[i]);
-    RMQRMM64 rMq(sa_neg.get(), n+1);
-    sa_neg.reset(); // we cannot scope this because RMQRMM64 does not feature default / move construction
+    RMQ rMq(sa_neg.get(), n+1);
+    // sa_neg.reset();
     if constexpr(TIME_PHASES) { sw.stop(); result.add("t_rmq", (uint64_t)sw.elapsed_time_millis()); }
     
     // compute inverse suffix array
@@ -135,7 +136,7 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
                 if constexpr(TIME_OPS) { sw_detail.stop(); t_bws_step += sw_detail.elapsed_time_nanos(); }
 
                 if constexpr(TIME_OPS) { sw_detail.start(); }
-                auto const mpos = (x.first <= x.second) ? rMq.queryRMQ(x.first, x.second) : 0;
+                auto const mpos = (x.first <= x.second) ? rMq.rmq(x.first, x.second) : 0;
                 if constexpr(TIME_OPS) { sw_detail.stop(); t_rmq += sw_detail.elapsed_time_nanos(); }
                 
                 if(sa[mpos] <= pos_to_reverse(i)) break;
