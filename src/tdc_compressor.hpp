@@ -24,6 +24,9 @@ struct TdcCompressor : public CompressorBase {
 
         using WriteFunc = std::function<void(Factor)>;
         WriteFunc write_func_;
+        
+        FactorWriter() {
+        }
 
         FactorWriter(WriteFunc write_func) : write_func_(write_func) {
         }
