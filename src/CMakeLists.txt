@@ -31,8 +31,8 @@ target_link_libraries(topk-sel topk)
 add_executable(topk-sss topk_sss.cpp)
 target_link_libraries(topk-sss topk word-packing)
 
-add_executable(lz77-lpf lz77_lpf.cpp)
-target_link_libraries(lz77-lpf topk)
+add_executable(lpf lpf.cpp)
+target_link_libraries(lpf topk)
 
 add_executable(gzip-tdc gzip_tdc.cpp)
 target_link_libraries(gzip-tdc topk)
