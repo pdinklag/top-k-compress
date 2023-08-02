@@ -6,6 +6,9 @@
 #include <cstdint>
 #include <type_traits>
 
+struct BTreeNoValue {
+};
+
 template<std::totally_ordered Key, typename Value, size_t capacity_>
 class BTreeSortedNodeLS {
 public:
@@ -21,8 +24,11 @@ private:
     static_assert(capacity_ < 65536);
     using Size = typename std::conditional_t<capacity_ < 256, uint8_t, uint16_t>;
 
+    static constexpr bool has_values_ = std::is_same_v<Value, BTreeNoValue>;
+    static constexpr size_t value_capacity_ = has_values_ ? capacity_ : 0;
+    
     Key keys_[capacity_];
-    Value values_[capacity_];
+    Value values_[value_capacity_];
     Size size_;
 
 public:
@@ -40,7 +46,11 @@ public:
     }
 
     inline Value value(size_t const i) const {
-        return values_[i];
+        if constexpr(has_values_) {
+            return values_[i];
+        } else {
+            return Value{};
+        }
     }
 
     PosResult predecessor(Key const x) const {
@@ -69,8 +79,12 @@ public:
         while(i < size_ && keys_[i] < key) ++i;
         for(size_t j = size_; j > i; j--) keys_[j] = keys_[j-1];
         keys_[i] = key;
-        for(size_t j = size_; j > i; j--) values_[j] = values_[j-1];
-        values_[i] = value;
+
+        if constexpr(has_values_) {
+            for(size_t j = size_; j > i; j--) values_[j] = values_[j-1];
+            values_[i] = value;
+        }
+
         ++size_;
     }
 
@@ -78,9 +92,13 @@ public:
         assert(size_ > 0);
         for(size_t i = 0; i < size_; i++) {
             if(keys_[i] == key) {
-                value = values_[i];
                 for(size_t j = i; j < size_-1; j++) keys_[j] = keys_[j+1];
-                for(size_t j = i; j < size_-1; j++) values_[j] = values_[j+1];
+
+                if constexpr(has_values_) {
+                    value = values_[i];
+                    for(size_t j = i; j < size_-1; j++) values_[j] = values_[j+1];
+                }
+
                 --size_;
                 return true;
             }

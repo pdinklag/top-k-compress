@@ -521,6 +521,10 @@ public:
         ++size_;
     }
 
+    void insert(Key const key) {
+        insert(key, Value{});
+    }
+
     bool remove(Key const key) {
         assert(size_ > 0);
         
