@@ -1,10 +1,6 @@
 #include "compressor_base.hpp"
 
-constexpr size_t RL_MIN = 3;
-constexpr size_t RL_MAX = 255 + RL_MIN;
-constexpr size_t RL_BITS = 8;
-
-constexpr size_t CHAR_BITS = 8;
+#include <runs.hpp>
 
 struct Compressor : public CompressorBase {
     Compressor() : CompressorBase("rle", "Run-length compression") {
@@ -20,76 +16,84 @@ struct Compressor : public CompressorBase {
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        auto bitout = iopp::bitwise_output_to(out);
+        using Index = uint32_t;
 
-        auto beg = in.begin();
-        auto end = in.end();
-        if(beg == end) return;
-        
-        // read first character
-        char prev = *beg++;
-        bitout.write(prev, CHAR_BITS);
-
-        bool run = false;
-        size_t rl = 0;
-
-        size_t num_runs = 0;
-        size_t longest = 0;
-        size_t total = 0;
-
-        auto encode_run = [&](){
-            // TODO: split if longer than max
-            if(rl >= RL_MIN) {
-                longest = std::max(longest, rl);
-                total += rl;
-                ++num_runs;
-
-                for(size_t i = 0; i < RL_MIN - 1; i++) {
-                    bitout.write(prev, CHAR_BITS);
-                }
-                bitout.write(rl - RL_MIN, RL_BITS);
-            } else {
-                for(size_t i = 0; i < rl - 1; i++) {
-                    bitout.write(prev, CHAR_BITS);
-                }
+        // read input into RAM
+        std::string s;
+        {
+            auto beg = in.begin();
+            auto const end = in.end();
+            while(beg != end) {
+                s.push_back(*beg++);
             }
-        };
-
-        while(beg != end) {
-            char const c = *beg++;
-            if(c == prev) {
-                if(run) {
-                    ++rl;
-                } else {
-                    run = true;
-                    rl = 2;
-                }
-            } else {
-                if(run) {
-                    encode_run();
-                    run = false;
-                }
-                bitout.write(c, CHAR_BITS);
-            }
-            prev = c;
+            s.shrink_to_fit();
         }
-        if(run) encode_run();
 
-        result.add("run_num", num_runs);
-        result.add("run_longest", longest);
-        result.add("run_avg_len", std::round(100.0 * ((double)total / (double)num_runs)) / 100.0);
+        // compute runs
+        auto const n = s.length();
+        std::vector<linear_time_runs::run_type<Index>> runs;
+        {
+            std::cout << "mapping characters ..." << std::endl;
+
+            // we map each character to its value + 1, so that we can use 0 as a true sentinel
+            auto s16 = std::make_unique<uint16_t[]>(n+2);
+            s16[0] = 0;
+            for(size_t i = 0; i < n; i++) {
+                s16[i + 1] = uint16_t(uint8_t(s[i])) + 1;
+            }
+            s16[n+1] = 0;
+
+            std::cout << "computing runs ..." << std::endl;
+            runs = linear_time_runs::compute_all_runs<uint16_t, Index>(s16.get(), n+2);
+        }
+
+        // output
+        std::cout << "producing output ..." << std::endl;
+        size_t const num_runs = runs.size();
+        size_t i = 0;
+        size_t next_run = 0;
+
+        auto out_it = iopp::StreamOutputIterator(out);
+        while(i < n) {
+            // advance to next relevant run
+            while(next_run < num_runs && runs[next_run].start - 1 < i) {
+                ++next_run;
+            }
+
+            if(next_run < num_runs && runs[next_run].start - 1 == i) {
+                static constexpr size_t SIGNAL_SIZE = 1;
+                static constexpr size_t PERIOD_SIZE = 1;
+                static constexpr size_t EXPONENT_SIZE = 1;
+                static constexpr size_t REMAINDER_SIZE = 1;
+                static constexpr size_t RUN_ENC_SIZE = SIGNAL_SIZE + PERIOD_SIZE + EXPONENT_SIZE + REMAINDER_SIZE;
+
+                auto const& run = runs[next_run];
+                if(run.period + RUN_ENC_SIZE < run.length) {
+                    // encode run
+                    auto const exponent = run.length / run.period;
+                    auto const remainder = run.length % run.period;
+                    // std::cout << "i=" << i << ": encoding run (period=" << run.period << ", exponent=" << exponent << ", remainder=" << remainder << ")" << std::endl;
+
+                    for(size_t j = 0; j < run.period; j++) {
+                        *out_it++ = s[i + j];
+                    }
+                    *out_it++ = '#'; // signal
+                    *out_it++ = (char)run.period;
+                    *out_it++ = (char)exponent;
+                    *out_it++ = (char)remainder;
+
+                    i += run.length;
+                    continue;
+                }
+            }
+
+            *out_it++ = s[i];
+            ++i;
+        }
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        auto bitin = iopp::bitwise_input_from(in.begin(), in.end());
-        auto dec = iopp::StreamOutputIterator(out);
-
-        /*
-        PhraseBlockReader reader(bitin);
-        while(bitin) {
-            *dec++ = reader.read_literal();
-        }
-        */
+        std::abort();
     }
 };
 
