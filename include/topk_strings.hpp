@@ -94,6 +94,11 @@ public:
         }
     }
 
+    Index k() const { return k_; }
+    Index size() const { return size_; }
+
+    size_t freq(size_t const slot) { return filter_[slot].freq; }
+
     void insert(Fingerprint const fp, Length const len) {
         Index discard;
         insert(fp, len, discard);

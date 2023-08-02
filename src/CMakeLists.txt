@@ -19,6 +19,9 @@ target_link_libraries(topk-lz78 topk)
 add_executable(topk-lzend topk_lzend.cpp)
 target_link_libraries(topk-lzend topk word-packing)
 
+add_executable(topk-model topk_model.cpp)
+target_link_libraries(topk-model topk word-packing)
+
 add_executable(topk-sample topk_sample.cpp)
 target_link_libraries(topk-sample topk word-packing)
 
