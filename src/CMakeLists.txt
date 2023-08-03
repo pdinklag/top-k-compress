@@ -7,6 +7,9 @@ target_link_libraries(encode topk)
 add_executable(rle rle.cpp)
 target_link_libraries(rle topk)
 
+add_executable(topk-fact topk_fact.cpp)
+target_link_libraries(topk-fact topk word-packing)
+
 add_executable(topk-lz77 topk_lz77.cpp)
 target_link_libraries(topk-lz77 topk)
 
