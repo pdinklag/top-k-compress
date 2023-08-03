@@ -4,6 +4,7 @@
 
 #include <phrase_block_writer.hpp>
 #include <phrase_block_reader.hpp>
+#include <trie_fcns.hpp>
 
 constexpr uint64_t MAGIC =
     ((uint64_t)'L') << 56 |
@@ -14,66 +15,6 @@ constexpr uint64_t MAGIC =
     ((uint64_t)'U') << 16 |
     ((uint64_t)'L') << 8 |
     ((uint64_t)'L');
-
-class TrieFCNS {
-public:
-    using Node = size_t;
-
-private:
-    std::vector<Node> fc_;
-    std::vector<Node> ns_;
-    std::vector<char> in_;
-
-    bool try_get_child(Node const v, char const c, Node& out_child) {
-        auto x = fc_[v];
-        if(x) {
-            if(in_[x] == c) {
-                out_child = x;
-                return true;
-            } else {
-                while(x) {
-                    x = ns_[x];
-                    if(x && in_[x] == c) {
-                        out_child = x;
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
-    Node insert_child(Node const parent, char const c) {
-        auto const v = size();
-
-        fc_.push_back(0);
-        ns_.push_back(fc_[parent]);
-        in_.push_back(c);
-
-        fc_[parent] = v;
-        return v;
-    }
-
-public:
-    TrieFCNS() {
-        // create root
-        fc_.push_back(0);
-        ns_.push_back(0);
-        in_.push_back(0);
-    }
-
-    Node root() const { return 0; }
-
-    size_t size() const { return fc_.size(); }
-
-    bool follow_edge(Node const v, char const c, Node& out_node) {
-        auto const found = try_get_child(v, c, out_node);
-        if(!found) {
-            out_node = insert_child(v, c);
-        }
-        return found;
-    }
-};
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void lz78_compress(In begin, In const& end, Out out, size_t const block_size, pm::Result& result) {
