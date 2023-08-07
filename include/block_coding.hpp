@@ -11,11 +11,16 @@
 using Token = uintmax_t;
 using TokenType = uint8_t;
 
-struct TokenParams {
-    Token max;
-    bool huffman;
+enum TokenEncoding {
+    Binary,
+    Huffman,
+};
 
-    inline TokenParams() : max(std::numeric_limits<Token>::max()), huffman(false) {
+struct TokenParams {
+    TokenEncoding encoding;
+    Token max;
+
+    inline TokenParams() : max(std::numeric_limits<Token>::max()), encoding(TokenEncoding::Binary) {
     }
 };
 
@@ -43,7 +48,13 @@ public:
     }
 
     void push_back(Token const token) {
-        if(params_.huffman) assert(token <= 255);
+        #ifndef NDEBUG
+        switch(params_.encoding) {
+            case TokenEncoding::Huffman:
+                assert(token <= 255);
+                break;
+        }
+        #endif
 
         tokens_.push_back(token);
         range_.contain(token);
@@ -51,7 +62,7 @@ public:
 
     template<iopp::BitSink Sink>
     void prepare_encode(Sink& sink) {
-        if(params_.huffman) {
+        if(params_.encoding == TokenEncoding::Huffman) {
             // Huffman codes
             huff_tree_ = HuffmanTree(tokens_.begin(), tokens_.end());
             huff_tree_.encode(sink);
@@ -83,7 +94,7 @@ public:
         assert(next_ < tokens_.size());
 
         auto const token = tokens_[next_++];
-        if(params_.huffman) {
+        if(params_.encoding == TokenEncoding::Huffman) {
             code::Huffman::encode(sink, (uint8_t)token, huff_table_);
         } else {
             code::Binary::encode(sink, token, universe_);
@@ -92,7 +103,7 @@ public:
 
     template<iopp::BitSource Src>
     void prepare_decode(Src& src) {
-        if(params_.huffman) {
+        if(params_.encoding == TokenEncoding::Huffman) {
             // Huffman codes
             huff_tree_ = HuffmanTree(src);
         } else {
@@ -114,7 +125,7 @@ public:
 
     template<iopp::BitSource Src>
     uintmax_t decode_next(Src& src) {
-        if(params_.huffman) {
+        if(params_.encoding == TokenEncoding::Huffman) {
             return code::Huffman::decode(src, huff_tree_.root());
         } else {
             return code::Binary::decode(src, universe_);
@@ -178,7 +189,7 @@ public:
         bool const small_block = cur_tokens_ < max_block_size_;
         sink_->write(small_block);
         if(small_block) code::Binary::encode(*sink_, cur_tokens_ - 1, code::Universe(max_block_size_));
-        
+
         for(size_t j = 0; j < num_types_; j++) {
             tokens_[j].prepare_encode(*sink_);
         }

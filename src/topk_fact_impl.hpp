@@ -42,10 +42,12 @@ void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold
 
     // PhraseBlockWriter writer(out, block_size, true, true);
     BlockEncoder enc(out, 5, block_size);
+    enc.params(TOK_TRIE_REF).encoding = TokenEncoding::Binary;
     enc.params(TOK_TRIE_REF).max = k - 1;
+    enc.params(TOK_FACT_SRC).encoding = TokenEncoding::Binary;
     enc.params(TOK_FACT_SRC).max = window_size - 1;
-    enc.params(TOK_FACT_LEN).huffman = true;
-    enc.params(TOK_LITERAL).huffman = true;
+    enc.params(TOK_FACT_LEN).encoding = TokenEncoding::Huffman;
+    enc.params(TOK_LITERAL).encoding = TokenEncoding::Huffman;
 
     // initialize top-k
     using Topk = TopKSubstrings<TopkTrieNode<>, true>;
