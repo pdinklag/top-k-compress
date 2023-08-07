@@ -1,5 +1,6 @@
 #include "topk_common.hpp"
 
+#include <block_coding.hpp>
 #include <trie_fcns.hpp>
 #include <tdc/text/util.hpp>
 #include <tdc/lz/lpf_factorizer.hpp>
@@ -18,6 +19,14 @@ using Index = uint32_t;
 using Topk = TopKSubstrings<TopkTrieNode<>, true>;
 using Node = Index;
 
+constexpr TokenType TOK_IND = 0;
+constexpr TokenType TOK_TRIE_REF = 1;
+constexpr TokenType TOK_FACT_SRC = 2;
+constexpr TokenType TOK_FACT_LEN = 3;
+constexpr TokenType TOK_LITERAL = 4;
+
+constexpr bool HUFF_FACTOR_LENGTHS = true;
+
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     // init stats
@@ -32,7 +41,14 @@ void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold
     TopkHeader header(k, window_size, num_sketches, sketch_rows, sketch_columns);
     header.encode(out, MAGIC);
 
-    PhraseBlockWriter writer(out, block_size, true, true);
+    // PhraseBlockWriter writer(out, block_size, true, true);
+    BlockEncoder enc(out, 5, block_size);
+    enc.params(TOK_IND).max = 1;
+    enc.params(TOK_TRIE_REF).max = k;
+    enc.params(TOK_FACT_SRC).max = window_size - 1;
+    enc.params(TOK_FACT_LEN).max = window_size;
+    enc.params(TOK_FACT_LEN).huffman = HUFF_FACTOR_LENGTHS;
+    enc.params(TOK_LITERAL).max = 255U;
 
     // initialize top-k
     using Topk = TopKSubstrings<TopkTrieNode<>, true>;
@@ -92,7 +108,8 @@ void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold
                     assert(v > 0);
 
                     flen = dv;
-                    writer.write_ref(v << 1 + 1);
+                    enc.write(TOK_IND, 0);
+                    enc.write(TOK_TRIE_REF, v + 1);
                     ++num_frequent;
 
                     // advance in LZ77 factorization
@@ -115,25 +132,33 @@ void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold
                     // encode a LZ77 reference or a literal
                     flen = f.num_literals();
 
-                    if(f.is_literal()) {
-                        // a literal factor
-                        assert(f.literal() == block[pos]);
-                        writer.write_ref(0);
-                        writer.write_literal(block[pos]);
-                        ++num_literal;
-                    } else if(f.num_literals() == 1) {
-                        // a reference of length 1 may have been introduced due to chopping
-                        // we convert it into a literal
-                        assert(pos >= f.src);
-                        assert(block[pos - f.src] == block[pos]);
-                        writer.write_ref(0);
-                        writer.write_literal(block[pos]);
+                    if(f.is_literal() || f.num_literals() == 1) {
+                        // a literal factor (possibly a reference of length one introduced due to chopping)
+                        enc.write(TOK_IND, 0);
+                        enc.write(TOK_TRIE_REF, 0);
+                        enc.write(TOK_LITERAL, block[pos]);
                         ++num_literal;
                     } else {
                         // a real LZ77 reference
-                        writer.write_ref(f.src << 1);
-                        writer.write_len(f.len);
-                        ++num_ref;
+
+                        if constexpr(HUFF_FACTOR_LENGTHS) {
+                            // limit a reference length to 255
+                            auto src = f.src;
+                            auto len = f.len;
+                            while(len) {
+                                auto x = std::min(len, uintmax_t(255));
+                                enc.write(TOK_IND, 1);
+                                enc.write(TOK_FACT_SRC, src);
+                                enc.write(TOK_FACT_LEN, x);
+                                len -= x;
+                                src += x;
+                                ++num_ref;
+                            }
+                        } else {
+                            enc.write(TOK_IND, 1);
+                            enc.write(TOK_FACT_SRC, f.src);
+                            enc.write(TOK_FACT_LEN, f.len);
+                        }
                     }
 
                     // advance to next LZ77 factor
@@ -152,6 +177,7 @@ void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold
             }
         }
     }
+    enc.flush();
 
     // stats
     result.add("phrases_total", num_ref + num_literal + num_frequent);
