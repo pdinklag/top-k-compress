@@ -19,13 +19,12 @@ using Index = uint32_t;
 using Topk = TopKSubstrings<TopkTrieNode<>, true>;
 using Node = Index;
 
-constexpr TokenType TOK_IND = 0;
-constexpr TokenType TOK_TRIE_REF = 1;
-constexpr TokenType TOK_FACT_SRC = 2;
-constexpr TokenType TOK_FACT_LEN = 3;
-constexpr TokenType TOK_LITERAL = 4;
+constexpr TokenType TOK_TRIE_REF = 0;
+constexpr TokenType TOK_FACT_SRC = 1;
+constexpr TokenType TOK_FACT_LEN = 2;
+constexpr TokenType TOK_LITERAL = 3;
 
-constexpr bool HUFF_FACTOR_LENGTHS = true;
+constexpr size_t MAX_FACTOR_LENGTH = 254; // 0 means it's a top-k trie reference
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
@@ -43,16 +42,14 @@ void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold
 
     // PhraseBlockWriter writer(out, block_size, true, true);
     BlockEncoder enc(out, 5, block_size);
-    enc.params(TOK_IND).max = 1;
-    enc.params(TOK_TRIE_REF).max = k;
+    enc.params(TOK_TRIE_REF).max = k - 1;
     enc.params(TOK_FACT_SRC).max = window_size - 1;
-    enc.params(TOK_FACT_LEN).max = window_size;
-    enc.params(TOK_FACT_LEN).huffman = HUFF_FACTOR_LENGTHS;
-    enc.params(TOK_LITERAL).max = 255U;
+    enc.params(TOK_FACT_LEN).huffman = true;
+    enc.params(TOK_LITERAL).huffman = true;
 
     // initialize top-k
     using Topk = TopKSubstrings<TopkTrieNode<>, true>;
-    Topk topk(k, num_sketches, sketch_rows, sketch_columns);
+    Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
 
     // initialize factorizer
     tdc::lz::LPFFactorizer<> lpf;
@@ -108,7 +105,7 @@ void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold
                     assert(v > 0);
 
                     flen = dv;
-                    enc.write(TOK_IND, 0);
+                    enc.write(TOK_FACT_LEN, 0);
                     enc.write(TOK_TRIE_REF, v + 1);
                     ++num_frequent;
 
@@ -134,30 +131,32 @@ void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold
 
                     if(f.is_literal() || f.num_literals() == 1) {
                         // a literal factor (possibly a reference of length one introduced due to chopping)
-                        enc.write(TOK_IND, 0);
-                        enc.write(TOK_TRIE_REF, 0);
+                        enc.write(TOK_FACT_LEN, 1);
                         enc.write(TOK_LITERAL, block[pos]);
                         ++num_literal;
                     } else {
                         // a real LZ77 reference
 
-                        if constexpr(HUFF_FACTOR_LENGTHS) {
-                            // limit a reference length to 255
-                            auto src = f.src;
-                            auto len = f.len;
-                            while(len) {
-                                auto x = std::min(len, uintmax_t(255));
-                                enc.write(TOK_IND, 1);
+                        // limit reference lengths, because we use them as a type indicator too
+                        auto src = f.src;
+                        auto len = f.len;
+                        while(len) {
+                            assert(pos >= src);
+
+                            auto x = std::min(len, uintmax_t(MAX_FACTOR_LENGTH));
+                            enc.write(TOK_FACT_LEN, x);
+
+                            if(x == 1) {
+                                // a length of 1 indicates a literal character, so we should actually encode one
+                                enc.write(TOK_LITERAL, block[pos - src]);
+                            } else {
+                                // write source
                                 enc.write(TOK_FACT_SRC, src);
-                                enc.write(TOK_FACT_LEN, x);
-                                len -= x;
-                                src += x;
-                                ++num_ref;
                             }
-                        } else {
-                            enc.write(TOK_IND, 1);
-                            enc.write(TOK_FACT_SRC, f.src);
-                            enc.write(TOK_FACT_LEN, f.len);
+
+                            len -= x;
+                            src += x;
+                            ++num_ref;
                         }
                     }
 
