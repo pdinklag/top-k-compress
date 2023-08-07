@@ -134,23 +134,27 @@ void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold
                     if(f.is_literal() || f.num_literals() == 1) {
                         // a literal factor (possibly a reference of length one introduced due to chopping)
                         enc.write(TOK_FACT_LEN, 1);
-                        enc.write(TOK_LITERAL, block[pos]);
+                        enc.write(TOK_LITERAL, (uint8_t)block[pos]);
                         ++num_literal;
                     } else {
                         // a real LZ77 reference
+                        assert(pos >= f.src);
 
                         // limit reference lengths, because we use them as a type indicator too
                         auto src = f.src;
                         auto len = f.len;
                         while(len) {
-                            assert(pos >= src);
-
                             auto x = std::min(len, uintmax_t(MAX_FACTOR_LENGTH));
-                            enc.write(TOK_FACT_LEN, x);
+                            enc.write(TOK_FACT_LEN, (uint8_t)x);
 
                             if(x == 1) {
-                                // a length of 1 indicates a literal character, so we should actually encode one
-                                enc.write(TOK_LITERAL, block[pos - src]);
+                                // a length of 1 indicates a leftover literal character, so we should actually encode a literal
+
+                                // nb: we may have encountered a run, and in that case pos < src
+                                // the modulo expression handles this case properly
+                                char const last = block[pos - f.src + ((f.len - 1) % f.src)];
+
+                                enc.write(TOK_LITERAL, (uint8_t)last);
                             } else {
                                 // write source
                                 enc.write(TOK_FACT_SRC, src);
