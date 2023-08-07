@@ -173,7 +173,12 @@ public:
         if(cur_tokens_ == 0)[[unlikely]] return;
 
         // write block header
-        code::Binary::encode(*sink_, cur_tokens_ - 1, code::Universe(max_block_size_));
+        assert(cur_tokens_ <= max_block_size_);
+
+        bool const small_block = cur_tokens_ < max_block_size_;
+        sink_->write(small_block);
+        if(small_block) code::Binary::encode(*sink_, cur_tokens_ - 1, code::Universe(max_block_size_));
+        
         for(size_t j = 0; j < num_types_; j++) {
             tokens_[j].prepare_encode(*sink_);
         }
