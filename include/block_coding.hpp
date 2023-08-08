@@ -171,34 +171,9 @@ private:
 
     size_t cur_tokens_;
 
-public:
-    BlockEncoder(Sink& sink, TokenType const num_types, size_t const max_block_size)
-        : BlockEncodingBase(num_types),
-          sink_(&sink),
-          max_block_size_(max_block_size),
-          cur_tokens_(0) {
-    
-        token_types_.reserve(max_block_size_);
-
-        // header
-        code::Binary::encode(sink, max_block_size_, code::Universe::of<uint32_t>());
-    }
-
-    void write(TokenType const type, Token const token) {
-        token_types_.push_back(type);
-        tokens(type).push_back(token);
-
-        ++cur_tokens_;
-        if(cur_tokens_ >= max_block_size_) {
-            assert(cur_tokens_ == max_block_size_);
-            flush();
-        }
-    }
-
-    void flush() {
-        if(cur_tokens_ == 0)[[unlikely]] return;
-
+    void overflow() {
         // write block header
+        assert(cur_tokens_ > 0);
         assert(cur_tokens_ <= max_block_size_);
 
         bool const small_block = cur_tokens_ < max_block_size_;
@@ -221,6 +196,34 @@ public:
         token_types_.clear();
         cur_tokens_ = 0;
     }
+
+public:
+    BlockEncoder(Sink& sink, TokenType const num_types, size_t const max_block_size)
+        : BlockEncodingBase(num_types),
+          sink_(&sink),
+          max_block_size_(max_block_size),
+          cur_tokens_(0) {
+    
+        token_types_.reserve(max_block_size_);
+
+        // header
+        code::Binary::encode(sink, max_block_size_, code::Universe::of<uint32_t>());
+    }
+
+    void write(TokenType const type, Token const token) {
+        token_types_.push_back(type);
+        tokens(type).push_back(token);
+
+        ++cur_tokens_;
+        if(cur_tokens_ >= max_block_size_) {
+            assert(cur_tokens_ == max_block_size_);
+            overflow();
+        }
+    }
+
+    void flush() {
+        if(cur_tokens_ > 0) overflow();
+    }
 };
 
 template<iopp::BitSource Src>
@@ -233,14 +236,17 @@ private:
     size_t next_token_;
 
     void underflow() {
-        bool const small_block = src_->read();
-        cur_block_size_ = small_block ? (code::Binary::decode(*src_, code::Universe(max_block_size_)) + 1) : max_block_size_;
+        if(*src_) {
+            bool const small_block = src_->read();
+            cur_block_size_ = small_block ? (code::Binary::decode(*src_, code::Universe(max_block_size_)) + 1) : max_block_size_;
 
-        for(size_t j = 0; j < num_types(); j++) {
-            tokens(j).clear();
-            tokens(j).prepare_decode(*src_);
+            for(size_t j = 0; j < num_types(); j++) {
+                tokens(j).clear();
+                tokens(j).prepare_decode(*src_);
+            }
+        } else {
+            cur_block_size_ = 0;
         }
-
         next_token_ = 0;
     }
 
