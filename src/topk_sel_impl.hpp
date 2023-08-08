@@ -16,6 +16,16 @@ constexpr bool PROTOCOL = false;
 
 constexpr size_t MIN_REF = 1;
 
+constexpr TokenType TOK_TRIE_REF = 0;
+constexpr TokenType TOK_LITERAL = 1;
+
+void setup_encoding(BlockEncodingBase& enc, size_t const k) {
+    enc.params(TOK_TRIE_REF).encoding = TokenEncoding::Binary;
+    enc.params(TOK_TRIE_REF).max = k - 1;
+    enc.params(TOK_LITERAL).encoding = TokenEncoding::Binary;
+    enc.params(TOK_LITERAL).max = 255;
+}
+
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     // write header
@@ -25,10 +35,11 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
     using Topk = TopKSubstrings<TopkTrieNode<>, true>;
-    Topk topk(k, num_sketches, sketch_rows, sketch_columns);
+    Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
 
     // initialize encoding
-    PhraseBlockWriter writer(out, block_size);
+    BlockEncoder enc(out, 2, block_size);
+    setup_encoding(enc, k);
 
     struct NewNode {
         size_t index;
@@ -114,7 +125,7 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
                     }
 
                     assert(phrase_index > 0);
-                    writer.write_ref(phrase_index);
+                    enc.write(TOK_TRIE_REF, phrase_index);
 
                     ++num_frequent;
                     next_phrase += phrase_len;
@@ -134,8 +145,8 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
                         std::cout << display(x) << std::endl;
                     }
 
-                    writer.write_ref(0);
-                    writer.write_literal(x);
+                    enc.write(TOK_TRIE_REF, 0);
+                    enc.write(TOK_LITERAL, (uint8_t)x);
 
                     ++num_literal;
                     ++next_phrase;
@@ -171,7 +182,7 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
         handle(0, window_size - 1 - x);
     }
 
-    writer.flush();
+    enc.flush();
 
     topk.print_debug_info();
     
@@ -199,10 +210,11 @@ void topk_decompress_sel(In in, Out out) {
     // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character
     using Topk = TopKSubstrings<TopkTrieNode<>, true>;
-    Topk topk(k, num_sketches, sketch_rows, sketch_columns);
+    Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
 
     // initialize decoding
-    PhraseBlockReader reader(in);
+    BlockDecoder dec(in, 2);
+    setup_encoding(dec, k);
 
     Topk::StringState s[window_size];
     for(size_t j = 0; j < window_size; j++) {
@@ -237,19 +249,27 @@ void topk_decompress_sel(In in, Out out) {
     size_t num_literal = 0;
 
     while(in) {
-        auto const p = reader.read_ref();
+        auto const p = dec.read(TOK_TRIE_REF);
+
         if(p) {
             // decode frequent phrase
             ++num_frequent;
 
             auto const len = topk.get(p, frequent_string);
+            if constexpr(PROTOCOL) {
+                std::cout << "(" << p << ") / " << len << std::endl;
+            }
+
             for(size_t i = 0; i < len; i++) {
                 handle(frequent_string[i]);
             }
         } else {
             // decode literal phrase
             ++num_literal;
-            char const c = reader.read_literal();
+            char const c = dec.read(TOK_LITERAL);
+            if constexpr(PROTOCOL) {
+                std::cout << display(c) << std::endl;
+            }
             handle(c);
         }
     }
