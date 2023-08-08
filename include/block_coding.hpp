@@ -112,7 +112,7 @@ public:
             if(any) {
                 if(params_.max <= 1) {
                     // a universe of single bits
-                    universe_ = code::Universe(1);
+                    universe_ = code::Universe::binary();
                 } else {
                     // a universe defined by min and max
                     auto const min = code::Binary::decode(src, code::Universe(params_.max));
@@ -142,36 +142,51 @@ public:
     }
 };
 
+class BlockEncodingBase {
+private:
+    size_t num_types_;
+    std::unique_ptr<TokenBuffer[]> tokens_;
+
+protected:
+    BlockEncodingBase(TokenType const num_types) : num_types_(num_types), tokens_(std::make_unique<TokenBuffer[]>(num_types_)) {
+    }
+
+    TokenBuffer& tokens(TokenType const type) { return tokens_[type]; }
+
+    size_t num_types() const { return num_types_; }
+
+public:
+    auto& params(TokenType const type) {
+        return tokens_[type].params();
+    }
+};
+
 template<iopp::BitSink Sink>
-class BlockEncoder {
+class BlockEncoder : public BlockEncodingBase {
 private:
     Sink* sink_;
-    size_t num_types_;
     size_t max_block_size_;
 
     std::vector<TokenType> token_types_;
-    std::unique_ptr<TokenBuffer[]> tokens_;
 
     size_t cur_tokens_;
 
 public:
     BlockEncoder(Sink& sink, TokenType const num_types, size_t const max_block_size)
-        : sink_(&sink),
-          num_types_(num_types),
+        : BlockEncodingBase(num_types),
+          sink_(&sink),
           max_block_size_(max_block_size),
-          tokens_(std::make_unique<TokenBuffer[]>(num_types_)),
           cur_tokens_(0) {
     
         token_types_.reserve(max_block_size_);
-    }
 
-    auto& params(TokenType const type) {
-        return tokens_[type].params();
+        // header
+        code::Binary::encode(sink, max_block_size_, code::Universe::of<uint32_t>());
     }
 
     void write(TokenType const type, Token const token) {
         token_types_.push_back(type);
-        tokens_[type].push_back(token);
+        tokens(type).push_back(token);
 
         ++cur_tokens_;
         if(cur_tokens_ >= max_block_size_) {
@@ -190,20 +205,62 @@ public:
         sink_->write(small_block);
         if(small_block) code::Binary::encode(*sink_, cur_tokens_ - 1, code::Universe(max_block_size_));
 
-        for(size_t j = 0; j < num_types_; j++) {
-            tokens_[j].prepare_encode(*sink_);
+        for(size_t j = 0; j < num_types(); j++) {
+            tokens(j).prepare_encode(*sink_);
         }
 
         // write tokens
         for(auto j : token_types_) {
-            tokens_[j].encode_next(*sink_);
+            tokens(j).encode_next(*sink_);
         }
 
         // 
-        for(size_t j = 0; j < num_types_; j++) {
-            tokens_[j].clear();
+        for(size_t j = 0; j < num_types(); j++) {
+            tokens(j).clear();
         }
         token_types_.clear();
         cur_tokens_ = 0;
+    }
+};
+
+template<iopp::BitSource Src>
+class BlockDecoder : public BlockEncodingBase {
+private:
+    Src* src_;
+    size_t max_block_size_;
+    
+    size_t cur_block_size_;
+    size_t next_token_;
+
+    void underflow() {
+        bool const small_block = src_->read();
+        cur_block_size_ = small_block ? (code::Binary::decode(*src_, code::Universe(max_block_size_)) + 1) : max_block_size_;
+
+        for(size_t j = 0; j < num_types(); j++) {
+            tokens(j).clear();
+            tokens(j).prepare_decode(*src_);
+        }
+
+        next_token_ = 0;
+    }
+
+public:
+    BlockDecoder(Src& src, TokenType const num_types)
+        : BlockEncodingBase(num_types),
+          src_(&src),
+          cur_block_size_(0),
+          next_token_(0) {
+
+        // header
+        max_block_size_ = code::Binary::decode(src, code::Universe::of<uint32_t>());
+    }
+
+    uintmax_t read(TokenType const type) {
+        if(next_token_ >= cur_block_size_) {
+            underflow();
+        }
+
+        ++next_token_;
+        return tokens(type).decode_next(*src_);
     }
 };

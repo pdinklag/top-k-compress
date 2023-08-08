@@ -12,6 +12,16 @@ constexpr uint64_t MAGIC =
 
 constexpr bool PROTOCOL = false;
 
+
+constexpr TokenType TOK_TRIE_REF = 0;
+constexpr TokenType TOK_LITERAL = 1;
+
+void setup_encoding(BlockEncodingBase& enc, size_t const k) {
+    enc.params(TOK_TRIE_REF).encoding = TokenEncoding::Binary;
+    enc.params(TOK_TRIE_REF).max = k - 1;
+    enc.params(TOK_LITERAL).encoding = TokenEncoding::Huffman;
+}
+
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     TopkHeader header(k, 0 /* indicator for LZ78 compression :-) */, num_sketches, sketch_rows, sketch_columns);
@@ -20,7 +30,7 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
     using Topk = TopKSubstrings<TopkTrieNode<>>;
-    Topk topk(k, num_sketches, sketch_rows, sketch_columns);
+    Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
     size_t n = 0;
     size_t num_phrases = 0;
     size_t longest = 0;
@@ -29,7 +39,8 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
     size_t total_ref = 0;
 
     // initialize encoding
-    PhraseBlockWriter writer(out, block_size);
+    BlockEncoder enc(out, 2, block_size);
+    setup_encoding(enc, k);
 
     Topk::StringState s = topk.empty_string();
     auto handle = [&](char const c) {
@@ -39,8 +50,8 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
             total_len += next.len;
             furthest = std::max(furthest, size_t(s.node));
             total_ref += s.node;
-            writer.write_ref(s.node);
-            writer.write_literal(c);
+            enc.write(TOK_TRIE_REF, s.node);
+            enc.write(TOK_LITERAL, (uint8_t)c);
 
             if constexpr(PROTOCOL) std::cout << "(" << s.node << ") 0x" << std::hex << (size_t)c << std::dec << std::endl;
 
@@ -59,13 +70,13 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
 
     // encode final phrase, if any
     if(s.len > 0) {
-        writer.write_ref(s.node);
+        enc.write(TOK_TRIE_REF, s.node);
         ++num_phrases;
 
         if constexpr(PROTOCOL) std::cout << "(" << s.node << ")" << std::endl;
     }
 
-    writer.flush();
+    enc.flush();
 
     topk.print_debug_info();
     
@@ -89,18 +100,19 @@ void topk_decompress_lz78(In in, Out out) {
     // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character
     using Topk = TopKSubstrings<TopkTrieNode<>>;
-    Topk topk(k, num_sketches, sketch_rows, sketch_columns);
+    Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
 
     size_t n = 0;
     size_t num_phrases = 0;
 
     // initialize decoding
-    PhraseBlockReader reader(in);
+    BlockDecoder dec(in, 2);
+    setup_encoding(dec, k);
 
     char* phrase = new char[k]; // phrases can be of length up to k...
     while(in) {
         // decode and handle phrase
-        auto const x = reader.read_ref();
+        auto const x = dec.read(TOK_TRIE_REF);
         if constexpr(PROTOCOL) std::cout << "(" << x << ")";
 
         auto const phrase_len = topk.get(x, phrase);
@@ -118,7 +130,7 @@ void topk_decompress_lz78(In in, Out out) {
         // decode and handle literal
         if(in)
         {
-            auto const literal = reader.read_literal();
+            auto const literal = (char)dec.read(TOK_LITERAL);
             topk.extend(s, literal);
             *out++ = literal;
             ++n;
