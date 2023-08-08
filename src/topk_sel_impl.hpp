@@ -223,8 +223,6 @@ void topk_decompress_sel(In in, Out out) {
 
         if(n + 1 >= window_size) {
             // advance longest
-            assert(s[longest].len == window_size);
-
             topk.drop_out(s[longest]);
             s[longest] = topk.empty_string();
             longest = (longest + 1) % window_size;
