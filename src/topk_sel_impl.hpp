@@ -198,7 +198,7 @@ void topk_decompress_sel(In in, Out out) {
 
     // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character
-    using Topk = TopKSubstrings<TopkTrieNode<>>;
+    using Topk = TopKSubstrings<TopkTrieNode<>, true>;
     Topk topk(k, num_sketches, sketch_rows, sketch_columns);
 
     // initialize decoding
