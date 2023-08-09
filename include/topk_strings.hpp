@@ -10,7 +10,7 @@
 
 #include <ankerl/unordered_dense.h>
 
-#include "count_min.hpp"
+#include "count_min2.hpp"
 #include "min_pq.hpp"
 
 template<bool approx_minpq_ = false>
@@ -33,7 +33,7 @@ private:
     Index size_;
 
     MinPQ<size_t> min_pq_;
-    CountMin<size_t> sketch_;
+    CountMin2<size_t> sketch_;
 
     struct FilterEntry {
         Hash h;
@@ -82,7 +82,7 @@ public:
         : k_(k),
           size_(0),
           min_pq_(k),
-          sketch_(sketch_rows, sketch_columns) {
+          sketch_(sketch_columns) {
 
         filter_ = std::make_unique<FilterEntry[]>(k);
         filter_map_.reserve(k);
