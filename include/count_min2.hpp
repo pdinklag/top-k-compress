@@ -15,11 +15,10 @@ class CountMin2 {
 private:
     static constexpr size_t random_seed_ = 147;
 
-    std::unique_ptr<Frequency[]> row1_, row2_;
+    std::unique_ptr<Frequency[]> table_;
     uintmax_t q1_, q2_;
     size_t num_columns_;
     size_t cmask_;
-
 
     size_t h1(uintmax_t const item) const {
         static constexpr uintmax_t p1 = (1ULL << 45) - 229;
@@ -28,7 +27,7 @@ private:
 
     size_t h2(uintmax_t const item) const {
         static constexpr uintmax_t p2 = (1ULL << 45) - 193;
-        return ((item ^ q2_) % p2) & cmask_;
+        return num_columns_ + ((item ^ q2_) % p2) & cmask_;
     }
 
 public:
@@ -41,11 +40,8 @@ public:
         cmask_ = num_columns_ - 1;
 
         // initialize frequency table
-        row1_ = std::make_unique<Frequency[]>(num_columns_);
-        for(size_t j = 0; j < num_columns_; j++) row1_[j] = 0;
-
-        row2_ = std::make_unique<Frequency[]>(num_columns_);
-        for(size_t j = 0; j < num_columns_; j++) row2_[j] = 0;
+        table_ = std::make_unique<Frequency[]>(2 * num_columns_);
+        for(size_t j = 0; j < 2 * num_columns_; j++) table_[j] = 0;
 
         // initialize hash functions
         {
@@ -64,14 +60,17 @@ public:
         auto const j1 = h1(item);
         auto const j2 = h2(item);
 
-        row1_[j1] += inc;
-        row2_[j2] += inc;
+        auto const f1 = table_[j1] + inc;
+        table_[j1] = f1;
 
-        return std::min(row1_[j1], row2_[j2]);
+        auto const f2 = table_[j2] + inc;
+        table_[j2] = f2;
+
+        return std::min(f1, f2);
     }
 
     inline void increment(uintmax_t const item, Frequency const inc) {
-        row1_[h1(item)] += inc;
-        row2_[h2(item)] += inc;
+        table_[h1(item)] += inc;
+        table_[h2(item)] += inc;
     }
 };
