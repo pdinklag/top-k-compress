@@ -210,7 +210,7 @@ public:
         code::Binary::encode(sink, max_block_size_, code::Universe::of<uint32_t>());
     }
 
-    void write(TokenType const type, Token const token) {
+    void write_uint(TokenType const type, Token const token) {
         token_types_.push_back(type);
         tokens(type).push_back(token);
 
@@ -219,6 +219,10 @@ public:
             assert(cur_tokens_ == max_block_size_);
             overflow();
         }
+    }
+
+    void write_char(TokenType const type, char const c) {
+        write_uint(type, Token((uint8_t)c));
     }
 
     void flush() {
@@ -261,12 +265,16 @@ public:
         max_block_size_ = code::Binary::decode(src, code::Universe::of<uint32_t>());
     }
 
-    uintmax_t read(TokenType const type) {
+    uintmax_t read_uint(TokenType const type) {
         if(next_token_ >= cur_block_size_) {
             underflow();
         }
 
         ++next_token_;
         return tokens(type).decode_next(*src_);
+    }
+
+    char read_char(TokenType const type) {
+        return (char)read_uint(type);
     }
 };

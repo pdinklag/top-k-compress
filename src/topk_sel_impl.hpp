@@ -19,6 +19,8 @@ constexpr size_t MIN_REF = 1;
 constexpr TokenType TOK_TRIE_REF = 0;
 constexpr TokenType TOK_LITERAL = 1;
 
+using Topk = TopKSubstrings<TopkTrieNode<>, true>;
+
 void setup_encoding(BlockEncodingBase& enc, size_t const k) {
     enc.params(TOK_TRIE_REF).encoding = TokenEncoding::Binary;
     enc.params(TOK_TRIE_REF).max = k - 1;
@@ -34,7 +36,6 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
-    using Topk = TopKSubstrings<TopkTrieNode<>, true>;
     Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
 
     // initialize encoding
@@ -125,7 +126,7 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
                     }
 
                     assert(phrase_index > 0);
-                    enc.write(TOK_TRIE_REF, phrase_index);
+                    enc.write_uint(TOK_TRIE_REF, phrase_index);
 
                     ++num_frequent;
                     next_phrase += phrase_len;
@@ -145,8 +146,8 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
                         std::cout << display(x) << std::endl;
                     }
 
-                    enc.write(TOK_TRIE_REF, 0);
-                    enc.write(TOK_LITERAL, (uint8_t)x);
+                    enc.write_uint(TOK_TRIE_REF, 0);
+                    enc.write_char(TOK_LITERAL, x);
 
                     ++num_literal;
                     ++next_phrase;
@@ -209,7 +210,6 @@ void topk_decompress_sel(In in, Out out) {
 
     // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character
-    using Topk = TopKSubstrings<TopkTrieNode<>, true>;
     Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
 
     // initialize decoding
@@ -249,7 +249,7 @@ void topk_decompress_sel(In in, Out out) {
     size_t num_literal = 0;
 
     while(in) {
-        auto const p = dec.read(TOK_TRIE_REF);
+        auto const p = dec.read_uint(TOK_TRIE_REF);
 
         if(p) {
             // decode frequent phrase
@@ -266,7 +266,7 @@ void topk_decompress_sel(In in, Out out) {
         } else {
             // decode literal phrase
             ++num_literal;
-            char const c = dec.read(TOK_LITERAL);
+            char const c = dec.read_char(TOK_LITERAL);
             if constexpr(PROTOCOL) {
                 std::cout << display(c) << std::endl;
             }

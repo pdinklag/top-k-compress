@@ -12,9 +12,10 @@ constexpr uint64_t MAGIC =
 
 constexpr bool PROTOCOL = false;
 
-
 constexpr TokenType TOK_TRIE_REF = 0;
 constexpr TokenType TOK_LITERAL = 1;
+
+using Topk = TopKSubstrings<TopkTrieNode<>>;
 
 void setup_encoding(BlockEncodingBase& enc, size_t const k) {
     enc.params(TOK_TRIE_REF).encoding = TokenEncoding::Binary;
@@ -29,7 +30,7 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
-    using Topk = TopKSubstrings<TopkTrieNode<>>;
+    
     Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
     size_t n = 0;
     size_t num_phrases = 0;
@@ -50,8 +51,8 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
             total_len += next.len;
             furthest = std::max(furthest, size_t(s.node));
             total_ref += s.node;
-            enc.write(TOK_TRIE_REF, s.node);
-            enc.write(TOK_LITERAL, (uint8_t)c);
+            enc.write_uint(TOK_TRIE_REF, s.node);
+            enc.write_char(TOK_LITERAL, c);
 
             if constexpr(PROTOCOL) std::cout << "(" << s.node << ") 0x" << std::hex << (size_t)c << std::dec << std::endl;
 
@@ -70,7 +71,7 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
 
     // encode final phrase, if any
     if(s.len > 0) {
-        enc.write(TOK_TRIE_REF, s.node);
+        enc.write_uint(TOK_TRIE_REF, s.node);
         ++num_phrases;
 
         if constexpr(PROTOCOL) std::cout << "(" << s.node << ")" << std::endl;
@@ -99,7 +100,6 @@ void topk_decompress_lz78(In in, Out out) {
 
     // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character
-    using Topk = TopKSubstrings<TopkTrieNode<>>;
     Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
 
     size_t n = 0;
@@ -112,7 +112,7 @@ void topk_decompress_lz78(In in, Out out) {
     char* phrase = new char[k]; // phrases can be of length up to k...
     while(in) {
         // decode and handle phrase
-        auto const x = dec.read(TOK_TRIE_REF);
+        auto const x = dec.read_uint(TOK_TRIE_REF);
         if constexpr(PROTOCOL) std::cout << "(" << x << ")";
 
         auto const phrase_len = topk.get(x, phrase);
@@ -130,7 +130,7 @@ void topk_decompress_lz78(In in, Out out) {
         // decode and handle literal
         if(in)
         {
-            auto const literal = (char)dec.read(TOK_LITERAL);
+            auto const literal = dec.read_char(TOK_LITERAL);
             topk.extend(s, literal);
             *out++ = literal;
             ++n;
