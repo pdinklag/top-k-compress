@@ -140,6 +140,54 @@ public:
         tokens_.clear();
         range_.reset();
     }
+
+    void print_stats() {
+        #ifndef NDEBUG
+        // basic stats
+        {
+            double const n = double(tokens_.size());
+            double min = std::numeric_limits<double>::max();
+            double max = std::numeric_limits<double>::min();
+            double sum = 0;
+            for(auto x : tokens_) {
+                auto const d = double(x);
+                sum += d;
+                min = std::min(min, d);
+                max = std::max(max, d);
+            }
+
+            double const avg = sum / n;
+            double qdsum = 0.0;
+            for(auto x : tokens_) {
+                double const d = double(x) - avg;
+                qdsum += d * d;
+            }
+            double const var = qdsum / (n - 1.0);
+            double const stddev = sqrt(var);
+            std::cout << "\t\tn=" << n << ", min=" << min << ", max=" << max << ", avg=" << avg << ", stddev=" << stddev << std::endl;
+        }
+
+        if(params_.encoding == TokenEncoding::Huffman) {
+            // print histogram
+            size_t hist[256];
+            for(size_t c = 0; c < 256; c++) hist[c] = 0;
+
+            for(auto c : tokens_) {
+                ++hist[(uint8_t)c];
+            }
+
+            for(size_t c = 0; c < 256; c++) {
+                if(hist[c]) std::cout << "\t\t0x" << std::hex << c << std::dec << " -> " << hist[c] << std::endl;
+            }
+
+            std::cout << "\t\ttokens:" << std::endl;
+            for(auto c : tokens_) {
+                std::cout << c << ",";
+            }
+            std::cout << std::endl;
+        }
+        #endif
+    }
 };
 
 class BlockEncodingBase {
@@ -170,6 +218,7 @@ private:
     std::vector<TokenType> token_types_;
 
     size_t cur_tokens_;
+    bool print_stats_;
 
     void overflow() {
         // write block header
@@ -179,6 +228,18 @@ private:
         bool const small_block = cur_tokens_ < max_block_size_;
         sink_->write(small_block);
         if(small_block) code::Binary::encode(*sink_, cur_tokens_ - 1, code::Universe(max_block_size_));
+
+        // print block stats
+        #ifndef NDEBUG
+        if(print_stats_) {
+            std::cout << "BLOCK STATS" << std::endl;
+            for(size_t j = 0; j < num_types(); j++) {
+                std::cout << "\ttoken type " << j << ":" << std::endl;
+                tokens(j).print_stats();
+            }
+            std::cout << std::endl;
+        }
+        #endif
 
         for(size_t j = 0; j < num_types(); j++) {
             tokens(j).prepare_encode(*sink_);
@@ -198,11 +259,12 @@ private:
     }
 
 public:
-    BlockEncoder(Sink& sink, TokenType const num_types, size_t const max_block_size)
+    BlockEncoder(Sink& sink, TokenType const num_types, size_t const max_block_size, bool print_stats = false)
         : BlockEncodingBase(num_types),
           sink_(&sink),
           max_block_size_(max_block_size),
-          cur_tokens_(0) {
+          cur_tokens_(0),
+          print_stats_(print_stats) {
     
         token_types_.reserve(max_block_size_);
 
