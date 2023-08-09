@@ -18,7 +18,7 @@
 #include "trie.hpp"
 #include "truncated_trie.hpp"
 #include "min_pq.hpp"
-#include "count_min.hpp"
+#include "count_min2.hpp"
 #include "rolling_karp_rabin.hpp"
 #include "display.hpp"
 
@@ -75,7 +75,7 @@ private:
     Filter filter_;
     MinPQ<size_t, FilterIndex> min_pq_;
 
-    using Sketch = CountMin<size_t>;
+    using Sketch = CountMin2<size_t>;
     std::unique_ptr<Sketch[]> sketches_;
 
     std::mt19937 sketch_selector_;
@@ -234,7 +234,7 @@ public:
         sketches_ = std::make_unique<Sketch[]>(num_sketches_);
         sketch_selector_.seed(sketch_seed_);
         for(size_t i = 0; i < num_sketches_; i++) {
-            sketches_[i] = Sketch(sketch_rows, sketch_columns / num_sketches_);
+            sketches_[i] = Sketch(sketch_columns / num_sketches_);
         }
     }
 
