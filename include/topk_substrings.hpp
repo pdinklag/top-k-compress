@@ -37,8 +37,6 @@ private:
     static constexpr bool measure_time_ = false;
     static constexpr bool DEBUG = false;
 
-    static constexpr size_t sketch_seed_ = 777;
-    
     struct Stats {
         size_t num_strings_total;
         size_t num_filter_inc;
@@ -74,27 +72,11 @@ private:
 
     Filter filter_;
     MinPQ<size_t, FilterIndex> min_pq_;
-
-    using Sketch = CountMin2<size_t>;
-    std::unique_ptr<Sketch[]> sketches_;
-
-    std::mt19937 sketch_selector_;
-    size_t num_sketches_;
-    size_t sketch_distr_;
-    static constexpr size_t sketch_distr_divisor_ = 8;
+    CountMin2<size_t> sketch_;
 
     size_t k_;
 
     Stats stats_;
-
-    size_t select_sketch(char const c) {
-        if(num_sketches_ > 1) {
-            uint8_t const x = c;
-            return ((x ^ 0b1011'1010) + (sketch_selector_() % sketch_distr_)) % num_sketches_;
-        } else {
-            return 0;
-        }
-    }
 
     void increment_in_filter(FilterIndex const v) ALWAYS_INLINE {
         if constexpr(gather_stats_) ++stats_.num_filter_inc;
@@ -154,7 +136,7 @@ private:
         return v;
     }
 
-    FilterIndex swap_into_filter(FilterIndex const parent, char const label, uint64_t const fingerprint, size_t const frequency, Sketch& sketch, char const* context) ALWAYS_INLINE {
+    FilterIndex swap_into_filter(FilterIndex const parent, char const label, uint64_t const fingerprint, size_t const frequency, char const* context) ALWAYS_INLINE {
         if constexpr(gather_stats_) ++stats_.num_swaps;
         if constexpr(measure_time_) stats_.t_swaps.resume();
 
@@ -182,7 +164,7 @@ private:
         }
 
         // count the extracted string in the sketch as often as it had been counted in the filter
-        sketch.increment(swap_data.fingerprint, swap_freq_delta);
+        sketch_.increment(swap_data.fingerprint, swap_freq_delta);
 
         // callback
         if(on_delete_node) on_delete_node(swap);
@@ -224,18 +206,9 @@ public:
         : hash_(fp_window_size, rolling_fp_base_),
           filter_(k),
           min_pq_(k),
+          sketch_(sketch_columns),
           k_(k),
           stats_() {
-
-        auto const sbits = std::bit_width(num_sketches - 1);
-        num_sketches_ = num_sketches;
-        sketch_distr_ = std::max(size_t(1), num_sketches / sketch_distr_divisor_);
-
-        sketches_ = std::make_unique<Sketch[]>(num_sketches_);
-        sketch_selector_.seed(sketch_seed_);
-        for(size_t i = 0; i < num_sketches_; i++) {
-            sketches_[i] = Sketch(sketch_columns / num_sketches_);
-        }
     }
 
     // callbacks
@@ -247,7 +220,6 @@ public:
         FilterIndex node;        // the string's node in the filter
         uint64_t    fingerprint; // fingerprint
         char        first;       // the first ever character of this string
-        uint8_t     sketch;      // which sketch is used for this string
         bool        frequent;    // whether or not the string is frequent
         bool        new_node;    // did the last extension cause a new filter entry to be created?
         char        context[cut_];
@@ -268,7 +240,6 @@ public:
 
         s.len = depth;
         s.first = first;
-        s.sketch = select_sketch(s.first); // CAUTION: modifies the random state
 
         return s;
     }
@@ -280,7 +251,6 @@ public:
         s.node = filter_.root();
         s.fingerprint = rolling_fp_offset_;
         s.first = 0;
-        s.sketch = 0;
         s.frequent = true;
         s.new_node = false;
         return s;
@@ -304,7 +274,6 @@ public:
         ext.len = i + 1;
         ext.fingerprint = ext_fp;
         ext.first = (i == 0) ? c : s.first;
-        ext.sketch = (i == 0) ? select_sketch(c) : s.sketch;
         ext.new_node = false;
 
         bool edge_exists;
@@ -355,8 +324,7 @@ public:
                 // increment in sketch
                 if constexpr(measure_time_) stats_.t_sketch_inc.resume();
 
-                auto& sketch = sketches_[ext.sketch];
-                auto est = sketch.increment_and_estimate(ext_fp, 1);
+                auto est = sketch_.increment_and_estimate(ext_fp, 1);
                 if constexpr(measure_time_) stats_.t_sketch_inc.pause();
 
                 // test if it is now frequent
@@ -365,7 +333,7 @@ public:
                     // it is now frequent according to just the numbers, test if we can swap
                     if(i == 0 || (s.node && filter_.node(s.node).freq >= est)) {
                         // the immediate prefix was frequent, so yes, we can!
-                        ext.node = swap_into_filter(s.node, c, ext_fp, est, sketch, ext.context);
+                        ext.node = swap_into_filter(s.node, c, ext_fp, est, ext.context);
 
                         // swapped in, so it's new
                         ext.new_node = true;
