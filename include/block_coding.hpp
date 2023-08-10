@@ -61,7 +61,7 @@ public:
 
             huff_table_ = huff_tree_.table();
             huff_tree_ = HuffmanTree(); // discard
-        } if(params_.encoding == TokenEncoding::BinaryRaw) {
+        } else if(params_.encoding == TokenEncoding::BinaryRaw) {
             // Binary codes with no written header
             universe_ = code::Universe(params_.max);
         } else {
@@ -96,7 +96,7 @@ public:
         if(params_.encoding == TokenEncoding::Huffman) {
             // Huffman codes
             huff_tree_ = HuffmanTree(src);
-        } if(params_.encoding == TokenEncoding::BinaryRaw) {
+        } else if(params_.encoding == TokenEncoding::BinaryRaw) {
             // Binary codes with no written header
             universe_ = code::Universe(params_.max);
         } else {
