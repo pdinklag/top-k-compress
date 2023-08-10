@@ -36,10 +36,10 @@ constexpr TokenType TOK_REF = 0;
 constexpr TokenType TOK_LEN = 1;
 constexpr TokenType TOK_LITERAL = 2;
 
-void setup_encoding(BlockEncodingBase& enc, size_t const k, bool const use_trie) {
-    enc.register_binary(k-1, use_trie); // TOK_REF
-    enc.register_huffman();             // TOK_LEN
-    enc.register_huffman();             // TOK_LITERAL
+void setup_encoding(BlockEncodingBase& enc, size_t const k, size_t const max_block) {
+    enc.register_binary(k + 3 * max_block); // TOK_REF
+    enc.register_huffman();                 // TOK_LEN
+    enc.register_huffman();                 // TOK_LITERAL
 }
 
 // computes the LZ-End parsing of an input using a modified version of the [Kempa & Kosolobov, 2017] algorithm
@@ -505,7 +505,7 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
     header.encode(out, MAGIC);
 
     BlockEncoder enc(out, block_size);
-    setup_encoding(enc, k, use_trie);
+    setup_encoding(enc, k, max_block);
 
     // init stats
     size_t num_phrases = 0;
@@ -521,7 +521,7 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
     using Trie = Parser::Trie;
     
     // parse
-    Trie trie(k-1, num_sketches, sketch_rows, sketch_columns);
+    Trie trie(k, num_sketches, sketch_rows, sketch_columns);
     Parser parser(max_block, trie);
 
     size_t i = 0;
@@ -599,7 +599,7 @@ void topk_lzend_decompress(In in, Out out) {
     
     // initialize top-k framework
     using Trie = TopKLZEndTrie<Index>;
-    Trie topk(k-1, num_sketches, sketch_rows, sketch_columns);
+    Trie topk(k, num_sketches, sketch_rows, sketch_columns);
 
     // initialize buffers
     auto window = std::make_unique<char[]>(max_window);
@@ -724,7 +724,7 @@ void topk_lzend_decompress(In in, Out out) {
     };
 
     BlockDecoder dec(in);
-    setup_encoding(dec, k, use_trie);
+    setup_encoding(dec, k, max_block);
     while(in) {
         auto const p = dec.read_uint(TOK_REF);
         auto const len = (p > 0) ? dec.read_uint(TOK_LEN) : 0;
