@@ -12,10 +12,6 @@
 
 #include <display.hpp>
 
-// FIXME: deprecated
-#include <phrase_block_reader.hpp>
-#include <phrase_block_writer.hpp>
-// --
 #include <block_coding.hpp>
 
 #include <topk_header.hpp>

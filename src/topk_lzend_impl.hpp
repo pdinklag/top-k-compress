@@ -32,6 +32,16 @@ constexpr bool DEBUG = false;
 
 using Index = uint32_t;
 
+constexpr TokenType TOK_REF = 0;
+constexpr TokenType TOK_LEN = 1;
+constexpr TokenType TOK_LITERAL = 2;
+
+void setup_encoding(BlockEncodingBase& enc, size_t const k, bool const use_trie) {
+    enc.register_binary(k-1, use_trie); // TOK_REF
+    enc.register_huffman();             // TOK_LEN
+    enc.register_huffman();             // TOK_LITERAL
+}
+
 // computes the LZ-End parsing of an input using a modified version of the [Kempa & Kosolobov, 2017] algorithm
 // replacing their compact trie by a top-k trie
 // setting "use_trie_" to "false" effectively sets k := 0
@@ -494,7 +504,8 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
     TopkHeader header(k, max_block, num_sketches, sketch_rows, sketch_columns);
     header.encode(out, MAGIC);
 
-    PhraseBlockWriter writer(out, block_size, true);
+    BlockEncoder enc(out, block_size);
+    setup_encoding(enc, k, use_trie);
 
     // init stats
     size_t num_phrases = 0;
@@ -510,7 +521,7 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
     using Trie = Parser::Trie;
     
     // parse
-    Trie trie(k, num_sketches, sketch_rows, sketch_columns);
+    Trie trie(k-1, num_sketches, sketch_rows, sketch_columns);
     Parser parser(max_block, trie);
 
     size_t i = 0;
@@ -534,16 +545,16 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
         ++num_phrases;
         if(phrase.len > 1) {
             // referencing phrase
-            writer.write_ref(phrase.link);
-            writer.write_len(phrase.len - 1);
-            writer.write_literal(phrase.last);
+            enc.write_uint(TOK_REF, phrase.link);
+            enc.write_uint(TOK_LEN, phrase.len - 1);
+            enc.write_char(TOK_LITERAL, phrase.last);
 
             ++num_ref;
         } else {
             // literal phrase
             ++num_literal;
-            writer.write_ref(0);
-            writer.write_literal(phrase.last);
+            enc.write_uint(TOK_REF, 0);
+            enc.write_char(TOK_LITERAL, phrase.last);
         }
         
         longest = std::max(longest, size_t(phrase.len));
@@ -556,7 +567,7 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
     parser.parse(begin, end);
 
     // flush writer
-    writer.flush();
+    enc.flush();
 
     // get parser stats
     auto const parser_stats = parser.stats();
@@ -588,7 +599,7 @@ void topk_lzend_decompress(In in, Out out) {
     
     // initialize top-k framework
     using Trie = TopKLZEndTrie<Index>;
-    Trie topk(k, num_sketches, sketch_rows, sketch_columns);
+    Trie topk(k-1, num_sketches, sketch_rows, sketch_columns);
 
     // initialize buffers
     auto window = std::make_unique<char[]>(max_window);
@@ -712,11 +723,12 @@ void topk_lzend_decompress(In in, Out out) {
         if(in) prepare_phase(n / max_block);
     };
 
-    PhraseBlockReader reader(in, true);
+    BlockDecoder dec(in);
+    setup_encoding(dec, k, use_trie);
     while(in) {
-        auto const p = reader.read_ref();
-        auto const len = (p > 0) ? reader.read_len() : 0;
-        auto const c = reader.read_literal();
+        auto const p = dec.read_uint(TOK_REF);
+        auto const len = (p > 0) ? dec.read_uint(TOK_LEN) : 0;
+        auto const c = dec.read_char(TOK_LITERAL);
 
         assert(len <= max_block);
 

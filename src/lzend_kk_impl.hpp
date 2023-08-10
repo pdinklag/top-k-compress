@@ -13,8 +13,6 @@
 #include <lzend_rev_phrase_trie.hpp>
 #include <lzend_window_index.hpp>
 
-#include <phrase_block_writer.hpp>
-
 #include "lzend_decompress.hpp"
 
 constexpr uint64_t MAGIC =
@@ -637,7 +635,8 @@ template<bool prefer_local, tdc::InputIterator<char> In, iopp::BitSink Out>
 void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block, size_t const block_size, pm::Result& result) {
     // initialize encoding
     out.write(MAGIC, 64);
-    PhraseBlockWriter writer(out, block_size, true);
+    BlockEncoder enc(out, block_size);
+    setup_lzend_encoding(enc);
 
     // init stats
     size_t num_phrases = 0;
@@ -664,16 +663,16 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
         ++num_phrases;
         if(phrase.len > 1) {
             // referencing phrase
-            writer.write_ref(phrase.link);
-            writer.write_len(phrase.len - 1);
-            writer.write_literal(phrase.last);
+            enc.write_uint(TOK_REF, phrase.link);
+            enc.write_uint(TOK_LEN, phrase.len - 1);
+            enc.write_char(TOK_LITERAL, phrase.last);
 
             ++num_ref;
         } else {
             // literal phrase
             ++num_literal;
-            writer.write_ref(0);
-            writer.write_literal(phrase.last);
+            enc.write_uint(TOK_REF, 0);
+            enc.write_char(TOK_LITERAL, phrase.last);
         }
         
         longest = std::max(longest, size_t(phrase.len));
@@ -691,7 +690,7 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
     parser.parse(begin, end);
 
     // flush writer
-    writer.flush();
+    enc.flush();
 
     // get stats
     auto const state_mem = parser.memory_profile();

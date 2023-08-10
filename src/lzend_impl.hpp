@@ -13,8 +13,6 @@
 #include <index/backward_search.hpp>
 #include <index/btree.hpp>
 
-#include <phrase_block_writer.hpp>
-
 #include "lzend_decompress.hpp"
 
 constexpr bool PROTOCOL = false;
@@ -96,7 +94,8 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
     
     // initialize encoding
     out.write(MAGIC, 64);
-    PhraseBlockWriter writer(out, block_size, true);
+    BlockEncoder enc(out, block_size);
+    setup_lzend_encoding(enc);
     
     // translate a position in the text to the corresponding position in the reverse text (which has a sentinel!)
     auto pos_to_reverse = [&](size_t const i) {
@@ -158,9 +157,9 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
             if constexpr(TIME_OPS) { sw_detail.stop(); t_succ_insert += sw_detail.elapsed_time_nanos(); }
 
             ++num_phrases;
-            writer.write_ref(q);
-            if(q > 0) writer.write_len(j-i);
-            if(j < n) writer.write_literal(s[j]);
+            enc.write_uint(TOK_REF, q);
+            if(q > 0) enc.write_uint(TOK_LEN, j-i);
+            if(j < n) enc.write_char(TOK_LITERAL, s[j]);
             
             if(q > 0) ++num_ref;
             else ++num_literal;
@@ -181,7 +180,7 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
     }
 
     // flush
-    writer.flush();
+    enc.flush();
 
     if constexpr(TIME_PHASES) {
         sw.stop();

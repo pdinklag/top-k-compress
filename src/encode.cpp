@@ -1,7 +1,6 @@
 #include "compressor_base.hpp"
 
-#include <phrase_block_reader.hpp>
-#include <phrase_block_writer.hpp>
+#include <block_coding.hpp>
 
 struct Compressor : public CompressorBase {
     Compressor() : CompressorBase("encode", "Encodes the input as a baseline compressor") {
@@ -19,22 +18,24 @@ struct Compressor : public CompressorBase {
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
         auto bitout = iopp::bitwise_output_to(out);
 
-        PhraseBlockWriter writer(bitout, block_size);
+        BlockEncoder enc(bitout, block_size);
+        enc.register_huffman();
         auto beg = in.begin();
         auto end = in.end();
         while(beg != end) {
-            writer.write_literal(*beg++);
+            enc.write_char(0, *beg++);
         }
-        writer.flush();
+        enc.flush();
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
         auto bitin = iopp::bitwise_input_from(in.begin(), in.end());
         auto _out = iopp::StreamOutputIterator(out);
 
-        PhraseBlockReader reader(bitin);
+        BlockDecoder dec(bitin);
+        dec.register_huffman();
         while(bitin) {
-            *_out++ = reader.read_literal();
+            *_out++ = dec.read_char(0);
         }
     }
 };
