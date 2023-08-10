@@ -22,8 +22,8 @@ constexpr TokenType TOK_LITERAL = 1;
 using Topk = TopKSubstrings<TopkTrieNode<>, true>;
 
 void setup_encoding(BlockEncodingBase& enc, size_t const k) {
-    enc.register_token_binary(k-1); // TOK_TRIE_REF
-    enc.register_token_binary(255); // TOK_LITERAL
+    enc.register_binary(k-1); // TOK_TRIE_REF
+    enc.register_binary(255); // TOK_LITERAL
 }
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>

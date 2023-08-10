@@ -4,6 +4,7 @@
 #include <range.hpp>
 #include <iopp/concepts.hpp>
 
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -33,7 +34,7 @@ private:
     Range range_;
 
     // encoding phase
-    using HuffmanTree = code::HuffmanTree<uint8_t>;
+    using HuffmanTree = code::HuffmanTree<Token>;
     using HuffmanTable = decltype(std::declval<HuffmanTree>().table());
 
     HuffmanTree huff_tree_;
@@ -94,7 +95,7 @@ public:
 
         auto const token = tokens_[next_++];
         if(params_.encoding == TokenEncoding::Huffman) {
-            code::Huffman::encode(sink, (uint8_t)token, huff_table_);
+            code::Huffman::encode(sink, token, huff_table_);
         } else {
             code::Binary::encode(sink, token, universe_);
         }
@@ -206,16 +207,17 @@ public:
         tokens_.emplace_back(params);
     }
 
-    void register_token_binary(Token const max) {
+    void register_binary(Token const max) {
         TokenParams params;
         params.encoding = TokenEncoding::Binary;
         params.max = max;
         register_token(params);
     }
 
-    void register_token_huffman() {
+    void register_huffman(Token const max = TOKEN_MAX) {
         TokenParams params;
         params.encoding = TokenEncoding::Huffman;
+        params.max = max;
         register_token(params);
     }
 };

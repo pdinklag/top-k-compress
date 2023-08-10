@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <iopp/concepts.hpp>
 
-#include <phrase_block_reader.hpp>
+#include <block_coding.hpp>
 
 constexpr uint64_t LZLIKE_MAGIC =
     ((uint64_t)'L') << 56 |
@@ -17,6 +17,16 @@ constexpr uint64_t LZLIKE_MAGIC =
 
 constexpr bool LZLIKE_DEBUG = false;
 
+constexpr TokenType TOK_LEN = 0;
+constexpr TokenType TOK_SRC = 1;
+constexpr TokenType TOK_LITERAL = 2;
+
+void setup_lz77like_encoding(BlockEncodingBase& enc) {
+    enc.register_huffman();   // TOK_LEN
+    enc.register_binary(SIZE_MAX); // TOK_SRC
+    enc.register_huffman();   // TOK_LITERAL
+}
+
 template<iopp::BitSource In, std::output_iterator<char> Out>
 void lz77like_decompress(In in, Out out) {
     uint64_t const magic = in.read(64);
@@ -25,37 +35,38 @@ void lz77like_decompress(In in, Out out) {
         std::abort();
     }
 
-    std::string dec; // yes, we do it in RAM...
+    std::string s; // yes, we do it in RAM...
 
     size_t num_ref = 0;
     size_t num_literal = 0;
 
-    PhraseBlockReader reader(in, true);
+    BlockDecoder dec(in);
+    setup_lz77like_encoding(dec);
     while(in) {
-        auto len = reader.read_len();
+        auto len = dec.read_uint(TOK_LEN);
         if(len > 0) {
             ++num_ref;
 
-            auto const src = reader.read_ref();
+            auto const src = dec.read_uint(TOK_SRC);
             assert(src > 0);
 
-            if constexpr(LZLIKE_DEBUG) std::cout << dec.length() << ": REFERENCE (" << src << ", " << len << ")" << std::endl;            
+            if constexpr(LZLIKE_DEBUG) std::cout << s.length() << ": REFERENCE (" << src << ", " << len << ")" << std::endl;            
 
-            auto const i = dec.length();
+            auto const i = s.length();
             assert(i >= src);
 
             auto j = i - src;
-            while(len--) dec.push_back(dec[j++]);
+            while(len--) s.push_back(s[j++]);
         } else {
             ++num_literal;
 
-            auto const c = reader.read_literal();
-            if constexpr(LZLIKE_DEBUG) std::cout << dec.length() << ": LITERAL " << display(c) << std::endl;
+            auto const c = dec.read_char(TOK_LITERAL);
+            if constexpr(LZLIKE_DEBUG) std::cout << s.length() << ": LITERAL " << display(c) << std::endl;
 
-            dec.push_back(c);
+            s.push_back(c);
         }
     }
 
     // output
-    std::copy(dec.begin(), dec.end(), out);
+    std::copy(s.begin(), s.end(), out);
 }

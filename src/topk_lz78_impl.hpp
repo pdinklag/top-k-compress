@@ -18,8 +18,8 @@ constexpr TokenType TOK_TRIE_REF = 0;
 constexpr TokenType TOK_LITERAL = 1;
 
 void setup_encoding(BlockEncodingBase& enc, size_t const k) {
-    enc.register_token_binary(k-1); // TOK_TRIE_REF
-    enc.register_token_huffman();   // TOK_LITERAL
+    enc.register_binary(k-1); // TOK_TRIE_REF
+    enc.register_huffman();   // TOK_LITERAL
 }
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>

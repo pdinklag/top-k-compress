@@ -3,7 +3,6 @@
 
 #include <tdc/lz/factor.hpp>
 
-#include <phrase_block_writer.hpp>
 #include <iopp/util/output_iterator_base.hpp>
 
 #include <iterator>
@@ -54,7 +53,8 @@ struct TdcCompressor : public CompressorBase {
         // initialize encoding
         auto bitout = iopp::bitwise_output_to(out);
         bitout.write(LZLIKE_MAGIC, 64);
-        PhraseBlockWriter writer(bitout, block_size, true);
+        BlockEncoder enc(bitout, block_size);
+        setup_lz77like_encoding(enc);
 
         size_t num_ref = 0;
         size_t num_literal = 0;
@@ -67,8 +67,8 @@ struct TdcCompressor : public CompressorBase {
             if(f.is_literal()) {
                 ++num_literal;
 
-                writer.write_len(0);
-                writer.write_literal(f.literal());
+                enc.write_uint(TOK_LEN, 0);
+                enc.write_char(TOK_LITERAL, f.literal());
             } else {
                 ++num_ref;
 
@@ -77,13 +77,13 @@ struct TdcCompressor : public CompressorBase {
                 total_ref_len += f.len;
                 longest = std::max(longest, (size_t)f.len);
 
-                writer.write_len(f.len);
-                writer.write_ref(f.src);
+                enc.write_uint(TOK_LEN, f.len);
+                enc.write_uint(TOK_SRC, f.src);
             }
         });
 
         factorize(in, factor_writer);
-        writer.flush();
+        enc.flush();
 
         result.add("phrases_total", num_ref + num_literal);
         result.add("phrases_ref", num_ref);
