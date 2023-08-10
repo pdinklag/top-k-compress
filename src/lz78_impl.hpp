@@ -2,8 +2,7 @@
 
 #include <tdc/util/concepts.hpp>
 
-#include <phrase_block_writer.hpp>
-#include <phrase_block_reader.hpp>
+#include <block_coding.hpp>
 #include <trie_fcns.hpp>
 
 constexpr uint64_t MAGIC =
@@ -16,11 +15,20 @@ constexpr uint64_t MAGIC =
     ((uint64_t)'L') << 8 |
     ((uint64_t)'L');
 
+constexpr TokenType TOK_TRIE_REF = 0;
+constexpr TokenType TOK_LITERAL = 1;
+
+void setup_encoding(BlockEncodingBase& enc) {
+    enc.register_token_binary(SIZE_MAX); // TOK_TRIE_REF
+    enc.register_token_huffman();        // TOK_LITERAL
+}
+
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void lz78_compress(In begin, In const& end, Out out, size_t const block_size, pm::Result& result) {
     out.write(MAGIC, 64);
 
-    PhraseBlockWriter writer(out, block_size);
+    BlockEncoder enc(out, block_size);
+    setup_encoding(enc);
 
     TrieFCNS trie;
     TrieFCNS::Node u = trie.root();
@@ -42,8 +50,8 @@ void lz78_compress(In begin, In const& end, Out out, size_t const block_size, pm
             ++d;
         } else {
             // edge doesn't exist, new LZ78 phrase
-            writer.write_ref(u);
-            writer.write_literal(c);
+            enc.write_uint(TOK_TRIE_REF, u);
+            enc.write_char(TOK_LITERAL, c);
 
             ++num_phrases;
             longest = std::max(longest, d);
@@ -58,11 +66,11 @@ void lz78_compress(In begin, In const& end, Out out, size_t const block_size, pm
 
     // encode final phrase, if any
     if(u) {
-        writer.write_ref(u);
+        enc.write_uint(TOK_TRIE_REF, u);
         ++num_phrases; // final phrase
     }
 
-    writer.flush();
+    enc.flush();
 
     // stats
     result.add("phrases_total", num_phrases);
@@ -80,7 +88,7 @@ void lz78_decompress(In in, Out out) {
         std::abort();
     }
 
-    std::string dec; // yes, we do it in RAM...
+    std::string s; // yes, we do it in RAM...
     std::vector<std::pair<size_t, char>> factors;
     factors.emplace_back(0, 0); // align
 
@@ -88,22 +96,23 @@ void lz78_decompress(In in, Out out) {
     decode = [&](size_t const f){
         if(f) {
             decode(factors[f].first);
-            dec.push_back(factors[f].second);
+            s.push_back(factors[f].second);
         }
     };
 
-    PhraseBlockReader reader(in);
+    BlockDecoder dec(in);
+    setup_encoding(dec);
     while(in) {
-        auto const f = reader.read_ref();
+        auto const f = dec.read_uint(TOK_TRIE_REF);
         decode(f);
 
         if(in) {
-            auto const c = reader.read_literal();
-            dec.push_back(c);
+            auto const c = dec.read_char(TOK_LITERAL);
+            s.push_back(c);
             factors.emplace_back(f, c);
         }
     }
 
     // output
-    std::copy(dec.begin(), dec.end(), out);
+    std::copy(s.begin(), s.end(), out);
 }

@@ -12,10 +12,10 @@ constexpr uint64_t MAGIC =
 
 constexpr bool PROTOCOL = false;
 
+using Topk = TopKSubstrings<TopkTrieNode<>>;
+
 constexpr TokenType TOK_TRIE_REF = 0;
 constexpr TokenType TOK_LITERAL = 1;
-
-using Topk = TopKSubstrings<TopkTrieNode<>>;
 
 void setup_encoding(BlockEncodingBase& enc, size_t const k) {
     enc.register_token_binary(k-1); // TOK_TRIE_REF
