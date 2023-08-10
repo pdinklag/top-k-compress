@@ -144,7 +144,8 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     };
 
     // initialize encoding
-    PhraseBlockWriter writer(out, block_size, true);
+    BlockEncoder enc(out, block_size);
+    setup_lz77like_encoding(enc);
 
     // 
     tlx::RingBuffer<char> buffer(window_size);
@@ -157,8 +158,8 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     auto write_literal = [&](char const c){
         if constexpr(DEBUG) std::cout << xbegin << ": LITERAL " << display(c) << std::endl;
 
-        writer.write_len(0);
-        writer.write_literal(c);
+        enc.write_uint(TOK_LEN, 0);
+        enc.write_char(TOK_LITERAL, c);
 
         ++num_phrases;
         ++num_literal;
@@ -168,8 +169,8 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     auto write_ref = [&](size_t const src, size_t const len){
         if constexpr(DEBUG) std::cout << xbegin << ": REFERENCE (" << src << "/" << xbegin - src << ", " << len << ")" << std::endl;
 
-        writer.write_len(len);
-        writer.write_ref(src);
+        enc.write_uint(TOK_LEN, len);
+        enc.write_uint(TOK_SRC, src);
 
         ++num_phrases;
         ++num_ref;
@@ -300,7 +301,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
         write_ref_or_literals(xbegin - xsrc, dx, x);
     }
 
-    writer.flush();
+    enc.flush();
 
     topk.print_debug_info();
 
