@@ -29,6 +29,7 @@ constexpr TokenType TOK_TRIE_REF = 0;
 constexpr TokenType TOK_FACT_SRC = 1;
 constexpr TokenType TOK_FACT_LEN = 2;
 constexpr TokenType TOK_LITERAL = 3;
+constexpr TokenType TOK_FACT_REMAINDER = 4;
 
 constexpr size_t MAX_LZ_REF_LEN = 255;
 
@@ -37,6 +38,7 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k, size_t const window_
     enc.register_binary(window_size-1); // TOK_FACT_SRC
     enc.register_huffman();             // TOK_FACT_LEN
     enc.register_binary(255, false);    // TOK_FACT_LITERAL
+    enc.register_binary(window_size, false); // TOK_FACT_REMAINDER
 }
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
@@ -171,35 +173,26 @@ void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold
                         auto const fpos = curpos;
                         assert(fpos >= f.src);
 
-                        // limit reference lengths, because we use them as a type indicator too
-                        auto len = f.len;
-                        while(len) {
-                            auto limited_len = std::min(len, uintmax_t(MAX_LZ_REF_LEN));
-                            enc.write_uint(TOK_FACT_LEN, limited_len);
-
-                            if(limited_len == 1) {
-                                // a length of 1 indicates a leftover literal character, so we should actually encode a literal
-
-                                // nb: we may have encountered a run, and in that case fpos < src
-                                // the modulo expression should handle this case properly
-                                char const last = block[fpos - f.src + ((f.len - 1) % f.src)];
-                                enc.write_char(TOK_LITERAL, last);
-                                if constexpr(PROTOCOL) std::cout << "pos=" << gpos << ": literal " << display(last) << std::endl;
-                            } else {
-                                // write source
-                                enc.write_uint(TOK_FACT_SRC, f.src);
-                                if constexpr(PROTOCOL) std::cout << "pos=" << gpos << ": lz (" << f.src << ", " << limited_len << ")" << std::endl;
-                            }
-
-                            topk_enter(curpos, limited_len);
-                            curpos += limited_len;
-
-                            len -= limited_len;
-
-                            ++num_lz;
-                            lz_longest = std::max(lz_longest, (size_t)limited_len);
-                            total_lz_len += limited_len;
+                        if(f.len >= MAX_LZ_REF_LEN) {
+                            // encode the maximum length, then encode the rest as a special token
+                            enc.write_uint(TOK_FACT_LEN, MAX_LZ_REF_LEN);
+                            enc.write_uint(TOK_FACT_REMAINDER, f.len - MAX_LZ_REF_LEN);
+                        } else {
+                            // simply encode the length
+                            enc.write_uint(TOK_FACT_LEN, f.len);
                         }
+
+                        // write source
+                        enc.write_uint(TOK_FACT_SRC, f.src);
+                        if constexpr(PROTOCOL) std::cout << "pos=" << gpos << ": lz (" << f.src << ", " << f.len << ")" << std::endl;
+
+                        ++num_lz;
+                        lz_longest = std::max(lz_longest, (size_t)f.len);
+                        total_lz_len += f.len;
+
+                        // enter
+                        topk_enter(curpos, f.len);
+                        curpos += f.len;
                     }
 
                     // advance to next LZ77 factor
@@ -262,16 +255,21 @@ void topk_decompress_fact(In in, Out out) {
             phrase_len = 1;
             if constexpr(PROTOCOL) std::cout << "pos=" << gpos << ": literal " << display(c) << std::endl;
         } else {
-            // a block-local LZ77 reference
             phrase_len = len;
-            
+
+            // a block-local LZ77 reference
+            if(len == MAX_LZ_REF_LEN) {
+                // this factor may be even longer, decode remainder
+                phrase_len += dec.read_uint(TOK_FACT_REMAINDER);
+            }
+
             auto const src = dec.read_uint(TOK_FACT_SRC);
             assert(curpos >= src);
             auto const srcpos = curpos - src;
-            for(size_t i = 0; i < len; i++) {
+            for(size_t i = 0; i < phrase_len; i++) {
                 block[curpos + i] = block[srcpos + i];
             }
-            if constexpr(PROTOCOL) std::cout << "pos=" << gpos << ": lz (" << src << ", " << len << ")" << std::endl;
+            if constexpr(PROTOCOL) std::cout << "pos=" << gpos << ": lz (" << src << ", " << phrase_len << ")" << std::endl;
         }
 
         // enter string into top-k structure
