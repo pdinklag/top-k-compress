@@ -683,7 +683,7 @@ void topk_lzend_decompress(In in, Out out) {
         if constexpr(DEBUG) std::cout << "discarding " << discard << " phrases that end before the window" << std::endl;
 
         assert(z >= discard);
-        assert(ztrie >= discard);
+        if constexpr(use_trie) assert(ztrie >= discard);
 
         if(discard > 0) {
             for(Index x = 0; x + discard < z; x++) {
@@ -694,7 +694,7 @@ void topk_lzend_decompress(In in, Out out) {
             }
 
             z -= discard;
-            ztrie -= discard;
+            if constexpr(use_trie) ztrie -= discard;
         }
     };
 
