@@ -11,6 +11,8 @@
 using Token = uintmax_t;
 using TokenType = uint8_t;
 
+static constexpr Token TOKEN_MAX = std::numeric_limits<Token>::max();
+
 enum TokenEncoding {
     Binary,
     Huffman,
@@ -19,9 +21,6 @@ enum TokenEncoding {
 struct TokenParams {
     TokenEncoding encoding;
     Token max;
-
-    inline TokenParams() : max(std::numeric_limits<Token>::max()), encoding(TokenEncoding::Binary) {
-    }
 };
 
 class TokenBuffer {
@@ -44,7 +43,7 @@ private:
     size_t next_;
 
 public:
-    TokenBuffer() {
+    TokenBuffer(TokenParams params) : params_(params) {
     }
 
     void push_back(Token const token) {
@@ -192,20 +191,32 @@ public:
 
 class BlockEncodingBase {
 private:
-    size_t num_types_;
-    std::unique_ptr<TokenBuffer[]> tokens_;
+    std::vector<TokenBuffer> tokens_;
 
 protected:
-    BlockEncodingBase(TokenType const num_types) : num_types_(num_types), tokens_(std::make_unique<TokenBuffer[]>(num_types_)) {
+    BlockEncodingBase() {
     }
 
     TokenBuffer& tokens(TokenType const type) { return tokens_[type]; }
 
-    size_t num_types() const { return num_types_; }
+    size_t num_types() const { return tokens_.size(); }
 
 public:
-    auto& params(TokenType const type) {
-        return tokens_[type].params();
+    void register_token(TokenParams params) {
+        tokens_.emplace_back(params);
+    }
+
+    void register_token_binary(Token const max) {
+        TokenParams params;
+        params.encoding = TokenEncoding::Binary;
+        params.max = max;
+        register_token(params);
+    }
+
+    void register_token_huffman() {
+        TokenParams params;
+        params.encoding = TokenEncoding::Huffman;
+        register_token(params);
     }
 };
 
@@ -259,8 +270,8 @@ private:
     }
 
 public:
-    BlockEncoder(Sink& sink, TokenType const num_types, size_t const max_block_size, bool print_stats = false)
-        : BlockEncodingBase(num_types),
+    BlockEncoder(Sink& sink, size_t const max_block_size, bool print_stats = false)
+        : BlockEncodingBase(),
           sink_(&sink),
           max_block_size_(max_block_size),
           cur_tokens_(0),
@@ -317,8 +328,8 @@ private:
     }
 
 public:
-    BlockDecoder(Src& src, TokenType const num_types)
-        : BlockEncodingBase(num_types),
+    BlockDecoder(Src& src)
+        : BlockEncodingBase(),
           src_(&src),
           cur_block_size_(0),
           next_token_(0) {

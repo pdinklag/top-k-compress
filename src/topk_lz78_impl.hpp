@@ -18,9 +18,8 @@ constexpr TokenType TOK_LITERAL = 1;
 using Topk = TopKSubstrings<TopkTrieNode<>>;
 
 void setup_encoding(BlockEncodingBase& enc, size_t const k) {
-    enc.params(TOK_TRIE_REF).encoding = TokenEncoding::Binary;
-    enc.params(TOK_TRIE_REF).max = k - 1;
-    enc.params(TOK_LITERAL).encoding = TokenEncoding::Huffman;
+    enc.register_token_binary(k-1); // TOK_TRIE_REF
+    enc.register_token_huffman();   // TOK_LITERAL
 }
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
@@ -40,7 +39,7 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
     size_t total_ref = 0;
 
     // initialize encoding
-    BlockEncoder enc(out, 2, block_size);
+    BlockEncoder enc(out, block_size);
     setup_encoding(enc, k);
 
     Topk::StringState s = topk.empty_string();
@@ -106,7 +105,7 @@ void topk_decompress_lz78(In in, Out out) {
     size_t num_phrases = 0;
 
     // initialize decoding
-    BlockDecoder dec(in, 2);
+    BlockDecoder dec(in);
     setup_encoding(dec, k);
 
     char* phrase = new char[k]; // phrases can be of length up to k...

@@ -33,12 +33,10 @@ constexpr TokenType TOK_LITERAL = 3;
 constexpr size_t MAX_LZ_REF_LEN = 255;
 
 void setup_encoding(BlockEncodingBase& enc, size_t const k, size_t const window_size) {
-    enc.params(TOK_TRIE_REF).encoding = TokenEncoding::Binary;
-    enc.params(TOK_TRIE_REF).max = k - 1;
-    enc.params(TOK_FACT_SRC).encoding = TokenEncoding::Binary;
-    enc.params(TOK_FACT_SRC).max = window_size - 1;
-    enc.params(TOK_FACT_LEN).encoding = TokenEncoding::Huffman;
-    enc.params(TOK_LITERAL).encoding = TokenEncoding::Huffman;
+    enc.register_token_binary(k-1);           // TOK_TRIE_REF
+    enc.register_token_binary(window_size-1); // TOK_FACT_SRC
+    enc.register_token_huffman();             // TOK_FACT_LEN
+    enc.register_token_huffman();             // TOK_FACT_LITERAL
 }
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
@@ -55,7 +53,7 @@ void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold
     TopkHeader header(k, window_size, num_sketches, sketch_rows, sketch_columns);
     header.encode(out, MAGIC);
 
-    BlockEncoder enc(out, 4, block_size);
+    BlockEncoder enc(out, block_size);
     setup_encoding(enc, k, window_size);
 
     // initialize top-k
@@ -227,7 +225,7 @@ void topk_decompress_fact(In in, Out out) {
     auto const sketch_columns = header.sketch_columns;
 
     // initialize decoding
-    BlockDecoder dec(in, 4);
+    BlockDecoder dec(in);
     setup_encoding(dec, k, window_size);
     Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
     

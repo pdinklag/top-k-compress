@@ -22,10 +22,8 @@ constexpr TokenType TOK_LITERAL = 1;
 using Topk = TopKSubstrings<TopkTrieNode<>, true>;
 
 void setup_encoding(BlockEncodingBase& enc, size_t const k) {
-    enc.params(TOK_TRIE_REF).encoding = TokenEncoding::Binary;
-    enc.params(TOK_TRIE_REF).max = k - 1;
-    enc.params(TOK_LITERAL).encoding = TokenEncoding::Binary;
-    enc.params(TOK_LITERAL).max = 255;
+    enc.register_token_binary(k-1); // TOK_TRIE_REF
+    enc.register_token_binary(255); // TOK_LITERAL
 }
 
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
@@ -39,7 +37,7 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
     Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
 
     // initialize encoding
-    BlockEncoder enc(out, 2, block_size);
+    BlockEncoder enc(out, block_size);
     setup_encoding(enc, k);
 
     struct NewNode {
@@ -213,7 +211,7 @@ void topk_decompress_sel(In in, Out out) {
     Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
 
     // initialize decoding
-    BlockDecoder dec(in, 2);
+    BlockDecoder dec(in);
     setup_encoding(dec, k);
 
     Topk::StringState s[window_size];
