@@ -48,14 +48,6 @@ public:
     }
 
     void push_back(Token const token) {
-        #ifndef NDEBUG
-        switch(params_.encoding) {
-            case TokenEncoding::Huffman:
-                assert(token <= 255);
-                break;
-        }
-        #endif
-
         tokens_.push_back(token);
         range_.contain(token);
     }
@@ -205,7 +197,7 @@ public:
         tokens_.emplace_back(params);
     }
 
-    void register_binary(Token const max, bool header = true) {
+    void register_binary(Token const max = TOKEN_MAX, bool header = true) {
         TokenParams params;
         params.encoding = header ? TokenEncoding::Binary : TokenEncoding::BinaryRaw;
         params.max = max;
