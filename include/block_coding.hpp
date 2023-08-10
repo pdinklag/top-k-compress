@@ -1,7 +1,6 @@
 #pragma once
 
 #include <code.hpp>
-#include <range.hpp>
 #include <iopp/concepts.hpp>
 
 #include <cmath>
@@ -31,7 +30,7 @@ private:
 
     // encode buffer
     std::vector<Token> tokens_;
-    Range range_;
+    code::Range range_;
 
     // encoding phase
     using HuffmanTree = code::HuffmanTree<Token>;
@@ -80,9 +79,9 @@ public:
                     universe_ = code::Universe::binary();
                 } else {
                     // a larger universe
-                    code::Binary::encode(sink, range_.min, code::Universe(params_.max));
-                    code::Binary::encode(sink, range_.max, code::Universe(range_.min, params_.max));
-                    universe_ = range_.universe();
+                    code::Binary::encode(sink, range_.min(), code::Universe(params_.max));
+                    code::Binary::encode(sink, range_.max(), code::Universe(range_.min(), params_.max));
+                    universe_ = code::Universe(range_);
                 }
             }
         }
@@ -138,7 +137,7 @@ public:
 
     void clear() { 
         tokens_.clear();
-        range_.reset();
+        range_ = code::Range();
     }
 
     void print_stats() {
