@@ -24,7 +24,7 @@ private:
     static_assert(capacity_ < 65536);
     using Size = typename std::conditional_t<capacity_ < 256, uint8_t, uint16_t>;
 
-    static constexpr bool has_values_ = std::is_same_v<Value, BTreeNoValue>;
+    static constexpr bool has_values_ = !std::is_same_v<Value, BTreeNoValue>;
     static constexpr size_t value_capacity_ = has_values_ ? capacity_ : 0;
     
     Key keys_[capacity_];
