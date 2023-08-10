@@ -15,6 +15,7 @@ static constexpr Token TOKEN_MAX = std::numeric_limits<Token>::max();
 
 enum TokenEncoding {
     Binary,
+    BinaryRaw,
     Huffman,
 };
 
@@ -68,21 +69,19 @@ public:
 
             huff_table_ = huff_tree_.table();
             huff_tree_ = HuffmanTree(); // discard
+        } if(params_.encoding == TokenEncoding::BinaryRaw) {
+            // Binary codes with no written header
+            universe_ = code::Universe(params_.max);
         } else {
-            // Binary codes
-
-            // first, write a single bit indicating if there are any tokens at all
-            sink.write(!tokens_.empty());
-            if(!tokens_.empty()) {
-                if(params_.max <= 1) {
-                    // a universe of single bits
-                    universe_ = code::Universe::binary();
-                } else {
-                    // a larger universe
-                    code::Binary::encode(sink, range_.min(), code::Universe(params_.max));
-                    code::Binary::encode(sink, range_.max(), code::Universe(range_.min(), params_.max));
-                    universe_ = code::Universe(range_);
-                }
+            // Binary codes with written header
+            if(params_.max <= 1) {
+                // a universe of single bits
+                universe_ = code::Universe::binary();
+            } else {
+                // a larger universe
+                code::Binary::encode(sink, range_.min(), code::Universe(params_.max));
+                code::Binary::encode(sink, range_.max(), code::Universe(range_.min(), params_.max));
+                universe_ = code::Universe(range_);
             }
         }
         next_ = 0;
@@ -105,19 +104,19 @@ public:
         if(params_.encoding == TokenEncoding::Huffman) {
             // Huffman codes
             huff_tree_ = HuffmanTree(src);
+        } if(params_.encoding == TokenEncoding::BinaryRaw) {
+            // Binary codes with no written header
+            universe_ = code::Universe(params_.max);
         } else {
             // Binary codes
-            bool const any = src.read();
-            if(any) {
-                if(params_.max <= 1) {
-                    // a universe of single bits
-                    universe_ = code::Universe::binary();
-                } else {
-                    // a universe defined by min and max
-                    auto const min = code::Binary::decode(src, code::Universe(params_.max));
-                    auto const max = code::Binary::decode(src, code::Universe(min, params_.max));
-                    universe_ = code::Universe(min, max);
-                }
+            if(params_.max <= 1) {
+                // a universe of single bits
+                universe_ = code::Universe::binary();
+            } else {
+                // a universe defined by min and max
+                auto const min = code::Binary::decode(src, code::Universe(params_.max));
+                auto const max = code::Binary::decode(src, code::Universe(min, params_.max));
+                universe_ = code::Universe(min, max);
             }
         }
     }
@@ -206,17 +205,16 @@ public:
         tokens_.emplace_back(params);
     }
 
-    void register_binary(Token const max) {
+    void register_binary(Token const max, bool header = true) {
         TokenParams params;
-        params.encoding = TokenEncoding::Binary;
+        params.encoding = header ? TokenEncoding::Binary : TokenEncoding::BinaryRaw;
         params.max = max;
         register_token(params);
     }
 
-    void register_huffman(Token const max = TOKEN_MAX) {
+    void register_huffman() {
         TokenParams params;
         params.encoding = TokenEncoding::Huffman;
-        params.max = max;
         register_token(params);
     }
 };
