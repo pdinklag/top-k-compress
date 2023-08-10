@@ -42,11 +42,13 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k, size_t const window_
 template<tdc::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     // init stats
-    size_t num_ref = 0;
-    size_t num_frequent = 0;
+    size_t num_lz = 0;
+    size_t num_trie = 0;
     size_t num_literal = 0;
-    Index longest = 0;
-    size_t total_ref_len = 0;
+    size_t trie_longest = 0;
+    size_t lz_longest = 0;
+    size_t total_trie_len = 0;
+    size_t total_lz_len = 0;
     size_t num_relevant = 0;
 
     // write header and initialize encoding
@@ -128,7 +130,10 @@ void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold
 
                     enc.write_uint(TOK_FACT_LEN, 0);
                     enc.write_uint(TOK_TRIE_REF, v);
-                    ++num_frequent;
+                    
+                    ++num_trie;
+                    trie_longest = std::max(trie_longest, (size_t)dv);
+                    total_trie_len += dv;
 
                     if constexpr(PROTOCOL) std::cout << "pos=" << gpos << ": top-k (" << v << ") / " << dv << std::endl;;
 
@@ -190,7 +195,10 @@ void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold
                             curpos += limited_len;
 
                             len -= limited_len;
-                            ++num_ref;
+
+                            ++num_lz;
+                            lz_longest = std::max(lz_longest, (size_t)limited_len);
+                            total_lz_len += limited_len;
                         }
                     }
 
@@ -204,14 +212,18 @@ void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold
     enc.flush();
 
     // stats
-    result.add("phrases_total", num_ref + num_literal + num_frequent);
-    result.add("phrases_ref", num_ref);
-    result.add("phrases_frequent", num_frequent);
+    result.add("phrases_total", num_lz + num_literal + num_trie);
+    result.add("phrases_ref", num_lz + num_trie);
     result.add("phrases_literal", num_literal);
     result.add("num_relevant", num_relevant);
-    // result.add("phrases_longest", longest);
-    // result.add("phrases_avg_ref_len", std::round(100.0 * ((double)total_ref_len / (double)num_ref)) / 100.0);
-    // result.add("num_factors", num_factors);
+    result.add("phrases_longest", std::max(trie_longest, lz_longest));
+    result.add("phrases_longest_lz", lz_longest);
+    result.add("phrases_longest_trie", trie_longest);
+    result.add("phrases_ref_lz", num_lz);
+    result.add("phrases_ref_trie", num_trie);
+    result.add("phrases_avg_ref_len", std::round(100.0 * ((double)(total_lz_len + total_trie_len) / (double)(num_lz + num_trie))) / 100.0);
+    result.add("phrases_avg_ref_len_lz", std::round(100.0 * ((double)total_lz_len / (double)num_lz)) / 100.0);
+    result.add("phrases_avg_ref_len_trie", std::round(100.0 * ((double)total_trie_len / (double)num_trie)) / 100.0);
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
