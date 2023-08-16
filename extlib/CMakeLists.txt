@@ -1,5 +1,8 @@
 add_subdirectory(tudocomp2)
 
+add_library(rans INTERFACE)
+target_include_directories(rans INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/ryg_rans)
+
 add_library(word-packing INTERFACE)
 target_include_directories(word-packing INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/word-packing/include)
 
