@@ -4,9 +4,6 @@ target_link_libraries(firstdiff tdc)
 add_executable(hist hist.cpp)
 target_link_libraries(hist tdc)
 
-add_executable(partbwt partbwt.cpp)
-target_link_libraries(partbwt tdc)
-
 add_executable(sync sync.cpp)
 target_link_libraries(sync tdc tlx)
 
