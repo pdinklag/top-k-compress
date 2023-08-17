@@ -73,6 +73,26 @@ public:
         return nodes_[node].children.try_get(label, out_child);
     }
 
+    NodeIndex child_count(NodeIndex const node) const {
+        return nodes_[node].children.size();
+    }
+
+    NodeIndex index_in_parent(NodeIndex const node) const {
+        auto const parent = nodes_[node].parent;
+        auto const label = nodes_[node].inlabel;
+        return nodes_[parent].children.find(label);
+    }
+
+    NodeIndex depth(NodeIndex const node) const {
+        NodeIndex d = 0;
+        auto v = node;
+        while(v) {
+            ++d;
+            v = parent(v);
+        }
+        return d;
+    }
+
     bool is_leaf(NodeIndex const node) const {
         return nodes_[node].is_leaf();
     }
@@ -115,6 +135,21 @@ public:
         auto const d = spell_reverse(node, buffer);
         std::reverse(buffer, buffer +  d);
         return d;
+    }
+
+    std::vector<NodeIndex> depth_histogram() const {
+        auto d = std::make_unique<NodeIndex[]>(size_);
+        NodeIndex h = 0;
+        for(size_t i = 0; i < size_; i++) {
+            d[i] = depth(i);
+            h = std::max(d[i], h);
+        }
+
+        std::vector<NodeIndex> hist(h + 1, 0);
+        for(size_t i = 0; i < size_; i++) {
+            ++hist[d[i]];
+        }
+        return hist;
     }
 
     void print_debug_info() const {

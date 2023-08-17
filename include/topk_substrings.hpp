@@ -422,23 +422,24 @@ public:
     }
 
     void print_debug_info() const {
-        if constexpr(!gather_stats_) return;
-
-        std::cout << "top-k info"
-                  << ": num_strings_total=" << stats_.num_strings_total
-                  << ", num_filter_inc=" << stats_.num_filter_inc
-                  << ", num_sketch_inc=" << stats_.num_sketch_inc
-                  << ", num_swaps=" << stats_.num_swaps
-                  << ", num_overestimates=" << stats_.num_overestimates;
-
-        if constexpr(measure_time_) {
-            std::cout << ", t_filter_find=" << (stats_.t_filter_find.elapsed_time_millis() / 1000.0)
-                      << ", t_filter_inc=" << (stats_.t_filter_inc.elapsed_time_millis() / 1000.0)
-                      << ", t_sketch_inc=" << (stats_.t_sketch_inc.elapsed_time_millis() / 1000.0)
-                      << ", t_swaps=" << (stats_.t_swaps.elapsed_time_millis() / 1000.0);
+        if constexpr(gather_stats_) {
+            std::cout << "top-k info"
+                    << ": num_strings_total=" << stats_.num_strings_total
+                    << ", num_filter_inc=" << stats_.num_filter_inc
+                    << ", num_sketch_inc=" << stats_.num_sketch_inc
+                    << ", num_swaps=" << stats_.num_swaps
+                    << ", num_overestimates=" << stats_.num_overestimates;
+            
+            if constexpr(measure_time_) {
+                std::cout << ", t_filter_find=" << (stats_.t_filter_find.elapsed_time_millis() / 1000.0)
+                        << ", t_filter_inc=" << (stats_.t_filter_inc.elapsed_time_millis() / 1000.0)
+                        << ", t_sketch_inc=" << (stats_.t_sketch_inc.elapsed_time_millis() / 1000.0)
+                        << ", t_swaps=" << (stats_.t_swaps.elapsed_time_millis() / 1000.0);
+            }
+            
+            std::cout << std::endl;
         }
 
-        std::cout << std::endl;
         filter_.print_debug_info();
         min_pq_.print_debug_info();
     }
