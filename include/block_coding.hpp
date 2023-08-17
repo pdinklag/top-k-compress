@@ -27,7 +27,31 @@ struct TokenParams {
     Token max;
 };
 
+template<iopp::BitSink Sink>
+class BitWriteCounter {
+private:
+    Sink const* sink_;
+    size_t initial_;
+
+public:
+    BitWriteCounter(Sink const& sink) : sink_(&sink), initial_(sink.num_bits_written()) {
+    }
+
+    size_t num() const { return sink_->num_bits_written() - initial_; }
+};
+
 class TokenBuffer {
+public:
+    static constexpr bool gather_stats = true;
+
+    struct Stats {
+        size_t tokens_bits_headers;
+        size_t tokens_bits_data;
+        size_t tokens_total;
+
+        Stats() : tokens_bits_headers(0), tokens_bits_data(0), tokens_total(0) {
+        }
+    };
 private:
     // setup
     TokenParams params_;
@@ -46,6 +70,8 @@ private:
     code::Universe universe_;
     size_t next_;
 
+    Stats stats_;
+
 public:
     TokenBuffer(TokenParams params) : params_(params) {
     }
@@ -63,11 +89,13 @@ public:
     void prepare_encode(Sink& sink, size_t const block_size) {
         if(params_.encoding == TokenEncoding::Huffman) {
             // Huffman codes
+            BitWriteCounter w(sink);
             huff_tree_ = HuffmanTree(tokens_.begin(), tokens_.end());
             huff_tree_.encode(sink);
 
             huff_table_ = huff_tree_.table();
             huff_tree_ = HuffmanTree(); // discard
+            stats_.tokens_bits_headers += w.num();
         } else if(params_.encoding == TokenEncoding::rANS) {
             // rANS
             // narrow down tokens
@@ -78,12 +106,18 @@ public:
             }
             
             // encode
+            BitWriteCounter w(sink);
             code::Binary::encode(sink, tokens_.size(), code::Universe(block_size));
+            stats_.tokens_bits_headers += w.num();
+
+            BitWriteCounter wdata(sink);
             rans_encode(sink, data.get(), n);
+            stats_.tokens_bits_data += wdata.num();
         } else if(params_.encoding == TokenEncoding::BinaryRaw) {
             // Binary codes with no written header
             universe_ = code::Universe(params_.max);
         } else {
+            BitWriteCounter w(sink);
             // Binary codes with written header
             if(params_.max <= 1) {
                 // a universe of single bits
@@ -94,6 +128,7 @@ public:
                 code::Binary::encode(sink, range_.max(), code::Universe(range_.min(), params_.max));
                 universe_ = code::Universe(range_);
             }
+            stats_.tokens_bits_headers += w.num();
         }
         next_ = 0;
     }
@@ -104,12 +139,17 @@ public:
 
         auto const token = tokens_[next_++];
         if(params_.encoding == TokenEncoding::Huffman) {
+            BitWriteCounter w(sink);
             code::Huffman::encode(sink, token, huff_table_);
+            stats_.tokens_bits_data += w.num();
         } else if(params_.encoding == TokenEncoding::rANS) {
             // nothing to do
         } else {
+            BitWriteCounter w(sink);
             code::Binary::encode(sink, token, universe_);
+            stats_.tokens_bits_data += w.num();
         }
+        ++stats_.tokens_total;
     }
 
     template<iopp::BitSource Src>
@@ -208,6 +248,8 @@ public:
         }
         #endif
     }
+
+    auto const& stats() const { return stats_; }
 };
 
 class BlockEncodingBase {
@@ -327,6 +369,24 @@ public:
 
     void flush() {
         if(cur_tokens_ > 0) overflow();
+    }
+
+    void gather_stats(pm::Result& r) {
+        TokenBuffer::Stats total;
+        for(size_t i = 0; i < num_types(); i++) {
+            auto const& stats = tokens(i).stats();
+            r.add("tokens_" + std::to_string(i) + "_total", stats.tokens_total);
+            r.add("tokens_" + std::to_string(i) + "_bits_headers", stats.tokens_bits_headers);
+            r.add("tokens_" + std::to_string(i) + "_bits_data", stats.tokens_bits_data);
+
+            total.tokens_total += stats.tokens_total;
+            total.tokens_bits_headers += stats.tokens_bits_headers;
+            total.tokens_bits_data += stats.tokens_bits_data;
+        }
+
+        r.add("tokens_total", total.tokens_total);
+        r.add("tokens_bits_headers", total.tokens_bits_headers);
+        r.add("tokens_bits_data", total.tokens_bits_data);
     }
 };
 

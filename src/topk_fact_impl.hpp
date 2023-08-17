@@ -217,6 +217,7 @@ void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold
     result.add("phrases_avg_ref_len", std::round(100.0 * ((double)(total_lz_len + total_trie_len) / (double)(num_lz + num_trie))) / 100.0);
     result.add("phrases_avg_ref_len_lz", std::round(100.0 * ((double)total_lz_len / (double)num_lz)) / 100.0);
     result.add("phrases_avg_ref_len_trie", std::round(100.0 * ((double)total_trie_len / (double)num_trie)) / 100.0);
+    enc.gather_stats(result);
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
