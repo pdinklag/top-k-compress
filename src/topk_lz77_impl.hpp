@@ -27,7 +27,7 @@ struct TopkLZ77TrieNode : public TopkTrieNode<> {
 
 } __attribute__((packed));
 
-template<bool fast, tdc::InputIterator<char> In, iopp::BitSink Out>
+template<bool fast, iopp::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, size_t const threshold, pm::Result& result) {
     out.write(LZLIKE_MAGIC, 64);
 

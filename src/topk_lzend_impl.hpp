@@ -412,7 +412,7 @@ public:
     // callbacks
     std::function<void(Phrase const&)> on_emit_phrase;
 
-    template<tdc::InputIterator<char> In>
+    template<iopp::InputIterator<char> In>
     void parse(In begin, In const& end) {
         std::string_view window;
         size_t phase = 0;
@@ -498,7 +498,7 @@ public:
     }
 };
 
-template<bool use_trie, tdc::InputIterator<char> In, iopp::BitSink Out>
+template<bool use_trie, iopp::InputIterator<char> In, iopp::BitSink Out>
 void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_block, size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     // initialize encoding
     TopkHeader header(k, max_block, num_sketches, sketch_rows, sketch_columns);

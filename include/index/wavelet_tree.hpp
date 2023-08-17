@@ -11,7 +11,7 @@
 
 #include <word_packing.hpp>
 
-#include <tdc/util/concepts.hpp>
+#include <iopp/concepts.hpp>
 
 #include "binary_rank.hpp"
 
@@ -37,7 +37,7 @@ private:
     std::unique_ptr<Level[]> levels_;
 
 public:
-    template<tdc::InputIterator<Char> It>
+    template<iopp::InputIterator<Char> It>
     inline WaveletTree(It begin, It const end) {
         It const rewind = begin;
         size_t sigma = 0;

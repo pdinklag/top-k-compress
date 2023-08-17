@@ -41,7 +41,7 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k, size_t const window_
     enc.register_binary(window_size, false); // TOK_FACT_REMAINDER
 }
 
-template<tdc::InputIterator<char> In, iopp::BitSink Out>
+template<iopp::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_fact(In begin, In const& end, Out out, size_t const threshold, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     // init stats
     size_t num_lz = 0;

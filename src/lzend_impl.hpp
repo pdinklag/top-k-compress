@@ -1,7 +1,7 @@
 #include <cassert>
 #include <vector>
 
-#include <tdc/util/concepts.hpp>
+#include <iopp/concepts.hpp>
 
 #include <tdc/text/suffix_array.hpp>
 #include <alx_rmq.hpp>
@@ -32,7 +32,7 @@ constexpr uint64_t MAGIC =
 using Index = uint32_t;
 using SIndex = std::make_signed_t<Index>;
 
-template<tdc::InputIterator<char> In, iopp::BitSink Out>
+template<iopp::InputIterator<char> In, iopp::BitSink Out>
 void lzend_compress(In begin, In const& end, Out out, size_t const block_size, pm::Result& result) {
     pm::Stopwatch sw;
 

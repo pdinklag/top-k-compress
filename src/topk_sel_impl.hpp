@@ -26,7 +26,7 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k) {
     enc.register_binary(255, false); // TOK_LITERAL
 }
 
-template<tdc::InputIterator<char> In, iopp::BitSink Out>
+template<iopp::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     // write header
     TopkHeader header(k, window_size, num_sketches, sketch_rows, sketch_columns);

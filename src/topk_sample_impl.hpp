@@ -7,7 +7,7 @@
 #include <topk_strings.hpp>
 #include <rolling_karp_rabin.hpp>
 
-#include <tdc/util/concepts.hpp>
+#include <iopp/concepts.hpp>
 #include <tlx/container/ring_buffer.hpp>
 
 #include <code/vbyte.hpp>
@@ -199,7 +199,7 @@ void write_uint(Out& out, uint64_t const x, size_t const num_bytes) {
     }
 }
 
-template<tdc::InputIterator<char> In>
+template<iopp::InputIterator<char> In>
 uint64_t read_uint(In& in, size_t const num_bytes) {
     assert(num_bytes <= 8);
     uint64_t x = 0;
@@ -210,7 +210,7 @@ uint64_t read_uint(In& in, size_t const num_bytes) {
     return x;
 }
 
-template<bool use_sss, tdc::InputIterator<char> In, std::output_iterator<char> Out>
+template<bool use_sss, iopp::InputIterator<char> In, std::output_iterator<char> Out>
 void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_exp, size_t const len_exp_min, size_t const len_exp_max, size_t const min_dist, size_t const k, size_t const sketch_rows, size_t const sketch_columns, pm::Result& result) {
     assert(len_exp_max >= len_exp_min);
     assert(len_exp_max <= 31);
@@ -379,7 +379,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
     result.add("phrases_avg_dist", std::round(100.0 * ((double)total_ref_dist / (double)num_refs)) / 100.0);
 }
 
-template<bool use_sss, tdc::InputIterator<char> In, std::output_iterator<char> Out>
+template<bool use_sss, iopp::InputIterator<char> In, std::output_iterator<char> Out>
 void topk_decompress_sample(In in, In const end, Out out) {
     uint64_t const magic = read_uint(in, 8);
     if(magic != MAGIC) {

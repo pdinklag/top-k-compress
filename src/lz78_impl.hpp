@@ -1,6 +1,6 @@
 #include <vector>
 
-#include <tdc/util/concepts.hpp>
+#include <iopp/concepts.hpp>
 
 #include <block_coding.hpp>
 #include <trie_fcns.hpp>
@@ -23,7 +23,7 @@ void setup_encoding(BlockEncodingBase& enc) {
     enc.register_huffman();        // TOK_LITERAL
 }
 
-template<tdc::InputIterator<char> In, iopp::BitSink Out>
+template<iopp::InputIterator<char> In, iopp::BitSink Out>
 void lz78_compress(In begin, In const& end, Out out, size_t const block_size, pm::Result& result) {
     out.write(MAGIC, 64);
 

@@ -21,7 +21,7 @@ private:
 public:
     using Interval = std::pair<size_t, size_t>;
 
-    template<tdc::InputIterator<Char> It>
+    template<iopp::InputIterator<Char> It>
     inline BackwardSearch(It begin, It const end) : wt_(begin, end) {
         c_array_[0] = 0;
         for(size_t c = 1; c < sigma_max_; c++) {

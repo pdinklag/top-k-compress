@@ -7,7 +7,7 @@
 #include <vector>
 
 #include <display.hpp>
-#include <tdc/util/concepts.hpp>
+#include <iopp/concepts.hpp>
 
 #include <lzend_parsing.hpp>
 #include <lzend_rev_phrase_trie.hpp>
@@ -544,7 +544,7 @@ public:
     // callbacks
     std::function<void(typename Parsing::Phrase const&)> on_emit_phrase;
 
-    template<tdc::InputIterator<char> In>
+    template<iopp::InputIterator<char> In>
     void parse(In begin, In const& end) {
         std::string_view window;
         size_t phase = 0;
@@ -631,7 +631,7 @@ public:
     }
 };
 
-template<bool prefer_local, tdc::InputIterator<char> In, iopp::BitSink Out>
+template<bool prefer_local, iopp::InputIterator<char> In, iopp::BitSink Out>
 void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block, size_t const block_size, pm::Result& result) {
     // initialize encoding
     out.write(MAGIC, 64);
