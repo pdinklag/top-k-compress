@@ -8,6 +8,8 @@
 #include <memory>
 #include <vector>
 
+#include "rans.hpp"
+
 using Token = uintmax_t;
 using TokenType = uint8_t;
 
@@ -17,6 +19,7 @@ enum TokenEncoding {
     Binary,
     BinaryRaw,
     Huffman,
+    rANS,
 };
 
 struct TokenParams {
@@ -48,12 +51,16 @@ public:
     }
 
     void push_back(Token const token) {
+        if(params_.encoding == TokenEncoding::rANS) {
+            assert(token <= 255);
+        }
+
         tokens_.push_back(token);
         range_.contain(token);
     }
 
     template<iopp::BitSink Sink>
-    void prepare_encode(Sink& sink) {
+    void prepare_encode(Sink& sink, size_t const block_size) {
         if(params_.encoding == TokenEncoding::Huffman) {
             // Huffman codes
             huff_tree_ = HuffmanTree(tokens_.begin(), tokens_.end());
@@ -61,6 +68,18 @@ public:
 
             huff_table_ = huff_tree_.table();
             huff_tree_ = HuffmanTree(); // discard
+        } else if(params_.encoding == TokenEncoding::rANS) {
+            // rANS
+            // narrow down tokens
+            auto const n = tokens_.size();
+            auto data = std::make_unique<uint8_t[]>(n);
+            for(size_t i = 0; i < n; i++) {
+                data[i] = (uint8_t)tokens_[i];
+            }
+            
+            // encode
+            code::Binary::encode(sink, tokens_.size(), code::Universe(block_size));
+            rans_encode(sink, data.get(), n);
         } else if(params_.encoding == TokenEncoding::BinaryRaw) {
             // Binary codes with no written header
             universe_ = code::Universe(params_.max);
@@ -86,16 +105,25 @@ public:
         auto const token = tokens_[next_++];
         if(params_.encoding == TokenEncoding::Huffman) {
             code::Huffman::encode(sink, token, huff_table_);
+        } else if(params_.encoding == TokenEncoding::rANS) {
+            // nothing to do
         } else {
             code::Binary::encode(sink, token, universe_);
         }
     }
 
     template<iopp::BitSource Src>
-    void prepare_decode(Src& src) {
+    void prepare_decode(Src& src, size_t const block_size) {
         if(params_.encoding == TokenEncoding::Huffman) {
             // Huffman codes
             huff_tree_ = HuffmanTree(src);
+        } else if(params_.encoding == TokenEncoding::rANS) {
+            // rANS
+            auto const n = code::Binary::decode(src, code::Universe(block_size));
+            tokens_.clear();
+            rans_decode(src, n, std::back_inserter(tokens_));
+            assert(tokens_.size() == n);
+            next_ = 0;
         } else if(params_.encoding == TokenEncoding::BinaryRaw) {
             // Binary codes with no written header
             universe_ = code::Universe(params_.max);
@@ -117,6 +145,8 @@ public:
     uintmax_t decode_next(Src& src) {
         if(params_.encoding == TokenEncoding::Huffman) {
             return code::Huffman::decode(src, huff_tree_.root());
+        } else if(params_.encoding == TokenEncoding::rANS) {
+            return tokens_[next_++];
         } else {
             return code::Binary::decode(src, universe_);
         }
@@ -209,6 +239,12 @@ public:
         params.encoding = TokenEncoding::Huffman;
         register_token(params);
     }
+
+    void register_rans() {
+        TokenParams params;
+        params.encoding = TokenEncoding::rANS;
+        register_token(params);
+    }
 };
 
 template<iopp::BitSink Sink>
@@ -244,7 +280,7 @@ private:
         #endif
 
         for(size_t j = 0; j < num_types(); j++) {
-            tokens(j).prepare_encode(*sink_);
+            tokens(j).prepare_encode(*sink_, cur_tokens_);
         }
 
         // write tokens
@@ -310,7 +346,7 @@ private:
 
             for(size_t j = 0; j < num_types(); j++) {
                 tokens(j).clear();
-                tokens(j).prepare_decode(*src_);
+                tokens(j).prepare_decode(*src_, cur_block_size_);
             }
         } else {
             cur_block_size_ = 0;
