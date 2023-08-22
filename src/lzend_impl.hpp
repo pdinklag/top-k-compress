@@ -11,7 +11,7 @@
 #include <display.hpp>
 
 #include <index/backward_search.hpp>
-#include <index/btree.hpp>
+#include <ordered/btree.hpp>
 
 #include "lzend_decompress.hpp"
 
@@ -90,7 +90,7 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
     if constexpr(TIME_PHASES) { sw.stop(); result.add("t_bws", (uint64_t)sw.elapsed_time_millis()); }
     
     // initialize dynamic successor data structure
-    BTree<Index, Index, 65> factors;
+    ordered::btree::Map<Index, Index, 65> factors;
     
     // initialize encoding
     out.write(MAGIC, 64);

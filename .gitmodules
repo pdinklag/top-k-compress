@@ -10,3 +10,6 @@
 [submodule "extlib/ryg_rans"]
 	path = extlib/ryg_rans
 	url = https://github.com/rygorous/ryg_rans
+[submodule "extlib/ordered"]
+	path = extlib/ordered
+	url = git@github.com:pdinklag/ordered.git

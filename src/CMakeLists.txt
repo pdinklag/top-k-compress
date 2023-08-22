@@ -1,5 +1,5 @@
 add_library(topk INTERFACE)
-target_link_libraries(topk INTERFACE tdc tlx unordered_dense pm-malloc rans)
+target_link_libraries(topk INTERFACE tdc ordered tlx unordered_dense pm-malloc rans)
 
 add_executable(encode encode.cpp)
 target_link_libraries(encode topk)

@@ -1,3 +1,4 @@
+add_subdirectory(ordered)
 add_subdirectory(tudocomp2)
 
 add_library(rans INTERFACE)

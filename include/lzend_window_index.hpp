@@ -7,8 +7,7 @@
 
 #include <alx_rmq.hpp>
 #include <fp_string_view.hpp>
-#include <index/btree.hpp>
-#include <index/dynamic_universe_sampling.hpp>
+#include <ordered/range_marking.hpp>
 #include <tdc/text/util.hpp>
 
 template<std::unsigned_integral Index>
@@ -16,7 +15,7 @@ class LZEndWindowIndex {
 private:
     using FPString = FPStringView<char>;
     using RMQ = alx::rmq::rmq_n<Index, Index>;
-    using MarkResult = KeyValueResult<Index, Index>;
+    using MarkResult = ordered::QueryResult<Index, Index>;
 
     size_t window_size;
     std::string rwindow;
@@ -25,8 +24,7 @@ private:
     std::unique_ptr<uint32_t[]> isa;
     RMQ rmq;
     
-    //BTree<Index, Index, 65> marked;
-    DynamicUniverseSampling<Index, Index, 4096> marked;
+    ordered::range_marking::Map<Index, Index, 4096> marked;
 
     FPString rfp;
 
@@ -74,7 +72,7 @@ public:
     void unmark(Index const m, bool silent = false) {
         auto const isa_m = isa[pos_to_reverse(m)];
         assert(marked.contains(isa_m));
-        marked.remove(isa_m);
+        marked.erase(isa_m);
     }
 
     void clear_marked() {
@@ -191,7 +189,7 @@ public:
         profile.lcp_isa = (rwindow.size() + 1) * (sizeof(uint32_t) + sizeof(uint32_t)); // lcp and isa
         profile.tmp_sa = (rwindow.size() + 1) * sizeof(uint32_t);
         profile.rmq = rmq.memory_size();
-        profile.marked = marked.memory_size();
+        profile.marked = 0;
         profile.fingerprints = rfp.memory_size();
         return profile;
     }
