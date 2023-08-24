@@ -25,7 +25,7 @@ constexpr uint64_t MAGIC =
 constexpr bool DEBUG = false;
 constexpr bool PROTOCOL = false;
 
-using TopK = TopKStrings<true>;
+using TopK = TopKStrings<false, true>;
 
 constexpr size_t rolling_fp_base = (1ULL << 16) - 39;
 

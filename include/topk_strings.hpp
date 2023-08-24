@@ -13,7 +13,7 @@
 #include "count_min2.hpp"
 #include "min_pq.hpp"
 
-template<bool approx_minpq_ = false>
+template<bool hash_len_ = true, bool approx_minpq_ = false>
 class TopKStrings {
 public:
     using Fingerprint = uint64_t;
@@ -26,7 +26,11 @@ private:
     using BitPack = uint64_t;
 
     static constexpr Hash hash(Fingerprint const fp, Length const len) {
-        return Hash(len) * 68719476377ULL + Hash(fp) * 2621271ULL;
+        if constexpr(hash_len_) {
+            return Hash(len) * 68719476377ULL + Hash(fp) * 2621271ULL;
+        } else {
+            return Hash(fp);
+        }
     }
 
     Index k_;
