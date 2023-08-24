@@ -10,6 +10,8 @@
 #include <rolling_karp_rabin.hpp>
 #include <write_bytes.hpp>
 
+#include <pm.hpp>
+
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
     ((uint64_t)'O') << 48 |
@@ -35,7 +37,7 @@ constexpr char SIGNAL = '$';
 struct Ref {
     size_t pos;
     size_t src;
-};
+} __attribute__((packed));
 
 size_t get_len(size_t const l, size_t const len_exp_min) {
     return 1ULL << (l + len_exp_min);
@@ -56,6 +58,10 @@ void topk_compress_psample(In begin, In const& end, Out out, size_t const window
     size_t num_literals = 0;
     size_t longest = 0;
     size_t total_len = 0;
+    size_t furthest = 0;
+    size_t total_dist = 0;
+    size_t t_process = 0;
+    size_t t_encode = 0;
 
     // initialize encoding
     write_uint(out, MAGIC, 8);
@@ -112,79 +118,89 @@ void topk_compress_psample(In begin, In const& end, Out out, size_t const window
         }
 
         // process block for each length in parallel
-        if constexpr(DEBUG) {
-            std::cout << "processing block " << blocknum << " (" << blocksize << " bytes) ..." << std::endl;
-        }
+        {
+            pm::Stopwatch t;
+            t.start();
 
-        #pragma omp parallel for
-        for(size_t l = 0; l < num_lens; l++) {
-            auto const len = get_len(l, len_exp_min);
-            for(size_t j = 0; j < blocksize; j++) {
-                // we want to fingerprint the string [i, j] of length len
-                // for this, we need to drop the character at position i - 1 = j - len
-                // the position may be negative -- then we take it from the previous block memory
-                ssize_t const i = ssize_t(j) - len + 1;
-                if(i - 1 < 0) {
-                    assert(m + i - 1 >= 0);
-                    assert(m + i - 1 < m);
-                }
-                auto const pop = (i - 1 >= 0) ? block[i - 1] : memory[m + i - 1];
-                ssize_t const global_pos = ssize_t(blocknum * window) + i;
+            if constexpr(DEBUG) {
+                std::cout << "processing block " << blocknum << " (" << blocksize << " bytes) ..." << std::endl;
+            }
 
-                // update fingerprint
-                fp[l] = hash[l].roll(fp[l], pop, block[j]);
-
-                // build debug string
-                std::string s;
-                if constexpr(DEBUG) {
-                    if(omp_get_num_threads() == 1) {
-                        for(ssize_t x = 0; x < ssize_t(len); x++) {
-                            s.push_back(i+x >= 0 ? block[i+x] : memory[m + i+x]);
-                        }
+            #pragma omp parallel for
+            for(size_t l = 0; l < num_lens; l++) {
+                auto const len = get_len(l, len_exp_min);
+                for(size_t j = 0; j < blocksize; j++) {
+                    // we want to fingerprint the string [i, j] of length len
+                    // for this, we need to drop the character at position i - 1 = j - len
+                    // the position may be negative -- then we take it from the previous block memory
+                    ssize_t const i = ssize_t(j) - len + 1;
+                    if(i - 1 < 0) {
+                        assert(m + i - 1 >= 0);
+                        assert(m + i - 1 < m);
                     }
-                }
+                    auto const pop = (i - 1 >= 0) ? block[i - 1] : memory[m + i - 1];
+                    ssize_t const global_pos = ssize_t(blocknum * window) + i;
 
-                // possibly make a reference
-                if(global_pos >= ssize_t(next[l])) {
-                    assert(global_pos >= 0);
+                    // update fingerprint
+                    fp[l] = hash[l].roll(fp[l], pop, block[j]);
 
-                    // lookup fingerprint in top-k structure
-                    TopK::Index slot;
-                    if(topk[l]->find(fp[l], len, slot)) {
-                        // found it, make a reference
-                        assert(src[l][slot] < size_t(global_pos));
-                        refs[l].push_back({size_t(global_pos), src[l][slot]});
-                        next[l] = size_t(global_pos) + len;
-
-                        if constexpr(DEBUG) {
-                            if(omp_get_num_threads() == 1) {
-                                std::cout << "\ti=" << global_pos << ": found string \"" << s << "\" (length " << len
-                                    << ", fingerprint 0x" << std::hex << fp[l] << std::dec << ") in slot " << slot << ", last seen at position " << src[l][slot] << std::endl;
+                    // build debug string
+                    std::string s;
+                    if constexpr(DEBUG) {
+                        if(omp_get_num_threads() == 1) {
+                            for(ssize_t x = 0; x < ssize_t(len); x++) {
+                                s.push_back(i+x >= 0 ? block[i+x] : memory[m + i+x]);
                             }
                         }
                     }
-                }
 
-                // possibly enter the fingerprint in the top-k data structure
-                if(global_pos >= 0 && should_sample(fp[l], len >> sample_rsh)) {
-                    ++num_sampled[l];
+                    // possibly make a reference
+                    if(global_pos >= ssize_t(next[l])) {
+                        assert(global_pos >= 0);
 
-                    TopK::Index slot;
-                    if(topk[l]->insert(fp[l], len, slot)) {
-                        src[l][slot] = global_pos;
-                        if constexpr(DEBUG) {
-                            if(omp_get_num_threads() == 1) {
-                                std::cout << "\ti=" << global_pos << ": inserted string \"" << s << "\" (length " << len
-                                    << ", fingerprint 0x" << std::hex << fp[l] << std::dec << ") into slot " << slot << std::endl;
+                        // lookup fingerprint in top-k structure
+                        TopK::Index slot;
+                        if(topk[l]->find(fp[l], len, slot)) {
+                            // found it, make a reference
+                            assert(src[l][slot] < size_t(global_pos));
+                            refs[l].push_back(Ref{size_t(global_pos), src[l][slot]});
+                            next[l] = size_t(global_pos) + len;
+
+                            if constexpr(DEBUG) {
+                                if(omp_get_num_threads() == 1) {
+                                    std::cout << "\ti=" << global_pos << ": found string \"" << s << "\" (length " << len
+                                        << ", fingerprint 0x" << std::hex << fp[l] << std::dec << ") in slot " << slot << ", last seen at position " << src[l][slot] << std::endl;
+                                }
+                            }
+                        }
+                    }
+
+                    // possibly enter the fingerprint in the top-k data structure
+                    if(global_pos >= 0 && should_sample(fp[l], len >> sample_rsh)) {
+                        ++num_sampled[l];
+
+                        TopK::Index slot;
+                        if(topk[l]->insert(fp[l], len, slot)) {
+                            src[l][slot] = global_pos;
+                            if constexpr(DEBUG) {
+                                if(omp_get_num_threads() == 1) {
+                                    std::cout << "\ti=" << global_pos << ": inserted string \"" << s << "\" (length " << len
+                                        << ", fingerprint 0x" << std::hex << fp[l] << std::dec << ") into slot " << slot << std::endl;
+                                }
                             }
                         }
                     }
                 }
             }
+            t.stop();
+            t_process += t.elapsed_time_millis();
         }
 
         // encode block
         {
+            pm::Stopwatch t;
+            t.start();
+
             if constexpr(DEBUG) {
                 std::cout << "encoding block " << blocknum << " ..." << std::endl;
             }
@@ -235,18 +251,25 @@ void topk_compress_psample(In begin, In const& end, Out out, size_t const window
                     // encode reference
                     auto const len = get_len(ref_l, len_exp_min);
                     ++num_refs;
+
                     total_len += len;
                     longest = std::max(longest, len);
 
                     assert(block_offs + j > ref_src);
-                    if constexpr(PROTOCOL) std::cout << "i=" << (block_offs + j) << ": (" << ref_src << ", " << len << ")" << std::endl;
+                    auto const dist = block_offs + j - ref_src;
 
+                    total_dist += dist;
+                    furthest = std::max(dist, furthest);
+
+                    if constexpr(PROTOCOL) std::cout << "i=" << (block_offs + j) << ": (" << ref_src << ", " << len << ")" << std::endl;
                     *out++ = SIGNAL;
-                    write_uint(out, block_offs + j - ref_src, REF_BYTES);
+                    write_uint(out, dist, REF_BYTES);
                     write_uint(out, ref_l, 1);
                     j += len;
                 }
             }
+            t.stop();
+            t_encode += (size_t)t.elapsed_time_millis();
         }
 
         // cleanup refs
@@ -265,12 +288,16 @@ void topk_compress_psample(In begin, In const& end, Out out, size_t const window
     }
 
     auto const num_phrases = num_refs + num_literals;
+    result.add("time_process", t_process);
+    result.add("time_encode", t_encode);
     result.add("total_sampled", total_sampled);
     result.add("phrases_total", num_phrases);
     result.add("phrases_ref", num_refs);
     result.add("phrases_literal", num_literals);
     result.add("phrases_longest", longest);
+    result.add("phrases_furthest", furthest);
     result.add("phrases_avg_ref_len", std::round(100.0 * ((double)total_len / (double)num_refs)) / 100.0);
+    result.add("phrases_avg_ref_dist", std::round(100.0 * ((double)total_dist / (double)num_refs)) / 100.0);
 }
 
 template<iopp::InputIterator<char> In, std::output_iterator<char> Out>
