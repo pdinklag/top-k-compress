@@ -7,7 +7,7 @@
 #include <topk_strings.hpp>
 #include <rolling_karp_rabin.hpp>
 
-#include <iopp/concepts.hpp>
+#include <write_bytes.hpp>
 #include <tlx/container/ring_buffer.hpp>
 
 #include <code/vbyte.hpp>
@@ -188,27 +188,6 @@ struct Buffers {
         }
     }
 };
-
-template<std::output_iterator<char> Out>
-void write_uint(Out& out, uint64_t const x, size_t const num_bytes) {
-    static_assert(std::endian::native == std::endian::little);
-    assert(num_bytes <= 8);
-    char const* s = (char const*)&x;
-    for(size_t i = 0; i < num_bytes; i++) {
-        *out++ = s[i];
-    }
-}
-
-template<iopp::InputIterator<char> In>
-uint64_t read_uint(In& in, size_t const num_bytes) {
-    assert(num_bytes <= 8);
-    uint64_t x = 0;
-    char* s = (char*)&x;
-    for(size_t i = 0; i < num_bytes; i++) {
-        s[i] = *in++;
-    }
-    return x;
-}
 
 template<bool use_sss, iopp::InputIterator<char> In, std::output_iterator<char> Out>
 void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_exp, size_t const len_exp_min, size_t const len_exp_max, size_t const min_dist, size_t const k, size_t const sketch_rows, size_t const sketch_columns, pm::Result& result) {
