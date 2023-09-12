@@ -1,8 +1,8 @@
 add_library(topk INTERFACE)
 target_link_libraries(topk INTERFACE tdc ordered tlx unordered_dense pm-malloc rans)
 
-add_executable(topk-fact topk_fact.cpp)
-target_link_libraries(topk-fact topk word-packing)
+add_executable(topk-lz77 topk_lz77.cpp)
+target_link_libraries(topk-lz77 topk word-packing)
 
 add_executable(topk-lz78 topk_lz78.cpp)
 target_link_libraries(topk-lz78 topk)
