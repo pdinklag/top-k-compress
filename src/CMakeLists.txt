@@ -1,3 +1,6 @@
+add_executable(lz77-blockwise lz77_blockwise.cpp)
+target_link_libraries(lz77-blockwise topk word-packing)
+
 add_library(topk INTERFACE)
 target_link_libraries(topk INTERFACE tdc ordered tlx unordered_dense pm-malloc rans)
 
