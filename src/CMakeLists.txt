@@ -10,12 +10,6 @@ target_link_libraries(rle topk)
 add_executable(topk-fact topk_fact.cpp)
 target_link_libraries(topk-fact topk word-packing)
 
-add_executable(topk-lz77 topk_lz77.cpp)
-target_link_libraries(topk-lz77 topk)
-
-add_executable(topk-lz77-fast topk_lz77_fast.cpp)
-target_link_libraries(topk-lz77-fast topk)
-
 add_executable(topk-lz78 topk_lz78.cpp)
 target_link_libraries(topk-lz78 topk)
 
@@ -33,6 +27,12 @@ target_link_libraries(topk-sel topk)
 
 add_executable(topk-sss topk_sss.cpp)
 target_link_libraries(topk-sss topk word-packing)
+
+add_executable(topk-weiner-lz77 topk_weiner_lz77.cpp)
+target_link_libraries(topk-weiner-lz77 topk)
+
+add_executable(topk-weiner-lz77-fast topk_weiner_lz77_fast.cpp)
+target_link_libraries(topk-weiner-lz77-fast topk)
 
 add_executable(lpf lpf.cpp)
 target_link_libraries(lpf topk)

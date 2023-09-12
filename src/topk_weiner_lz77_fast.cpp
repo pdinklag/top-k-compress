@@ -1,11 +1,11 @@
 #include "topk_compressor.hpp"
-#include "topk_lz77_impl.hpp"
+#include "topk_weiner_lz77_impl.hpp"
 
 struct Compressor : public TopkCompressor {
     uint64_t window = 8;
     unsigned int threshold = 2;
 
-    Compressor() : TopkCompressor("topk-lz77", "Implements the top-k LZ77 compression algorithm") {
+    Compressor() : TopkCompressor("topk-weiner-lz77", "Implements the top-k LZ77 compression algorithm using Weiner links") {
         param('w', "window", window, "The window size.");
         param('t', "threshold", threshold, "The minimum reference length");
     }
@@ -18,7 +18,7 @@ struct Compressor : public TopkCompressor {
     }
 
     virtual std::string file_ext() override {
-        return ".lz77f";
+        return ".weinerf";
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
