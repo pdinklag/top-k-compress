@@ -2,8 +2,7 @@
 #include <tdc/text/util.hpp>
 #include <tdc/lz/lpf_factorizer.hpp>
 
-#include <topk_substrings.hpp>
-#include <topk_trie_node.hpp>
+#include <topk_prefixes_filter_sketch.hpp>
 #include <topk_header.hpp>
 #include <block_coding.hpp>
 #include <pm/result.hpp>
@@ -19,7 +18,7 @@ constexpr uint64_t MAGIC =
     ((uint64_t)'T');
 
 using Index = uint32_t;
-using Topk = TopKSubstrings<TopkTrieNode<>, true>;
+using Topk = TopKPrefixesFilterSketch<true>;
 using Node = Index;
 
 constexpr bool PROTOCOL = false;
@@ -65,7 +64,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold
     setup_encoding(enc, k, window_size);
 
     // initialize top-k
-    Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
+    Topk topk(k - 1, sketch_columns);
 
     // initialize factorizer
     tdc::lz::LPFFactorizer<> lpf;
@@ -113,21 +112,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold
 
                 // find the longest string represented in the top-k trie starting at the current position
                 Node v;
-                Index dv;
-                {
-                    auto const& trie = topk.filter();
-                    v = trie.root();
-                    dv = 0;
-                    while(curpos + dv < block_num) {
-                        Node u;
-                        if(trie.try_get_child(v, block[curpos + dv], u)) {
-                            v = u;
-                            ++dv;
-                        } else {
-                            break;
-                        }
-                    }
-                }
+                Index dv = topk.find(block.get() + curpos, block_num - curpos, v);
 
                 auto const& f = factors[z];
                 if(dv >= f.num_literals()) {
@@ -221,7 +206,6 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold
     result.add("phrases_avg_ref_len", std::round(100.0 * ((double)(total_lz_len + total_trie_len) / (double)(num_lz + num_trie))) / 100.0);
     result.add("phrases_avg_ref_len_lz", std::round(100.0 * ((double)total_lz_len / (double)num_lz)) / 100.0);
     result.add("phrases_avg_ref_len_trie", std::round(100.0 * ((double)total_trie_len / (double)num_trie)) / 100.0);
-    enc.gather_stats(result);
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
@@ -230,14 +214,12 @@ void topk_decompress_lz77(In in, Out out) {
     TopkHeader header(in, MAGIC);
     auto const k = header.k;
     auto const window_size = header.window_size;    
-    auto const num_sketches = header.num_sketches;
-    auto const sketch_rows = header.sketch_rows;
     auto const sketch_columns = header.sketch_columns;
 
     // initialize decoding
     BlockDecoder dec(in);
     setup_encoding(dec, k, window_size);
-    Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
+    Topk topk(k - 1, sketch_columns);
     
     auto block = std::make_unique<char[]>(window_size);
     auto block_offs = 0;
@@ -251,7 +233,7 @@ void topk_decompress_lz77(In in, Out out) {
         if(len == 0) {
             // a top-k trie reference
             auto const node = dec.read_uint(TOK_TRIE_REF);
-            phrase_len = topk.filter().spell(node, block.get() + curpos);
+            phrase_len = topk.get(node, block.get() + curpos);
             if constexpr(PROTOCOL) std::cout << "pos=" << gpos << ": top-k (" << node << ") / " << phrase_len << std::endl;;
         } else if(len == 1) {
             // a literal character

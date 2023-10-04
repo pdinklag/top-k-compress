@@ -1,5 +1,4 @@
-#include <topk_substrings.hpp>
-#include <topk_trie_node.hpp>
+#include <topk_prefixes_filter_sketch.hpp>
 #include <topk_header.hpp>
 #include <block_coding.hpp>
 #include <pm/result.hpp>
@@ -16,7 +15,7 @@ constexpr uint64_t MAGIC =
 
 constexpr bool PROTOCOL = false;
 
-using Topk = TopKSubstrings<TopkTrieNode<>>;
+using Topk = TopKPrefixesFilterSketch<>;
 
 constexpr TokenType TOK_TRIE_REF = 0;
 constexpr TokenType TOK_LITERAL = 1;
@@ -34,7 +33,7 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
     
-    Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
+    Topk topk(k - 1, sketch_columns);
     size_t n = 0;
     size_t num_phrases = 0;
     size_t longest = 0;
@@ -81,8 +80,6 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
     }
 
     enc.flush();
-
-    topk.print_debug_info();
     
     result.add("phrases_total", num_phrases);
     result.add("phrases_longest", longest);
@@ -97,13 +94,11 @@ void topk_decompress_lz78(In in, Out out) {
     TopkHeader header(in, MAGIC);
     auto const k = header.k;
     auto const window_size = header.window_size;
-    auto const num_sketches = header.num_sketches;
-    auto const sketch_rows = header.sketch_rows;
     auto const sketch_columns = header.sketch_columns;
 
     // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character
-    Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
+    Topk topk(k - 1, sketch_columns);
 
     size_t n = 0;
     size_t num_phrases = 0;
