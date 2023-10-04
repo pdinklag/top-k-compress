@@ -1,8 +1,12 @@
-#include "topk_common.hpp"
-
 #include <trie_fcns.hpp>
 #include <tdc/text/util.hpp>
 #include <tdc/lz/lpf_factorizer.hpp>
+
+#include <topk_substrings.hpp>
+#include <topk_trie_node.hpp>
+#include <topk_header.hpp>
+#include <block_coding.hpp>
+#include <pm/result.hpp>
 
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |

@@ -3,7 +3,7 @@
 #include <memory>
 #include <display.hpp>
 
-#include <topk_substrings.hpp>
+#include <topk_substrings_old.hpp>
 #include <topk_trie_node.hpp>
 
 #include <fp_string_view.hpp>

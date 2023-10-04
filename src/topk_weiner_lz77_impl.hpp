@@ -1,7 +1,12 @@
-#include "topk_common.hpp"
-#include "lzlike_decompress.hpp"
-
 #include <tlx/container/ring_buffer.hpp>
+
+#include <topk_substrings_old.hpp>
+#include <topk_trie_node.hpp>
+#include <topk_header.hpp>
+#include <block_coding.hpp>
+#include <pm/result.hpp>
+
+#include "lzlike_decompress.hpp"
 
 constexpr bool PROTOCOL = false;
 constexpr bool DEBUG = false;

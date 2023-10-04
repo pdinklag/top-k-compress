@@ -1,5 +1,3 @@
-#include "topk_common.hpp"
-
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -16,6 +14,10 @@
 #include <topk_lzend_trie.hpp>
 
 #include <code/concepts.hpp>
+
+#include <topk_header.hpp>
+#include <block_coding.hpp>
+#include <pm/result.hpp>
 
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
