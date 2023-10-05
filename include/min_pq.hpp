@@ -192,35 +192,28 @@ public:
         return item;
     }
 
-    // inspect all minimal items
-    template<std::invocable<EntryIndex> Lambda>
-    EntryIndex inspect_minima(Lambda inspect) {
+    template<std::predicate<EntryIndex> Predicate>
+    bool extract_min(Predicate pick, EntryIndex& out_item) {
         assert(!buckets_.empty());
 
         auto& min_bucket = buckets_.front();
         assert(!min_bucket.empty());
 
-        for(auto item : min_bucket.items) {
-            inspect(item);
+        for(auto it = min_bucket.items.begin(); it != min_bucket.items.end(); ++it) {
+            if(pick(*it)) {
+                // extract
+                out_item = *it;
+                min_bucket.items.erase(it);
+
+                // delete bucket if empty
+                if(min_bucket.empty()) {
+                    if constexpr(gather_stats_) ++stats_.num_bucket_deletes;
+                    buckets_.pop_front();
+                }
+                return true;
+            }
         }
-    }
-
-    // extract a specific minimum
-    void extract_min_specific(EntryIndex const item) {
-        auto& min_bucket = buckets_.front();
-        assert(!min_bucket.empty());
-
-        size_t const old_size = min_bucket.items.size();
-        min_bucket.items.pop_front();
-
-        // make sure the extracted item was indeed minimal
-        assert(min_bucket.items.size() == old_size - 1);
-
-        // delete bucket if empty
-        if(min_bucket.empty()) {
-            if constexpr(gather_stats_) ++stats_.num_bucket_deletes;
-            buckets_.pop_front();
-        }
+        return false;
     }
 
     Frequency freq(Location const& what) {
