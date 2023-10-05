@@ -1,4 +1,4 @@
-#include "compressor_base.hpp"
+#include "../compressor_base.hpp"
 #include "lzend_impl.hpp"
 
 struct Compressor : public CompressorBase {

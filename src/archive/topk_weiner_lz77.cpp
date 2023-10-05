@@ -1,4 +1,4 @@
-#include "topk_compressor.hpp"
+#include "../topk_compressor.hpp"
 #include "topk_weiner_lz77_impl.hpp"
 
 struct Compressor : public TopkCompressor {

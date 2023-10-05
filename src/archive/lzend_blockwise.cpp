@@ -1,4 +1,4 @@
-#include "compressor_base.hpp"
+#include "../compressor_base.hpp"
 #include "topk_lzend_impl.hpp"
 
 #include <tdc/util/si_iec_literals.hpp>

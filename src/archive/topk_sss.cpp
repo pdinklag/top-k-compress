@@ -1,5 +1,5 @@
-#include "compressor_base.hpp"
-#include "topk_sample_impl.hpp"
+#include "../compressor_base.hpp"
+#include "../topk_sample_impl.hpp"
 
 #include <tdc/util/si_iec_literals.hpp>
 

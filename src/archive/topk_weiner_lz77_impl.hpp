@@ -6,7 +6,7 @@
 #include <block_coding.hpp>
 #include <pm/result.hpp>
 
-#include "lzlike_decompress.hpp"
+#include "../lzlike_decompress.hpp"
 
 constexpr bool PROTOCOL = false;
 constexpr bool DEBUG = false;

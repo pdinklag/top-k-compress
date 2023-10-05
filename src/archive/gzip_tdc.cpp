@@ -1,4 +1,4 @@
-#include "tdc_compressor.hpp"
+#include "../tdc_compressor.hpp"
 
 #include <tdc/lz/gzip9_factorizer.hpp>
 
