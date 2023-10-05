@@ -2,6 +2,7 @@
 #include <tdc/text/util.hpp>
 #include <tdc/lz/lpf_factorizer.hpp>
 
+#include <topk_prefixes_filter_sketch.hpp>
 #include <topk_prefixes_misra_gries.hpp>
 #include <topk_header.hpp>
 #include <block_coding.hpp>
@@ -18,8 +19,8 @@ constexpr uint64_t MAGIC =
     ((uint64_t)'T');
 
 using Index = uint32_t;
-//using Topk = TopKPrefixesFilterSketch<true>;
-using Topk = TopKPrefixesMisraGries<>;
+using Topk = TopKPrefixesFilterSketch<true>;
+// using Topk = TopKPrefixesMisraGries<>;
 using Node = Index;
 
 constexpr bool PROTOCOL = false;

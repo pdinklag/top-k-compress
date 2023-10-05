@@ -56,21 +56,38 @@ public:
     CountMin2(CountMin2 const&) = delete;
     CountMin2& operator=(CountMin2 const&) = delete;
 
+    template<bool conservative = false>
     inline Frequency increment_and_estimate(uintmax_t const item, Frequency const inc) {
         auto const j1 = h1(item);
         auto const j2 = h2(item);
 
-        auto const f1 = table_[j1] + inc;
-        table_[j1] = f1;
+        auto f1 = table_[j1];
+        auto f2 = table_[j2];
 
-        auto const f2 = table_[j2] + inc;
-        table_[j2] = f2;
+        if constexpr(conservative) {
+            auto const fmin = std::min(f1, f2);
+            if(f1 == fmin) { f1 += inc; table_[j1] = f1; }
+            if(f2 == fmin) { f2 += inc; table_[j2] = f2; }
+        }
 
         return std::min(f1, f2);
     }
 
+    template<bool conservative = false>
     inline void increment(uintmax_t const item, Frequency const inc) {
-        table_[h1(item)] += inc;
-        table_[h2(item)] += inc;
+        if constexpr(conservative) {
+            auto const j1 = h1(item);
+            auto const j2 = h2(item);
+
+            auto const f1 = table_[j1];
+            auto const f2 = table_[j2];
+            auto const fmin = std::min(f1, f2);
+
+            if(f1 == fmin) { table_[j1] = f1 + inc; }
+            if(f2 == fmin) { table_[j2] = f2 + inc; }
+        } else {
+            table_[h1(item)] += inc;
+            table_[h2(item)] += inc;
+        }
     }
 };

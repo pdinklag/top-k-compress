@@ -200,7 +200,7 @@ public:
             if(trie_.full()) {
                 // the trie is full, count current prefix in the sketch
                 // increment in sketch
-                auto est = sketch_.increment_and_estimate(ext_fp, 1);
+                auto est = sketch_.increment_and_estimate<true>(ext_fp, 1);
 
                 // test if it is now frequent
                 auto const swap = (approx_minpq_ ? std::bit_width(est) : est) > min_pq_.min_frequency();
