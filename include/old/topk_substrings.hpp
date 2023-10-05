@@ -205,7 +205,7 @@ private:
     }
 
 public:
-    inline TopKSubstrings(size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const fp_window_size = 8)
+    inline TopKSubstrings(size_t const k, size_t const sketch_rows, size_t const sketch_columns, size_t const fp_window_size = 8)
         : hash_(fp_window_size, rolling_fp_base_),
           filter_(k),
           min_pq_(k),

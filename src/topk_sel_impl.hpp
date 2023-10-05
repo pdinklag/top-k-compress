@@ -32,14 +32,14 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k) {
 }
 
 template<iopp::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
+void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     // write header
-    TopkHeader header(k, window_size, num_sketches, sketch_rows, sketch_columns);
+    TopkHeader header(k, window_size, sketch_rows, sketch_columns);
     header.encode(out, MAGIC);
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
-    Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
+    Topk topk(k - 1, sketch_rows, sketch_columns);
 
     // initialize encoding
     BlockEncoder enc(out, block_size);
@@ -207,13 +207,12 @@ void topk_decompress_sel(In in, Out out) {
     TopkHeader header(in, MAGIC);
     auto const k = header.k;
     auto const window_size = header.window_size;
-    auto const num_sketches = header.num_sketches;
     auto const sketch_rows = header.sketch_rows;
     auto const sketch_columns = header.sketch_columns;
 
     // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character
-    Topk topk(k - 1, num_sketches, sketch_rows, sketch_columns);
+    Topk topk(k - 1, sketch_rows, sketch_columns);
 
     // initialize decoding
     BlockDecoder dec(in);

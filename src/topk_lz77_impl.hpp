@@ -47,7 +47,7 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k, size_t const window_
 }
 
 template<iopp::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold, size_t const k, size_t const window_size, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
+void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     // init stats
     size_t num_lz = 0;
     size_t num_trie = 0;
@@ -59,7 +59,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold
     size_t num_relevant = 0;
 
     // write header and initialize encoding
-    TopkHeader header(k, window_size, num_sketches, sketch_rows, sketch_columns);
+    TopkHeader header(k, window_size, sketch_rows, sketch_columns);
     header.encode(out, MAGIC);
 
     BlockEncoder enc(out, block_size);

@@ -26,8 +26,8 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k) {
 }
 
 template<iopp::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
-    TopkHeader header(k, 0 /* indicator for LZ78 compression :-) */, num_sketches, sketch_rows, sketch_columns);
+void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
+    TopkHeader header(k, 0 /* indicator for LZ78 compression :-) */, sketch_rows, sketch_columns);
     header.encode(out, MAGIC);
 
     // initialize compression

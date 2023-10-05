@@ -501,9 +501,9 @@ public:
 };
 
 template<bool use_trie, iopp::InputIterator<char> In, iopp::BitSink Out>
-void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_block, size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
+void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_block, size_t const k, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     // initialize encoding
-    TopkHeader header(k, max_block, num_sketches, sketch_rows, sketch_columns);
+    TopkHeader header(k, max_block, sketch_rows, sketch_columns);
     header.encode(out, MAGIC);
 
     BlockEncoder enc(out, block_size);
@@ -523,7 +523,7 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
     using Trie = Parser::Trie;
     
     // parse
-    Trie trie(k, num_sketches, sketch_rows, sketch_columns);
+    Trie trie(k, sketch_rows, sketch_columns);
     Parser parser(max_block, trie);
 
     size_t i = 0;
@@ -591,7 +591,6 @@ void topk_lzend_decompress(In in, Out out) {
     TopkHeader header(in, MAGIC);
     auto const k = header.k;
     auto const max_block = header.window_size;
-    auto const num_sketches = header.num_sketches;
     auto const sketch_rows = header.sketch_rows;
     auto const sketch_columns = header.sketch_columns;
 
@@ -601,7 +600,7 @@ void topk_lzend_decompress(In in, Out out) {
     
     // initialize top-k framework
     using Trie = TopKLZEndTrie<Index>;
-    Trie topk(k, num_sketches, sketch_rows, sketch_columns);
+    Trie topk(k, sketch_rows, sketch_columns);
 
     // initialize buffers
     auto window = std::make_unique<char[]>(max_window);

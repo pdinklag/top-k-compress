@@ -35,8 +35,8 @@ private:
 public:
     using StringView = FPStringView<char>;
 
-    inline TopKLZEndTrie(size_t const k, size_t const num_sketches, size_t const sketch_rows, size_t const sketch_columns, size_t const fp_window_size = 8)
-        : Base(k, num_sketches, sketch_rows, sketch_columns, fp_window_size),
+    inline TopKLZEndTrie(size_t const k, size_t const sketch_rows, size_t const sketch_columns, size_t const fp_window_size = 8)
+        : Base(k, sketch_rows, sketch_columns, fp_window_size),
           depth_(std::make_unique<Index[]>(k)) {
         
         depth_[0] = 0;
