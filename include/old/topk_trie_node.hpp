@@ -1,7 +1,7 @@
 #pragma once
 
-#include "min_pq.hpp"
-#include "trie_node.hpp"
+#include "../min_pq.hpp"
+#include "../trie_node.hpp"
 
 template<std::unsigned_integral NodeIndex = uint32_t>
 struct TopkTrieNode : public TrieNode<NodeIndex> {

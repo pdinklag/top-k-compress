@@ -17,13 +17,13 @@
 #include <pm/stopwatch.hpp>
 #include <tdc/util/concepts.hpp>
 
-#include "always_inline.hpp"
-#include "trie.hpp"
-#include "truncated_trie.hpp"
-#include "min_pq.hpp"
-#include "count_min2.hpp"
-#include "rolling_karp_rabin.hpp"
-#include "display.hpp"
+#include "../always_inline.hpp"
+#include "../trie.hpp"
+#include "../truncated_trie.hpp"
+#include "../min_pq.hpp"
+#include "../count_min2.hpp"
+#include "../rolling_karp_rabin.hpp"
+#include "../display.hpp"
 
 template<typename FilterNode, bool approx_minpq_ = false, size_t cut_ = 0>
 requires requires {

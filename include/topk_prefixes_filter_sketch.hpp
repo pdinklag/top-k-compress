@@ -16,31 +16,51 @@
 
 #include "always_inline.hpp"
 #include "trie.hpp"
+#include "trie_node.hpp"
 #include "truncated_trie.hpp"
-#include "topk_trie_node.hpp"
 #include "min_pq.hpp"
 #include "count_min2.hpp"
 #include "rolling_karp_rabin.hpp"
 #include "display.hpp"
 
-template<bool approx_minpq_ = false, std::unsigned_integral Index = uint32_t>
+template<bool approx_minpq_ = false, std::unsigned_integral TrieNodeIndex = uint32_t>
 class TopKPrefixesFilterSketch {
 private:
+    struct NodeData : public TrieNode<TrieNodeIndex> {
+        using Character = TrieNode<TrieNodeIndex>::Character;
+        using Index = TrieNode<TrieNodeIndex>::Index;
+
+        size_t freq;                    // the current estimated frequency
+        size_t insert_freq;             // the estimated frequency at time of insertion
+        MinPQ<size_t>::Location minpq;  // the entry in the minimum PQ, if any
+        uint64_t fingerprint;           // the 64-bit fingerprint of the represented string
+
+        void dump_extra_info() const {
+            std::cout << " [freq=" << freq << "]";
+        }
+
+        NodeData() {
+        }
+
+        NodeData(Index v, Character c) : TrieNode<TrieNodeIndex>(v, c) {
+        }
+    } __attribute__((packed));
+
     static constexpr bool DEBUG = false;
 
     static constexpr uint64_t rolling_fp_offset_ = (1ULL << 63) - 25;
     static constexpr uint64_t rolling_fp_base_ = (1ULL << 14) - 15;    
 
-    using TrieNode = Index;
+    using TrieNodeDepth = TrieNodeIndex;
 
-    Trie<TopkTrieNode<Index>> trie_;
-    MinPQ<size_t, TrieNode> min_pq_;
+    Trie<NodeData> trie_;
+    MinPQ<size_t, TrieNodeIndex> min_pq_;
     RollingKarpRabin hash_;
     CountMin2<size_t> sketch_;
 
     size_t k_;
 
-    void increment_in_trie(TrieNode const v) ALWAYS_INLINE {
+    void increment_in_trie(TrieNodeIndex const v) ALWAYS_INLINE {
         // increment frequency
         auto& data = trie_.node(v);
 
@@ -60,7 +80,7 @@ private:
         }
     }
 
-    TrieNode insert_into_trie(TrieNode const parent, char const label, uint64_t const fingerprint) ALWAYS_INLINE {
+    TrieNodeIndex insert_into_trie(TrieNodeIndex const parent, char const label, uint64_t const fingerprint) ALWAYS_INLINE {
         auto const v = trie_.new_node();
         trie_.insert_child(v, parent, label);
 
@@ -80,9 +100,9 @@ private:
         return v;
     }
 
-    TrieNode swap_into_trie(TrieNode const parent, char const label, uint64_t const fingerprint, size_t const frequency) ALWAYS_INLINE {
+    TrieNodeIndex swap_into_trie(TrieNodeIndex const parent, char const label, uint64_t const fingerprint, size_t const frequency) ALWAYS_INLINE {
         // extract maximal frequent substring with minimal frequency
-        TrieNode const swap = min_pq_.extract_min();
+        TrieNodeIndex const swap = min_pq_.extract_min();
 
         // extract the substring from the trie and get the fingerprint and frequency delta
         assert(trie_.is_leaf(swap));
@@ -137,10 +157,10 @@ public:
     }
 
     struct StringState {
-        TrieNode len;         // length of the string
-        TrieNode node;        // the string's node in the trie filter
-        uint64_t fingerprint; // fingerprint
-        bool     frequent;    // whether or not the string is frequent
+        TrieNodeIndex len;         // length of the string
+        TrieNodeIndex node;        // the string's node in the trie filter
+        uint64_t      fingerprint; // fingerprint
+        bool          frequent;    // whether or not the string is frequent
     };
 
     // returns a string state for the empty string to start with
@@ -218,16 +238,16 @@ public:
     }
 
     // read the string with the given index into the buffer
-    Index get(Index const index, char* buffer) const {
+    TrieNodeDepth get(TrieNodeIndex const index, char* buffer) const {
         return trie_.spell(index, buffer);
     }
 
-    // try to find the string in the trie and report its length and node
-    Index find(char const* s, size_t const max_len, Index& out_node) const {
+    // try to find the string in the trie and report its depth and node
+    TrieNodeDepth find(char const* s, size_t const max_len, TrieNodeIndex& out_node) const {
         auto v = trie_.root();
-        Index dv = 0;
+        TrieNodeDepth dv = 0;
         while(dv < max_len) {
-            Index u;
+            TrieNodeIndex u;
             if(trie_.try_get_child(v, s[dv], u)) {
                 v = u;
                 ++dv;
