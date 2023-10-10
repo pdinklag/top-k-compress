@@ -19,8 +19,8 @@ constexpr uint64_t MAGIC =
     ((uint64_t)'T');
 
 using Index = uint32_t;
-using Topk = TopKPrefixesFilterSketch<true>;
-// using Topk = TopKPrefixesMisraGries<>;
+// using Topk = TopKPrefixesFilterSketch<true>;
+using Topk = TopKPrefixesMisraGries<>;
 using Node = Index;
 
 constexpr bool PROTOCOL = false;
