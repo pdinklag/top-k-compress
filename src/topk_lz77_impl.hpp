@@ -1,9 +1,8 @@
-#include <trie_fcns.hpp>
+#include <display.hpp>
+
 #include <tdc/text/util.hpp>
 #include <tdc/lz/lpf_factorizer.hpp>
 
-#include <topk_prefixes_filter_sketch.hpp>
-#include <topk_prefixes_misra_gries.hpp>
 #include <topk_header.hpp>
 #include <block_coding.hpp>
 #include <pm/result.hpp>
@@ -19,8 +18,6 @@ constexpr uint64_t MAGIC =
     ((uint64_t)'T');
 
 using Index = uint32_t;
-// using Topk = TopKPrefixesFilterSketch<true>;
-using Topk = TopKPrefixesMisraGries<>;
 using Node = Index;
 
 constexpr bool PROTOCOL = false;
@@ -46,7 +43,7 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k, size_t const window_
     enc.register_binary(window_size, false); // TOK_FACT_REMAINDER
 }
 
-template<iopp::InputIterator<char> In, iopp::BitSink Out>
+template<typename Topk, iopp::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     // init stats
     size_t num_lz = 0;
@@ -88,7 +85,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold
             ++num_relevant;
 
             if constexpr(PROTOCOL) std::cout << "enter: \"";
-            Topk::StringState s = topk.empty_string();
+            typename Topk::StringState s = topk.empty_string();
             Node node;
             while(s.frequent && s.len < len && pos + s.len < block_num) {
                 if constexpr(PROTOCOL) std::cout << display_inline(block[pos + s.len]);
@@ -210,7 +207,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold
     result.add("phrases_avg_ref_len_trie", std::round(100.0 * ((double)total_trie_len / (double)num_trie)) / 100.0);
 }
 
-template<iopp::BitSource In, std::output_iterator<char> Out>
+template<typename Topk, iopp::BitSource In, std::output_iterator<char> Out>
 void topk_decompress_lz77(In in, Out out) {
     // decode header
     TopkHeader header(in, MAGIC);
@@ -264,7 +261,7 @@ void topk_decompress_lz77(In in, Out out) {
         // enter string into top-k structure
         {
             if constexpr(PROTOCOL) std::cout << "enter: \"";
-            Topk::StringState s = topk.empty_string();
+            typename Topk::StringState s = topk.empty_string();
             Node node;
             while(s.frequent && s.len < phrase_len) {
                 assert(curpos + s.len < window_size);

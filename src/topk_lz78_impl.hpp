@@ -1,4 +1,4 @@
-#include <topk_prefixes_filter_sketch.hpp>
+#include <topk_prefixes_count_min.hpp>
 #include <topk_header.hpp>
 #include <block_coding.hpp>
 #include <pm/result.hpp>
@@ -15,7 +15,7 @@ constexpr uint64_t MAGIC =
 
 constexpr bool PROTOCOL = false;
 
-using Topk = TopKPrefixesFilterSketch<>;
+using Topk = TopKPrefixesCountMin<>;
 
 constexpr TokenType TOK_TRIE_REF = 0;
 constexpr TokenType TOK_LITERAL = 1;

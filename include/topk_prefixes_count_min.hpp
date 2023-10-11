@@ -24,7 +24,7 @@
 #include "display.hpp"
 
 template<bool approx_minpq_ = false, std::unsigned_integral TrieNodeIndex = uint32_t>
-class TopKPrefixesFilterSketch {
+class TopKPrefixesCountMin {
 private:
     struct NodeData : public TrieNode<TrieNodeIndex> {
         using Character = TrieNode<TrieNodeIndex>::Character;
@@ -148,7 +148,7 @@ private:
     }
 
 public:
-    inline TopKPrefixesFilterSketch(size_t const k, size_t const sketch_columns, size_t const fp_window_size = 8)
+    inline TopKPrefixesCountMin(size_t const k, size_t const sketch_columns, size_t const fp_window_size = 8)
         : hash_(fp_window_size, rolling_fp_base_),
           trie_(k),
           min_pq_(k),

@@ -4,8 +4,11 @@ target_link_libraries(lz77-blockwise topk word-packing)
 add_library(topk INTERFACE)
 target_link_libraries(topk INTERFACE tdc ordered tlx unordered_dense pm-malloc rans)
 
-add_executable(topk-lz77 topk_lz77.cpp)
-target_link_libraries(topk-lz77 topk word-packing)
+add_executable(topk-lz77-cm topk_lz77_cm.cpp)
+target_link_libraries(topk-lz77-cm topk word-packing)
+
+add_executable(topk-lz77-mg topk_lz77_mg.cpp)
+target_link_libraries(topk-lz77-mg topk word-packing)
 
 add_executable(topk-lz78 topk_lz78.cpp)
 target_link_libraries(topk-lz78 topk)
