@@ -109,13 +109,89 @@ private:
 
 public:
     TrieEdgeArray() : size_(0) {
-        data_.ext.clear();
         data_.ext.links = nullptr;
     }
 
     ~TrieEdgeArray() {
         if(!is_inline()) {
             delete[] data_.ext.links;
+        }
+    }
+
+    TrieEdgeArray(TrieEdgeArray const&) = delete;
+    TrieEdgeArray& operator=(TrieEdgeArray const&) = delete;
+
+    TrieEdgeArray(TrieEdgeArray&& other) { size_ = 0; *this = std::move(other); }
+    TrieEdgeArray& operator=(TrieEdgeArray&& other) {
+        // deallocate children
+        clear();
+
+        // copy data
+        size_ = other.size_;
+        data_ = other.data_;
+
+        // invalidate other
+        other.data_.ext.links = nullptr;
+        other.size_ = 0;
+
+        // done
+        return *this;
+    }
+
+    void clear() ALWAYS_INLINE {
+        if(!is_inline()) {
+            delete[] data_.ext.links;
+            data_.ext.links = nullptr;
+        }
+        size_ = 0;
+    }
+
+    bool replace(NodeIndex const what, NodeIndex const by) {
+        if(is_inline()) {
+            for(NodeIndex i = 0; i < size_; i++) {
+                if(data_.inl.links[i] == what) {
+                    data_.inl.links[i] = by;
+                    return true;
+                }
+            }
+        } else {
+            for(NodeIndex i = 0; i < size_; i++) {
+                if(data_.ext.links[i] == what) {
+                    data_.ext.links[i] = by;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    void swap(NodeIndex const a, NodeIndex const b) {
+        if(is_inline()) {
+            NodeIndex x, y;
+            for(NodeIndex i = 0; i < size_; i++) {
+                if(data_.inl.links[i] == a) {
+                    x = i;
+                } else if(data_.inl.links[i] == b) {
+                    y = i;
+                }
+            }
+
+            auto const t = data_.inl.links[x];
+            data_.inl.links[x] = data_.inl.links[y];
+            data_.inl.links[y] = t;
+        } else {
+            NodeIndex x, y;
+            for(NodeIndex i = 0; i < size_; i++) {
+                if(data_.ext.links[i] == a) {
+                    x = i;
+                } else if(data_.ext.links[i] == b) {
+                    y = i;
+                }
+            }
+
+            auto const t = data_.ext.links[x];
+            data_.ext.links[x] = data_.ext.links[y];
+            data_.ext.links[y] = t;
         }
     }
 
