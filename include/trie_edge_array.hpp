@@ -146,55 +146,6 @@ public:
         size_ = 0;
     }
 
-    bool replace(NodeIndex const what, NodeIndex const by) {
-        if(is_inline()) {
-            for(NodeIndex i = 0; i < size_; i++) {
-                if(data_.inl.links[i] == what) {
-                    data_.inl.links[i] = by;
-                    return true;
-                }
-            }
-        } else {
-            for(NodeIndex i = 0; i < size_; i++) {
-                if(data_.ext.links[i] == what) {
-                    data_.ext.links[i] = by;
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    void swap(NodeIndex const a, NodeIndex const b) {
-        if(is_inline()) {
-            NodeIndex x, y;
-            for(NodeIndex i = 0; i < size_; i++) {
-                if(data_.inl.links[i] == a) {
-                    x = i;
-                } else if(data_.inl.links[i] == b) {
-                    y = i;
-                }
-            }
-
-            auto const t = data_.inl.links[x];
-            data_.inl.links[x] = data_.inl.links[y];
-            data_.inl.links[y] = t;
-        } else {
-            NodeIndex x, y;
-            for(NodeIndex i = 0; i < size_; i++) {
-                if(data_.ext.links[i] == a) {
-                    x = i;
-                } else if(data_.ext.links[i] == b) {
-                    y = i;
-                }
-            }
-
-            auto const t = data_.ext.links[x];
-            data_.ext.links[x] = data_.ext.links[y];
-            data_.ext.links[y] = t;
-        }
-    }
-
     bool is_inline() const ALWAYS_INLINE {
         return size_ <= inline_size_;
     }

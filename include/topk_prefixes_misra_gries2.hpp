@@ -26,7 +26,8 @@ private:
         using Character = TrieNode<TrieNodeIndex>::Character;
         using Index = TrieNode<TrieNodeIndex>::Index;
 
-        size_t freq; // the current estimated frequency
+        TrieNodeIndex pos;  // the current positon in the Space-Saving array
+        size_t freq;        // the current estimated frequency
 
         void dump_extra_info() const {
             std::cout << " [freq=" << freq << "]";
@@ -35,7 +36,7 @@ private:
         NodeData() : freq(0) {
         }
 
-        NodeData(Index v, Character c) : TrieNode<TrieNodeIndex>(v, c), freq(0) {
+        NodeData(Index v, Character c) : TrieNode<TrieNodeIndex>(v, c), pos(0), freq(0) {
         }
     } __attribute__((packed));
 
@@ -43,17 +44,22 @@ private:
 
     using TrieNodeDepth = TrieNodeIndex;
 
-    Trie<NodeData, true> trie_;
-    ankerl::unordered_dense::map<size_t, TrieNodeIndex> bucket_ends_; // maps frequencies to the end of the corresponding bucket
-    size_t threshold_;
-
     size_t k_;
+
+    Trie<NodeData, true> trie_;
+    std::unique_ptr<TrieNodeIndex[]> slots_;                          // the circular Space-Saving array
+    ankerl::unordered_dense::map<size_t, TrieNodeIndex> bucket_ends_; // maps frequencies to the slot that marks the end of the corresponding buckets
+    size_t threshold_;                                                // the current "garbage" bucket
 
     static constexpr TrieNodeIndex NIL = 0;
 
-    TrieNodeIndex prev(TrieNodeIndex const x) const ALWAYS_INLINE {
-        // get the previous node in a circular manner, excluding the root
-        return (x == 1) ? k_ - 1 : x - 1;
+    size_t num_slots() const ALWAYS_INLINE {
+        return k_ - 1;
+    }
+
+    TrieNodeIndex prev_slot(TrieNodeIndex const x) const ALWAYS_INLINE {
+        // get the previous slot in a circular manner
+        return (x == 0) ? (num_slots() - 1) : (x - 1);
     }
 
     void decrement_all() ALWAYS_INLINE {
@@ -64,58 +70,72 @@ private:
         ++threshold_;
     }
 
-    TrieNodeIndex increment(TrieNodeIndex const i) ALWAYS_INLINE {
+    void increment(TrieNodeIndex const v) ALWAYS_INLINE {
+        // get position in the slots array
+        auto const i = trie_.node(v).pos;
+        assert(slots_[i] == v);
+
         // get frequency, assuring that it is >= threshold
         // i.e., nodes that are below threshold are artificially lifted up
-        auto const f = std::max(trie_.node(i).freq, threshold_);
+        auto const f = std::max(trie_.node(v).freq, threshold_);
+        assert(f + 1 > threshold_);
 
         // swap to end of the corresponding bucket, if necessary
         auto const j = bucket_ends_[f];
         if(j != i) {
-            assert(trie_.node(j).freq == f);
-            trie_.swap(i, j);
+            // swap
+            auto const u = slots_[j];
+            assert(trie_.node(u).freq == f);
+
+            trie_.node(v).pos = j;
+            slots_[j] = v;
+
+            trie_.node(u).pos = i;
+            slots_[i] = u;
         }
+        assert(slots_[j] == v);
 
         // update bucket
-        auto const before_j = prev(j);
-        if(trie_.node(before_j).freq == f) {
-            // the previous node has the same frequency, move bucket pointer
+        auto const before_j = prev_slot(j);
+        if(trie_.node(slots_[before_j]).freq == f) {
+            // the node in the previous slot has the same frequency, move bucket pointer
             bucket_ends_[f] = before_j;
         } else {
-            // the incremented node was the last in its bucket, erase the bucket
+            // the incremented slot was the last in its bucket, erase the bucket
             bucket_ends_.erase(f);
         }
 
         // increment frequency
-        trie_.node(j).freq = f + 1;
-        if(i != j) assert(trie_.node(i).freq <= f);
-        assert(trie_.node(j).freq > threshold_);
+        trie_.node(v).freq = f + 1;
 
         // create bucket if needed
         if(!bucket_ends_.contains(f+1)) {
             bucket_ends_[f + 1] = j;
         }
-
-        // return node's new index
-        return j;
     }
 
     TrieNodeIndex insert(TrieNodeIndex const parent, char const label) ALWAYS_INLINE {
         if(bucket_ends_.contains(threshold_)) {
             // recycle something from the garbage
             auto const i = bucket_ends_[threshold_];
+            assert(i < num_slots());
 
             // override node in trie
-            trie_.extract(i);
-            auto& data = trie_.insert_child(i, parent, label);
+            auto const v = slots_[i];
+            trie_.extract(v);
+            auto& data = trie_.insert_child(v, parent, label);
 
             // make sure the frequency is <= threshold
             data.freq = threshold_;
 
+            // map back to the position (insert_child overrode this)
+            data.pos = i;
+
             // now simply increment
-            return increment(i);
+            increment(v);
+            return v;
         } else {
-            // the trie is full
+            // there is no garbage to recycle
             return NIL;
         }
     }
@@ -129,9 +149,20 @@ public:
         // initialize all k nodes as orphans in trie
         trie_.fill();
 
+        // initialize slots and enter all nodes except the root
+        slots_ = std::make_unique<TrieNodeIndex[]>(k-1);
+        for(size_t i = 1; i < k; i++) {
+            slots_[i-1] = i;
+        }
+
+        // map trie nodes to slots
+        for(size_t i = 1; i < k; i++) {
+            trie_.node(i).pos = i-1;
+        }
+
         // create initial garbage bucket that contains all nodes
         bucket_ends_.reserve(k);
-        bucket_ends_[0] = k - 1;
+        bucket_ends_[0] = num_slots() - 1;
     }
 
     struct StringState {
@@ -160,7 +191,7 @@ public:
         bool const edge_exists = s.frequent && trie_.try_get_child(s.node, c, ext.node);
         if(edge_exists) {
             // the current prefix is frequent, increment
-            ext.node = increment(ext.node);
+            increment(ext.node);
             assert(trie_.node(ext.node).freq > threshold_);
 
             // done

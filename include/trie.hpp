@@ -41,112 +41,6 @@ private:
     }
     #endif
 
-    void relink_children(NodeIndex const node, NodeIndex const to) {
-        auto& v = nodes_[node];
-        for(size_t i = 0; i < v.children.size(); i++) {
-            auto const child = v.children[i];
-            nodes_[child].parent = to;
-        }
-    }
-
-    void swap_independent(NodeIndex const a, NodeIndex const b) {
-        auto const parent_a = nodes_[a].parent;
-        auto const parent_b = nodes_[b].parent;
-
-        assert(parent_a != parent_b);
-        //assert(parent_a != b);
-        //assert(parent_b != a);
-
-        // re-link parent pointers of A's children to B
-        relink_children(a, b);
-
-        // replace A by B as child of parent of A
-        if(!allow_orphans_ || is_valid(parent_a))
-        {
-            assert(is_child_of(a, parent_a));
-            nodes_[parent_a].children.replace(a, b);
-            assert(is_child_of(b, parent_a));
-            assert(!is_child_of(a, parent_a));
-        }
-
-        // re-link parent pointers of B's children to A
-        relink_children(b, a);
-
-        // replace B by A as child of parent of B
-        if(!allow_orphans_ || is_valid(parent_b))
-        {
-            assert(is_child_of(b, parent_b));
-            nodes_[parent_b].children.replace(b, a);
-            assert(is_child_of(a, parent_b));
-            assert(!is_child_of(b, parent_b));
-        }
-
-        // swap in node array
-        std::swap(nodes_[a], nodes_[b]);
-    }
-
-    void swap_siblings(NodeIndex const a, NodeIndex const b) {
-        auto const parent = nodes_[a].parent;
-        assert(nodes_[b].parent == parent);
-
-        // re-link parent pointers of A's children to B
-        relink_children(a, b);
-
-        // re-link parent pointers of B's children to A
-        relink_children(b, a);
-
-        // swap A and B in the parent's list of children
-        if(!allow_orphans_ || is_valid(parent)) {
-            assert(is_child_of(a, parent));
-            assert(is_child_of(b, parent));
-            nodes_[parent].children.swap(a, b);
-            assert(is_child_of(a, parent));
-            assert(is_child_of(b, parent));
-        }
-
-        // swap in node array
-        std::swap(nodes_[a], nodes_[b]);
-    }
-
-    void swap_parent_child(NodeIndex const a, NodeIndex const b) {
-        swap_independent(a, b);
-        /*
-        auto const parent_a = nodes_[a].parent;
-        assert(nodes_[b].parent == a);
-        assert(is_child_of(b, a));
-
-        // re-link parent pointers of A's children to B
-        // nb: this induces a cycle where B's parent is B itself, but the final swap will take care of this
-        // nb: it is VERY IMPORTANT that this happens first!
-        relink_children(a, b);
-        assert(nodes_[b].parent == b); // nb: see note above
-
-        // replace A by B as child of parent of A
-        if(!allow_orphans_ || is_valid(parent_a))
-        {
-            assert(is_child_of(a, parent_a));
-            nodes_[parent_a].children.replace(a, b);
-            assert(is_child_of(b, parent_a));
-            assert(!is_child_of(a, parent_a));
-        }
-
-        // re-link parent pointers of B's children to A
-        relink_children(b, a);
-
-        // replace B by A as child of A
-        // nb: again, we introduce a temporary cycle
-        {
-            assert(is_child_of(b, a));
-            nodes_[a].children.replace(b, a);
-            assert(is_child_of(a, a)); // nb: see note above
-            assert(!is_child_of(a, parent_a));
-        }
-
-        // swap in node array
-        std::swap(nodes_[a], nodes_[b]);
-        */
-    }
-
 public:
     Trie(NodeIndex const capacity) : capacity_(capacity), size_(1) {
         nodes_ = std::make_unique<Node[]>(capacity_);
@@ -160,6 +54,7 @@ public:
     }
 
     Node& insert_child(NodeIndex const node, NodeIndex const parent, Character const label) {
+        assert(is_valid_nonroot(node));
         assert(is_valid(parent));
         assert(node < capacity_);
         assert(node != parent);
@@ -172,17 +67,13 @@ public:
         nodes_[node] = Node(parent, label);
 
         assert(is_leaf(node));
-        
-        #ifndef NDEBUG
-        verify(parent);
-        verify(node);
-        #endif
 
         return nodes_[node];
     }
 
     // extract node from trie and return parent
     NodeIndex extract(NodeIndex const node) {
+        assert(!is_root(node));
         if constexpr(!allow_orphans_) assert(is_leaf(node)); // cannot extract an inner node
 
         auto& v = nodes_[node];
@@ -211,85 +102,8 @@ public:
             v.children.clear();
         }
 
-        #ifndef NDEBUG
-        if(is_valid(parent)) verify(parent);
-        verify(node);
-        #endif
-
         return parent;
     }
-
-    void swap(NodeIndex const a, NodeIndex const b) {
-        assert(a != b);
-        assert(!is_root(a));
-        assert(!is_root(b));
-
-        #ifndef NDEBUG
-        verify(a);
-        verify(b);
-        #endif
-
-        auto const parent_a = nodes_[a].parent;
-        auto const parent_b = nodes_[b].parent;
-
-        enum Case {
-            independent,
-            siblings,
-            a_parent_of_b,
-            b_parent_of_a,
-        };
-        Case whazzup; // nb: for debugging
-
-        if(parent_b == a) {
-            whazzup = Case::a_parent_of_b;
-            swap_parent_child(a, b);
-        } else if(parent_a == b) {
-            whazzup = Case::b_parent_of_a;
-            swap_parent_child(b, a);
-        } else if(parent_a == parent_b) {
-            whazzup = Case::siblings;
-            swap_siblings(a, b);
-        } else {
-            whazzup = Case::independent;
-            swap_independent(a, b);
-        }
-
-        // verify integrity of things
-        #ifndef NDEBUG
-        verify(a);
-        verify(b);
-        #endif
-    }
-
-    #ifndef NDEBUG
-    void verify(NodeIndex const node) {
-        auto& v = nodes_[node];
-
-        // verify relationship to parent
-        auto const parent = v.parent;
-        assert(parent != node);
-
-        if(is_valid(parent)) {
-            assert(is_child_of(node, parent));
-
-            NodeIndex found_in_parent;
-            assert(try_get_child(parent, v.inlabel, found_in_parent));
-            assert(found_in_parent == node);
-        }
-
-        // verify relationship to children
-        for(size_t i = 0; i < v.children.size(); i++) {
-            auto const child = v.children[i];
-
-            assert(child != node);
-            assert(nodes_[child].parent == node);
-            
-            NodeIndex found_child;
-            assert(try_get_child(node, nodes_[child].inlabel, found_child));
-            assert(found_child == child);
-        }
-    }
-    #endif
 
     NodeIndex new_node() ALWAYS_INLINE {
         assert(size_ < capacity_);
