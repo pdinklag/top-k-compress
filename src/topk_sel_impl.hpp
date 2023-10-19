@@ -2,7 +2,6 @@
 
 #include <old/topk_substrings.hpp>
 #include <old/topk_trie_node.hpp>
-#include <topk_header.hpp>
 #include <block_coding.hpp>
 #include <pm/result.hpp>
 
@@ -34,8 +33,11 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k) {
 template<iopp::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     // write header
-    TopkHeader header(k, window_size, sketch_rows, sketch_columns);
-    header.encode(out, MAGIC);
+    out.write(MAGIC, 64);
+    out.write(k, 64);
+    out.write(window_size, 64);
+    out.write(sketch_rows, 8);
+    out.write(sketch_columns, 64);
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
@@ -204,11 +206,16 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
 template<iopp::BitSource In, std::output_iterator<char> Out>
 void topk_decompress_sel(In in, Out out) {
     // decode header
-    TopkHeader header(in, MAGIC);
-    auto const k = header.k;
-    auto const window_size = header.window_size;
-    auto const sketch_rows = header.sketch_rows;
-    auto const sketch_columns = header.sketch_columns;
+    uint64_t const magic = in.read(64);
+    if(magic != MAGIC) {
+        std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << MAGIC << ")" << std::endl;
+        std::abort();
+    }
+
+    auto const k = in.read(64);
+    auto const window_size = in.read(64);
+    auto const sketch_rows = in.read(8);
+    auto const sketch_columns = in.read(64);
 
     // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character

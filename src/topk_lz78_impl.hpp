@@ -1,5 +1,4 @@
 #include <topk_prefixes_count_min.hpp>
-#include <topk_header.hpp>
 #include <block_coding.hpp>
 #include <pm/result.hpp>
 
@@ -27,8 +26,9 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k) {
 
 template<iopp::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
-    TopkHeader header(k, 0 /* indicator for LZ78 compression :-) */, sketch_rows, sketch_columns);
-    header.encode(out, MAGIC);
+    out.write(MAGIC, 64);
+    out.write(k, 64);
+    out.write(sketch_columns, 64);
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
@@ -91,10 +91,14 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
 template<iopp::BitSource In, std::output_iterator<char> Out>
 void topk_decompress_lz78(In in, Out out) {
     // decode header
-    TopkHeader header(in, MAGIC);
-    auto const k = header.k;
-    auto const window_size = header.window_size;
-    auto const sketch_columns = header.sketch_columns;
+    uint64_t const magic = in.read(64);
+    if(magic != MAGIC) {
+        std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << MAGIC << ")" << std::endl;
+        std::abort();
+    }
+
+    auto const k = in.read(64);
+    auto const sketch_columns = in.read(64);
 
     // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character

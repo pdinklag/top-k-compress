@@ -2,7 +2,6 @@
 
 #include <old/topk_substrings.hpp>
 #include <old/topk_trie_node.hpp>
-#include <topk_header.hpp>
 #include <block_coding.hpp>
 #include <pm/result.hpp>
 

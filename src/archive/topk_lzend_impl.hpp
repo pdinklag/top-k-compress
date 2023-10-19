@@ -15,7 +15,6 @@
 
 #include <code/concepts.hpp>
 
-#include <topk_header.hpp>
 #include <block_coding.hpp>
 #include <pm/result.hpp>
 
@@ -502,9 +501,12 @@ public:
 
 template<bool use_trie, iopp::InputIterator<char> In, iopp::BitSink Out>
 void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_block, size_t const k, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
-    // initialize encoding
-    TopkHeader header(k, max_block, sketch_rows, sketch_columns);
-    header.encode(out, MAGIC);
+    // write header
+    out.write(MAGIC, 64);
+    out.write(k, 64);
+    out.write(max_block, 64);
+    out.write(sketch_rows, 8);
+    out.write(sketch_columns, 64);
 
     BlockEncoder enc(out, block_size);
     setup_encoding(enc, k, max_block);
@@ -587,12 +589,17 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
 
 template<bool use_trie, iopp::BitSource In, std::output_iterator<char> Out>
 void topk_lzend_decompress(In in, Out out) {
-    // header
-    TopkHeader header(in, MAGIC);
-    auto const k = header.k;
-    auto const max_block = header.window_size;
-    auto const sketch_rows = header.sketch_rows;
-    auto const sketch_columns = header.sketch_columns;
+    // decode header
+    uint64_t const magic = in.read(64);
+    if(magic != MAGIC) {
+        std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << MAGIC << ")" << std::endl;
+        std::abort();
+    }
+
+    auto const k = in.read(64);
+    auto const max_block = in.read(64);
+    auto const sketch_rows = in.read(8);
+    auto const sketch_columns = in.read(64);
 
     auto const max_window = 3 * max_block;
     auto const trie_ref_offs = max_window;

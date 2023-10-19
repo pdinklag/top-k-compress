@@ -3,7 +3,6 @@
 #include <tdc/text/util.hpp>
 #include <tdc/lz/lpf_factorizer.hpp>
 
-#include <topk_header.hpp>
 #include <block_coding.hpp>
 #include <pm/result.hpp>
 
@@ -58,8 +57,10 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold
     size_t num_relevant = 0;
 
     // write header and initialize encoding
-    TopkHeader header(k, window_size, sketch_rows, sketch_columns);
-    header.encode(out, MAGIC);
+    out.write(MAGIC, 64);
+    out.write(k, 64);
+    out.write(window_size, 64);
+    out.write(sketch_columns, 64);
 
     BlockEncoder enc(out, block_size);
     setup_encoding(enc, k, window_size);
@@ -220,10 +221,15 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold
 template<typename Topk, iopp::BitSource In, std::output_iterator<char> Out>
 void topk_decompress_lz77(In in, Out out) {
     // decode header
-    TopkHeader header(in, MAGIC);
-    auto const k = header.k;
-    auto const window_size = header.window_size;    
-    auto const sketch_columns = header.sketch_columns;
+    uint64_t const magic = in.read(64);
+    if(magic != MAGIC) {
+        std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << MAGIC << ")" << std::endl;
+        std::abort();
+    }
+
+    auto const k = in.read(64);
+    auto const window_size = in.read(64);
+    auto const sketch_columns = in.read(64);
 
     // initialize decoding
     BlockDecoder dec(in);
