@@ -117,7 +117,7 @@ private:
 
         // get position in the slots array
         auto const i = trie_.node(v).pos;
-        assert(freqs_[i] == v);
+        assert(freqs_[i].node == v);
 
         // get frequency, assuring that it is >= threshold
         // i.e., nodes that are below threshold are artificially lifted up
@@ -140,7 +140,7 @@ private:
             trie_.node(u).pos = i;
             trie_.node(v).pos = j;
         }
-        assert(freqs_[j] == v);
+        assert(freqs_[j].node == v);
 
         // update bucket
         auto const before_j = prev_slot(j);
@@ -259,7 +259,6 @@ public:
         if(edge_exists) {
             // the current prefix is frequent, increment
             increment(ext.node);
-            assert(trie_.node(ext.node).freq > threshold_);
 
             // done
             ext.frequent = true;

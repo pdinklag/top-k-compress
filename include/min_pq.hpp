@@ -222,7 +222,7 @@ public:
     }
 
     Frequency freq(Location const& what) {
-        return what.bucket->freq;
+        return what.bucket->freq();
     }
 
     void print_debug_info() const {
