@@ -22,6 +22,8 @@
 template<std::unsigned_integral TrieNodeIndex = uint32_t>
 class TopKPrefixesMisraGries2 {
 private:
+    static constexpr bool gather_stats_ = true;
+
     struct NodeData : public TrieNode<TrieNodeIndex> {
         using Character = TrieNode<TrieNodeIndex>::Character;
         using Index = TrieNode<TrieNodeIndex>::Index;
@@ -51,6 +53,15 @@ private:
     ankerl::unordered_dense::map<size_t, TrieNodeIndex> bucket_ends_; // maps frequencies to the slot that marks the end of the corresponding buckets
     size_t threshold_;                                                // the current "garbage" bucket
 
+    size_t max_freq_; // the highest current frequency
+
+    // stats
+    struct Stats {
+        size_t num_increment = 0;
+        size_t num_swap = 0;
+        size_t num_decrement = 0;
+    } stats_;
+
     size_t num_slots() const ALWAYS_INLINE {
         return k_ - 1;
     }
@@ -61,6 +72,8 @@ private:
     }
 
     void decrement_all() ALWAYS_INLINE {
+        if constexpr(gather_stats_) ++stats_.num_decrement;
+
         // erase current threshold bucket if it exists
         bucket_ends_.erase(threshold_);
 
@@ -69,6 +82,8 @@ private:
     }
 
     void increment(TrieNodeIndex const v) ALWAYS_INLINE {
+        if constexpr(gather_stats_) ++stats_.num_increment;
+
         // get position in the slots array
         auto const i = trie_.node(v).pos;
         assert(freqs_[i] == v);
@@ -84,6 +99,8 @@ private:
 
         auto const j = it_f->second;
         if(j != i) {
+            if constexpr(gather_stats_) ++stats_.num_swap;
+
             // swap
             auto const u = freqs_[j].node;
             assert(freqs_[j].freq == f);
@@ -108,6 +125,7 @@ private:
 
         // increment frequency
         freqs_[j].freq = f + 1;
+        max_freq_ = std::max(f+1, max_freq_);
 
         // create bucket if needed
         if(!bucket_ends_.contains(f+1)) {
@@ -149,7 +167,8 @@ public:
     inline TopKPrefixesMisraGries2(size_t const k, size_t const sketch_columns, size_t const fp_window_size = 8)
         : trie_(k),
           k_(k),
-          threshold_(0) {
+          threshold_(0),
+          max_freq_(0) {
         
         // initialize all k nodes as orphans in trie
         trie_.fill();
@@ -248,5 +267,21 @@ public:
 
     void print_debug_info() const {
         trie_.print_debug_info();
+
+        std::cout << "# DEBUG: misra-gries2"
+            << ", threshold=" << threshold_
+            << ", buckets=" << bucket_ends_.size()
+            << ", max_freq=" << max_freq_
+            ;
+        
+        if constexpr(gather_stats_) {
+            std::cout
+                << ", num_increment=" << stats_.num_increment
+                << ", num_swap=" << stats_.num_swap
+                << ", num_decrement=" << stats_.num_decrement
+                ;
+        }
+
+        std::cout << std::endl;
     }
 };

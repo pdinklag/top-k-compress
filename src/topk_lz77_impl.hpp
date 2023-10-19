@@ -7,6 +7,8 @@
 #include <block_coding.hpp>
 #include <pm/result.hpp>
 
+#include <valgrind/callgrind.h>
+
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
     ((uint64_t)'O') << 48 |
@@ -81,6 +83,17 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold
             block[block_num++] = *begin++;
         }
 
+        // compute the LZ77 factorization of the block
+        factors.clear();
+        lpf.factorize(block.get(), block.get() + block_num, std::back_inserter(factors));
+
+        CALLGRIND_START_INSTRUMENTATION;
+        CALLGRIND_TOGGLE_COLLECT;
+
+        // encode the block
+        // at the beginning of each LZ77 factor, we attempt to find the longest possible string back in the top-k trie
+        // if we find a string longer than the next LZ77 factor, we encode it using a trie reference and advance in the LZ77 factorization, potentially chopping
+        // the factor that we reach into two fractions
         auto topk_enter = [&](size_t const pos, size_t const len){
             ++num_relevant;
 
@@ -95,14 +108,6 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold
             if constexpr(PROTOCOL) std::cout << "\" (length " << s.len << " -> node " << node << ")" << std::endl;
         };
 
-        // compute the LZ77 factorization of the block
-        factors.clear();
-        lpf.factorize(block.get(), block.get() + block_num, std::back_inserter(factors));
-
-        // encode the block
-        // at the beginning of each LZ77 factor, we attempt to find the longest possible string back in the top-k trie
-        // if we find a string longer than the next LZ77 factor, we encode it using a trie reference and advance in the LZ77 factorization, potentially chopping
-        // the factor that we reach into two fractions
         {
             Index z = 0; // the current LZ77 factor
             Index curpos = 0;
@@ -188,11 +193,16 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold
                 }
             }
         }
+
+        CALLGRIND_TOGGLE_COLLECT;
+        CALLGRIND_STOP_INSTRUMENTATION;
+
         block_offs += block_num;
     }
     enc.flush();
 
     // stats
+    topk.print_debug_info();
     result.add("phrases_total", num_lz + num_literal + num_trie);
     result.add("phrases_ref", num_lz + num_trie);
     result.add("phrases_literal", num_literal);

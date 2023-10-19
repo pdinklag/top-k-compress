@@ -227,8 +227,8 @@ public:
 
     void print_debug_info() const {
         if constexpr(!gather_stats_) return;
-        std::cout << "min pq info"
-                  << ": num_bucket_inserts=" << stats_.num_bucket_inserts
+        std::cout << "DEBUG: min-pq"
+                  << ", num_bucket_inserts=" << stats_.num_bucket_inserts
                   << ", num_bucket_deletes=" << stats_.num_bucket_deletes
                   << ", num_inserts=" << stats_.num_inserts
                   << ", num_insert_search_steps=" << stats_.num_insert_search_steps

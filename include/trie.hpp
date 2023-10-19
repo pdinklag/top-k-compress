@@ -189,8 +189,8 @@ public:
             if(v.size() <= Node::ChildArray::inline_size_) ++num_small;
         }
 
-        std::cout << "trie info"
-                  << ": sizeof(Node)=" << sizeof(Node)
+        std::cout << "# DEBUG: trie"
+                  << ", sizeof(Node)=" << sizeof(Node)
                   << ", small_node_size_=" << Node::ChildArray::inline_size_
                   << ", small_node_align_=" << Node::ChildArray::inline_align_
                   << ", num_leaves=" << num_leaves
