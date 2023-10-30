@@ -22,24 +22,21 @@
 template<std::unsigned_integral TrieNodeIndex = uint32_t>
 class TopKPrefixesMisraGries2 {
 private:
-    static constexpr bool gather_stats_ = false;
+    static constexpr bool gather_stats_ = true;
 
     struct NodeData : public TrieNode<TrieNodeIndex> {
         using Character = TrieNode<TrieNodeIndex>::Character;
         using Index = TrieNode<TrieNodeIndex>::Index;
 
-        TrieNodeIndex pos; // the current positon in the Space-Saving array
+        TrieNodeIndex freq; // the current frequency
+        TrieNodeIndex prev; // the previous node in frequency order
+        TrieNodeIndex next; // the next node in frequency order
 
         NodeData() {
         }
 
         NodeData(Index v, Character c) : TrieNode<TrieNodeIndex>(v, c) {
         }
-    } __attribute__((packed));
-
-    struct NodeFrequency {
-        TrieNodeIndex node;
-        size_t freq;
     } __attribute__((packed));
 
     using TrieNodeDepth = TrieNodeIndex;
@@ -51,28 +48,18 @@ private:
     size_t max_allowed_frequency_;
 
     Trie<NodeData, true> trie_;
-    std::unique_ptr<NodeFrequency[]> freqs_;                          // the circular Space-Saving array of frequencies
-    std::unique_ptr<TrieNodeIndex[]> bucket_ends_;                    // maps frequencies to the slot that marks the end of the corresponding buckets
-    size_t threshold_;                                                // the current "garbage" frequency
+    std::unique_ptr<TrieNodeIndex[]> bucket_ends_; // maps frequencies to the last node in the corresponding bucket
+    TrieNodeIndex threshold_;                      // the current "garbage" frequency
 
     // stats
     struct Stats {
-        size_t max_freq = 0;
+        TrieNodeIndex max_freq = 0;
         size_t num_increment = 0;
         size_t num_swap = 0;
         size_t num_decrement = 0;
         size_t num_renormalize = 0;
     } stats_;
 
-    size_t num_freqs() const ALWAYS_INLINE {
-        return k_ - 1;
-    }
-
-    TrieNodeIndex prev_slot(TrieNodeIndex const x) const ALWAYS_INLINE {
-        // get the previous slot in a circular manner
-        return (x == 0) ? (num_freqs() - 1) : (x - 1);
-    }
-    
     void renormalize() {
         if constexpr(gather_stats_) ++stats_.num_renormalize;
 
@@ -82,9 +69,10 @@ private:
         auto const adjusted_threshold = threshold_ / renorm_divisor_;
         auto renormalize = [&](size_t const f){ return f / renorm_divisor_ - adjusted_threshold; };
 
-        for(size_t i = 0; i < num_freqs(); i++) {
-            auto const f = std::max(freqs_[i].freq, threshold_); // nb: we must NOT allow frequency below the threshold, that would cause negative frequencies
-            freqs_[i].freq = renormalize(f);
+        for(size_t i = 1; i < k_; i++) {
+            auto& data = trie_.node(i);
+            auto const f = std::max(data.freq, threshold_); // nb: we must NOT allow frequency below the threshold, that would cause negative frequencies
+            data.freq = renormalize(f);
         }
 
         // compact buckets
@@ -112,53 +100,107 @@ private:
         ++threshold_;
     }
 
+    void swap_neighbours(TrieNodeIndex const u, TrieNodeIndex const v) ALWAYS_INLINE {
+        auto& udata = trie_.node(u);
+        auto& vdata = trie_.node(v);
+
+        // u is predecessor of v ("w.l.o.g.")
+        assert(udata.next == v);
+        assert(vdata.prev == u);
+
+        auto const x = udata.prev;
+        auto const w = vdata.next;
+        
+        auto& xdata = trie_.node(x);
+        auto& wdata = trie_.node(w);
+
+        // sanity
+        assert(xdata.next == u);
+        assert(wdata.prev == v);
+
+        // swap
+        xdata.next = v;
+        udata.prev = v;
+        udata.next = w;
+        vdata.prev = x;
+        vdata.next = u;
+        wdata.prev = u;
+    }
+
+    void swap(TrieNodeIndex const u, TrieNodeIndex const v) ALWAYS_INLINE {
+        assert(u != v);
+
+        auto& udata = trie_.node(u);
+        auto& vdata = trie_.node(v);
+
+        auto const x = udata.prev;
+        auto const y = udata.next;
+        auto const z = vdata.prev;
+        auto const w = vdata.next;
+
+        if(x == v) {
+            swap_neighbours(v, u);
+        } else if(y == v) {
+            swap_neighbours(u, v);
+        } else {
+            auto& xdata = trie_.node(x);
+            auto& ydata = trie_.node(y);
+            auto& zdata = trie_.node(z);
+            auto& wdata = trie_.node(w);
+
+            // sanity
+            assert(xdata.next == u);
+            assert(ydata.prev == u);
+            assert(zdata.next == v);
+            assert(wdata.prev == v);
+
+            // swap
+            xdata.next = v;
+            udata.prev = z;
+            udata.next = w;
+            ydata.prev = v;
+            zdata.next = u;
+            vdata.prev = x;
+            vdata.next = y;
+            wdata.prev = u;
+        }
+    }
+
     void increment(TrieNodeIndex const v) ALWAYS_INLINE {
         if constexpr(gather_stats_) ++stats_.num_increment;
 
-        // get position in the slots array
-        auto const i = trie_.node(v).pos;
-        assert(freqs_[i].node == v);
-
         // get frequency, assuring that it is >= threshold
         // i.e., nodes that are below threshold are artificially lifted up
-        auto const f = std::max(freqs_[i].freq, threshold_);
+        auto& vdata = trie_.node(v);
+        auto const f = std::max(vdata.freq, threshold_);
         assert(f + 1 > threshold_);
 
         // swap to end of the corresponding bucket, if necessary
-        auto const j = bucket_ends_[f];
-        assert(j != BUCKET_DOES_NOT_EXIST);
-        if(j != i) {
+        auto const u = bucket_ends_[f];
+        assert(u != BUCKET_DOES_NOT_EXIST);
+        if(u != v) {
             if constexpr(gather_stats_) ++stats_.num_swap;
 
-            // swap
-            auto const u = freqs_[j].node;
-            assert(freqs_[j].freq == f);
-
-            freqs_[j].node = v;
-            freqs_[i].node = u;
-
-            trie_.node(u).pos = i;
-            trie_.node(v).pos = j;
+            swap(v, u);
         }
-        assert(freqs_[j].node == v);
 
         // update bucket
-        auto const before_j = prev_slot(j);
-        if(freqs_[before_j].freq == f) {
-            // the node in the previous slot has the same frequency, move bucket pointer
-            bucket_ends_[f] = before_j;
+        auto const prev = vdata.prev;
+        if(trie_.node(prev).freq == f) {
+            // the previous node has the same frequency, move bucket pointer
+            bucket_ends_[f] = prev;
         } else {
-            // the incremented slot was the last in its bucket, erase the bucket
+            // the incremented node was the last in its bucket, erase the bucket
             bucket_ends_[f] = BUCKET_DOES_NOT_EXIST;
         }
 
         // increment frequency
-        freqs_[j].freq = f + 1;
+        vdata.freq = f + 1;
         if constexpr(gather_stats_) stats_.max_freq = std::max(f+1, stats_.max_freq);
 
         // create bucket if needed
         if(bucket_ends_[f+1] == BUCKET_DOES_NOT_EXIST) {
-            bucket_ends_[f+1] = j;
+            bucket_ends_[f+1] = v;
         }
 
         // possibly renormalize
@@ -169,21 +211,26 @@ private:
     }
 
     bool insert(TrieNodeIndex const parent, char const label, TrieNodeIndex& out_node) ALWAYS_INLINE {
-        auto const i = bucket_ends_[threshold_];
-        if(i != BUCKET_DOES_NOT_EXIST) {
+        auto const v = bucket_ends_[threshold_];
+        if(v != BUCKET_DOES_NOT_EXIST) {
             // recycle something from the garbage
-            assert(i < num_freqs());
+            assert(v < k_);
+            assert(v != 0);
 
             // override node in trie
-            auto const v = freqs_[i].node;
+            auto& data = trie_.node(v);
+            auto const prev = data.prev;
+            auto const next = data.next;
+
             trie_.extract(v);
-            auto& data = trie_.insert_child(v, parent, label);
+            trie_.insert_child(v, parent, label);
 
             // make sure the frequency is <= threshold
-            freqs_[i].freq = threshold_;
+            data.freq = threshold_;
 
-            // map back to the position (insert_child overrode this)
-            data.pos = i;
+            // write back data that was overrridden by insert_child
+            data.prev = prev;
+            data.next = next;
 
             // now simply increment
             increment(v);
@@ -212,21 +259,16 @@ public:
         // initialize all k nodes as orphans in trie
         trie_.fill();
 
-        // initialize slots and enter all nodes except the root
-        freqs_ = std::make_unique<NodeFrequency[]>(k-1);
+        // cyclically link trie nodes in frequency order, EXCLUDING the root
         for(size_t i = 1; i < k; i++) {
-            freqs_[i-1].node = i;
-            freqs_[i-1].freq = 0;
-        }
-
-        // map trie nodes to slots
-        for(size_t i = 1; i < k; i++) {
-            trie_.node(i).pos = i-1;
+            auto& data = trie_.node(i);
+            data.prev = (i > 1)     ? (i - 1) : (k - 1);
+            data.next = (i < k - 1) ? (i + 1) : 1;
         }
 
         // create initial garbage bucket that contains all nodes
         bucket_ends_ = std::make_unique<TrieNodeIndex[]>(max_allowed_frequency_ + 1);
-        bucket_ends_[0] = num_freqs() - 1;
+        bucket_ends_[0] = k - 1;
         for(size_t i = 1; i <= max_allowed_frequency_; i++) {
             bucket_ends_[i] = BUCKET_DOES_NOT_EXIST;
         }
