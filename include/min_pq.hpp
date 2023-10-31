@@ -226,16 +226,24 @@ public:
     }
 
     void print_debug_info() const {
-        if constexpr(!gather_stats_) return;
-        std::cout << "DEBUG: min-pq"
-                  << ", num_bucket_inserts=" << stats_.num_bucket_inserts
-                  << ", num_bucket_deletes=" << stats_.num_bucket_deletes
-                  << ", num_inserts=" << stats_.num_inserts
-                  << ", num_insert_search_steps=" << stats_.num_insert_search_steps
-                  << ", num_deletes=" << stats_.num_deletes
-                  << ", num_increase_key=" << stats_.num_increase_key
-                  << ", num_slides=" << stats_.num_slides
-                  << ", num_extract_min=" << stats_.num_extract_min
-                  << std::endl;
+        std::cout << "# DEBUG: min-pq"
+                  << ", sizeof(ItemPool::Entry)=" << sizeof(typename ItemPool::Entry)
+                  << ", sizeof(BucketPool::Entry)=" << sizeof(typename BucketPool::Entry)
+                  ;
+        
+        if constexpr(gather_stats_) {
+            std::cout << ", num_bucket_inserts=" << stats_.num_bucket_inserts
+                    << ", num_bucket_deletes=" << stats_.num_bucket_deletes
+                    << ", num_inserts=" << stats_.num_inserts
+                    << ", num_insert_search_steps=" << stats_.num_insert_search_steps
+                    << ", num_deletes=" << stats_.num_deletes
+                    << ", num_increase_key=" << stats_.num_increase_key
+                    << ", num_slides=" << stats_.num_slides
+                    << ", num_extract_min=" << stats_.num_extract_min
+                    ;
+        } else {
+            std::cout << " (advanced stats disabled)";
+        }
+        std::cout << std::endl;
     }
 };
