@@ -24,7 +24,7 @@ class TopKPrefixesMisraGries2 {
 private:
     static constexpr bool gather_stats_ = true;
 
-    static constexpr TrieNodeIndex UNLINKED = -1;
+    static constexpr TrieNodeIndex NIL = -1;
 
     struct NodeData : public TrieNode<TrieNodeIndex> {
         using Character = TrieNode<TrieNodeIndex>::Character;
@@ -37,25 +37,19 @@ private:
         NodeData() {
         }
 
-        NodeData(Index v, Character c) : TrieNode<TrieNodeIndex>(v, c), freq(0), prev(UNLINKED), next(UNLINKED) {
-        }
-
-        bool is_linked() const ALWAYS_INLINE {
-            assert((prev != UNLINKED && next != UNLINKED) || (prev == UNLINKED && next == UNLINKED));
-            return prev != UNLINKED;
+        NodeData(Index v, Character c) : TrieNode<TrieNodeIndex>(v, c), freq(0), prev(NIL), next(NIL) {
         }
     } __attribute__((packed));
 
     using TrieNodeDepth = TrieNodeIndex;
 
-    static constexpr TrieNodeIndex BUCKET_DOES_NOT_EXIST = -1;
     static constexpr size_t renorm_divisor_ = 2;
 
     size_t k_;
     size_t max_allowed_frequency_;
 
     Trie<NodeData, true> trie_;
-    std::unique_ptr<TrieNodeIndex[]> bucket_ends_; // maps frequencies to the last node in the corresponding bucket
+    std::unique_ptr<TrieNodeIndex[]> bucket_head_; // maps frequencies to the head of the corresponding linked list of leaves
     TrieNodeIndex threshold_;                      // the current "garbage" frequency
 
     // stats
@@ -63,10 +57,29 @@ private:
         TrieNodeIndex max_freq = 0;
         size_t num_increment = 0;
         size_t num_increment_leaf = 0;
-        size_t num_swap = 0;
         size_t num_decrement = 0;
+        size_t num_tail_search = 0;
         size_t num_renormalize = 0;
     } stats_;
+
+    void preprend_list(TrieNodeIndex const old_head, TrieNodeIndex const new_head) {
+        if(old_head != NIL) {
+            // find tail of preprended list
+            if constexpr(gather_stats_) ++stats_.num_tail_search;
+            auto link = new_head;
+            while(trie_.node(link).next != NIL) {
+                link = trie_.node(link).next;
+            }
+
+            // re-chain contents
+            auto& link_data = trie_.node(link);
+            link_data.next = old_head;
+
+            auto& old_head_data = trie_.node(old_head);
+            assert(old_head_data == NIL);
+            old_head_data.prev = link;
+        }
+    }
 
     void renormalize() {
         if constexpr(gather_stats_) ++stats_.num_renormalize;
@@ -84,15 +97,16 @@ private:
         }
 
         // compact buckets
+        auto compacted_buckets = std::make_unique<TrieNodeIndex[]>(max_allowed_frequency_ + 1);
         for(size_t f = 0; f <= max_allowed_frequency_; f++) {
-            if(bucket_ends_[f] != BUCKET_DOES_NOT_EXIST) {
-                // we may update the bucket end for an adjusted frequency multiple times because we do integer division
-                // however, we update in the order of frequencies, so bucket ends will correctly end up to be "rightmost" (in a circular manner)
+            auto const head = bucket_head_[f];
+            if(head != NIL) {
                 auto const adjusted_f = renormalize(f);
-                bucket_ends_[adjusted_f] = bucket_ends_[f];
-                bucket_ends_[f] = BUCKET_DOES_NOT_EXIST;
+                preprend_list(compacted_buckets[adjusted_f], head);
+                compacted_buckets[adjusted_f] = head;
             }
         }
+        bucket_head_ = std::move(compacted_buckets);
 
         // reset threshold
         threshold_ = 0;
@@ -101,8 +115,16 @@ private:
     void decrement_all() ALWAYS_INLINE {
         if constexpr(gather_stats_) ++stats_.num_decrement;
 
-        // erase current threshold bucket if it exists
-        bucket_ends_[threshold_] = BUCKET_DOES_NOT_EXIST;
+        // if current threshold bucket exists, prepend all its nodes to the next bucket
+        auto const head = bucket_head_[threshold_];
+        if(head != NIL) {
+            // prepend all to next bucket
+            preprend_list(bucket_head_[threshold_ + 1], head);
+            bucket_head_[threshold_ + 1] = head;
+
+            // delete threshold bucket
+            bucket_head_[threshold_] = NIL;
+        }
 
         // then simply increment the threshold
         ++threshold_;
@@ -110,181 +132,76 @@ private:
 
     void unlink(TrieNodeIndex const v) ALWAYS_INLINE {
         auto& vdata = trie_.node(v);
-        if(!vdata.is_linked()) return;
 
         // remove
         auto const x = vdata.prev;
         auto const y = vdata.next;
 
-        vdata.prev = UNLINKED;
-        vdata.next = UNLINKED;
-        assert(!vdata.is_linked());
+        vdata.prev = NIL;
+        vdata.next = NIL;
 
-        auto& xdata = trie_.node(x);
-        auto& ydata = trie_.node(y);
+        if(x != NIL) {
+            auto& xdata = trie_.node(x);
+            xdata.next = y;
+        }
 
-        xdata.next = y;
-        ydata.prev = x;
+        if(y != NIL) {
+            auto& ydata = trie_.node(y);
+            ydata.prev = x;
+        }
 
-        // possibly update bucket
+        // if v was the head of its bucket, update the bucket
         auto const f = vdata.freq;
-        if(bucket_ends_[f] == v) {
-            if(xdata.freq == f) {
-                // move bucket pointer to previous
-                bucket_ends_[f] = x;
-            } else {
-                // bucket ceases to exist
-                bucket_ends_[f] = BUCKET_DOES_NOT_EXIST;
-            }
+        if(bucket_head_[f] == v) {
+            assert(x == NIL);
+
+            // move bucket head to next (maybe NIL)
+            bucket_head_[f] = y;
         }
     }
 
     void link(TrieNodeIndex const v) ALWAYS_INLINE {
-        assert(v != trie_.root());
+        assert(trie_.is_valid_nonroot(v));
         auto& vdata = trie_.node(v);
-        assert(!vdata.is_linked());
         assert(vdata.is_leaf());
 
-        // try to find where to link
         auto const f = std::max(vdata.freq, threshold_); // make sure frequency is at least threshold
 
-        TrieNodeIndex x = bucket_ends_[f];
-        for(auto q = f; x == BUCKET_DOES_NOT_EXIST && q > 0; q--)
-        {
-            x = bucket_ends_[q-1];
+        // make new head of bucket
+        auto const u = bucket_head_[f];
+        if(u != NIL) {
+            auto& udata = trie_.node(u);
+            assert(udata.prev == NIL);
+
+            vdata.next = u;
+            udata.prev = v;
         }
-
-        if(x == BUCKET_DOES_NOT_EXIST)[[unlikely]] {
-            // we are entering the very first item
-            vdata.prev = v;
-            vdata.next = v;
-        } else {
-            // link after x (new end of bucket)
-            auto& xdata = trie_.node(x);
-            assert(xdata.freq <= vdata.freq);
-
-            auto const y = xdata.next;    
-            auto& ydata = trie_.node(y);
-
-            xdata.next = v;
-            ydata.prev = v;
-
-            vdata.prev = x;
-            vdata.next = y;
-        }
-
-        assert(vdata.is_linked());
-
-        // create or update bucket -- we inserted v at its end
-        bucket_ends_[f] = v;
-    }
-
-    void swap_neighbours(TrieNodeIndex const u, TrieNodeIndex const v) ALWAYS_INLINE {
-        auto& udata = trie_.node(u);
-        auto& vdata = trie_.node(v);
-
-        // u is predecessor of v ("w.l.o.g.")
-        assert(udata.next == v);
-        assert(vdata.prev == u);
-
-        auto const x = udata.prev;
-        auto const w = vdata.next;
-        
-        auto& xdata = trie_.node(x);
-        auto& wdata = trie_.node(w);
-
-        // sanity
-        assert(xdata.next == u);
-        assert(wdata.prev == v);
-
-        // swap
-        xdata.next = v;
-        udata.prev = v;
-        udata.next = w;
-        vdata.prev = x;
-        vdata.next = u;
-        wdata.prev = u;
-    }
-
-    void swap(TrieNodeIndex const u, TrieNodeIndex const v) ALWAYS_INLINE {
-        assert(u != v);
-
-        auto& udata = trie_.node(u);
-        auto& vdata = trie_.node(v);
-
-        auto const x = udata.prev;
-        auto const y = udata.next;
-        auto const z = vdata.prev;
-        auto const w = vdata.next;
-
-        if(x == v) {
-            swap_neighbours(v, u);
-        } else if(y == v) {
-            swap_neighbours(u, v);
-        } else {
-            auto& xdata = trie_.node(x);
-            auto& ydata = trie_.node(y);
-            auto& zdata = trie_.node(z);
-            auto& wdata = trie_.node(w);
-
-            // sanity
-            assert(xdata.next == u);
-            assert(ydata.prev == u);
-            assert(zdata.next == v);
-            assert(wdata.prev == v);
-
-            // swap
-            xdata.next = v;
-            udata.prev = z;
-            udata.next = w;
-            ydata.prev = v;
-            zdata.next = u;
-            vdata.prev = x;
-            vdata.next = y;
-            wdata.prev = u;
-        }
+        bucket_head_[f] = v;
     }
 
     void increment(TrieNodeIndex const v) ALWAYS_INLINE {
         if constexpr(gather_stats_) ++stats_.num_increment;
 
         // get frequency, assuring that it is >= threshold
-        // i.e., nodes that are below threshold are artificially lifted up
         auto& vdata = trie_.node(v);
         auto const f = std::max(vdata.freq, threshold_);
 
         if(vdata.is_leaf()) {
-            assert(vdata.is_linked());
-            assert(f + 1 > threshold_);
-            if constexpr(gather_stats_) {
-                if(vdata.is_leaf()) ++stats_.num_increment_leaf;
-            }
+            if constexpr(gather_stats_) ++stats_.num_increment_leaf;
 
-            // swap to end of the corresponding bucket, if necessary
-            auto const u = bucket_ends_[f];
-            assert(u != BUCKET_DOES_NOT_EXIST);
-            if(u != v) {
-                if constexpr(gather_stats_) ++stats_.num_swap;
+            // unlink from wherever it is currently linked at
+            unlink(v);
 
-                swap(v, u);
-            }
+            // re-link as head of next bucket
+            auto const u = bucket_head_[f+1];
+            if(u != NIL) {
+                auto& udata = trie_.node(u);
+                assert(udata.prev == NIL);
 
-            // update bucket
-            auto const prev = vdata.prev;
-            if(trie_.node(prev).freq == f) {
-                // the previous node has the same frequency, move bucket pointer
-                bucket_ends_[f] = prev;
-            } else {
-                // the incremented node was the last in its bucket, erase the bucket
-                bucket_ends_[f] = BUCKET_DOES_NOT_EXIST;
+                vdata.next = u;
+                udata.prev = v;
             }
-
-            // create bucket if needed
-            if(bucket_ends_[f+1] == BUCKET_DOES_NOT_EXIST) {
-                bucket_ends_[f+1] = v;
-            }
-        } else {
-            assert(!vdata.is_linked());
+            bucket_head_[f+1] = v;
         }
 
         // increment frequency
@@ -299,14 +216,13 @@ private:
     }
 
     bool insert(TrieNodeIndex const parent, char const label, TrieNodeIndex& out_node) ALWAYS_INLINE {
-        auto const v = bucket_ends_[threshold_];
-        if(v != BUCKET_DOES_NOT_EXIST) {
+        auto const v = bucket_head_[threshold_];
+        if(v != NIL) {
             // recycle something from the garbage
             assert(v < k_);
             assert(v != 0);
 
             auto& vdata = trie_.node(v);
-            assert(vdata.is_linked());
             assert(vdata.is_leaf());
             assert(vdata.freq <= threshold_);
 
@@ -318,7 +234,7 @@ private:
                 link(old_parent);
             }
 
-            // new parent will no longer be a leaf
+            // new parent can no longer be a leaf
             unlink(parent);
 
             // insert into trie with new parent
@@ -360,19 +276,18 @@ public:
         // initialize all k nodes as orphans in trie
         trie_.fill();
 
-        // cyclically link trie nodes in frequency order, EXCLUDING the root
+        // link trie nodes in garbage bucket
         for(size_t i = 1; i < k; i++) {
             auto& data = trie_.node(i);
-            data.prev = (i > 1)     ? (i - 1) : (k - 1);
-            data.next = (i < k - 1) ? (i + 1) : 1;
-            assert(data.is_linked());
+            data.prev = (i > 1)     ? (i - 1) : NIL;
+            data.next = (i < k - 1) ? (i + 1) : NIL;
         }
 
         // create initial garbage bucket that contains all nodes
-        bucket_ends_ = std::make_unique<TrieNodeIndex[]>(max_allowed_frequency_ + 1);
-        bucket_ends_[0] = k - 1;
+        bucket_head_ = std::make_unique<TrieNodeIndex[]>(max_allowed_frequency_ + 1);
+        bucket_head_[0] = 1;
         for(size_t i = 1; i <= max_allowed_frequency_; i++) {
-            bucket_ends_[i] = BUCKET_DOES_NOT_EXIST;
+            bucket_head_[i] = NIL;
         }
     }
 
@@ -455,8 +370,8 @@ public:
                 << ", max_freq=" << stats_.max_freq
                 << ", num_increment=" << stats_.num_increment
                 << ", num_increment_leaf=" << stats_.num_increment_leaf
-                << ", num_swap=" << stats_.num_swap
                 << ", num_decrement=" << stats_.num_decrement
+                << ", num_tail_search=" << stats_.num_tail_search
                 << ", num_renormalize=" << stats_.num_renormalize
                 ;
         } else {
