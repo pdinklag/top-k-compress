@@ -24,6 +24,8 @@
 template<std::unsigned_integral TrieNodeIndex = uint32_t>
 class TopKPrefixesMisraGries {
 private:
+    static constexpr bool gather_stats_ = true;
+
     struct NodeData : public TrieNode<TrieNodeIndex> {
         using Character = TrieNode<TrieNodeIndex>::Character;
         using Index = TrieNode<TrieNodeIndex>::Index;
@@ -46,14 +48,25 @@ private:
 
     using TrieNodeDepth = TrieNodeIndex;
 
+    size_t k_;
+
     Trie<NodeData> trie_;
     MinPQ<size_t, TrieNodeIndex> min_pq_;
     size_t threshold_;
 
-    size_t k_;
+    // stats
+    struct Stats {
+        size_t max_freq = 0;
+        size_t num_increment = 0;
+        size_t num_increment_leaf = 0;
+        size_t num_recycle = 0;
+        size_t num_decrement = 0;
+    } stats_;
 
     TrieNodeIndex recycle_min(TrieNodeIndex const parent, char const label) ALWAYS_INLINE {
         // extract minimum -- it must be a leaf
+        if constexpr(gather_stats_) ++stats_.num_recycle;
+
         auto const recycle = min_pq_.extract_min();
         assert(trie_.is_leaf(recycle));
 
@@ -85,23 +98,28 @@ private:
         return recycle;
     }
 
-    void increment_threshold() ALWAYS_INLINE {
+    void decrement_all() ALWAYS_INLINE {
+        if constexpr(gather_stats_) ++stats_.num_decrement;
         ++threshold_;
     }
 
-    void increment_in_trie(TrieNodeIndex const v) ALWAYS_INLINE {
+    void increment(TrieNodeIndex const v) ALWAYS_INLINE {
         // increment frequency
+        if constexpr(gather_stats_) ++stats_.num_increment;
+
         auto& data = trie_.node(v);
         ++data.freq;
+        if constexpr(gather_stats_) stats_.max_freq = std::max(data.freq, stats_.max_freq);
 
         // increment in min PQ
         if(trie_.is_leaf(v)) {
+            if constexpr(gather_stats_) ++stats_.num_increment_leaf;
             assert((bool)data.minpq);
             data.minpq = min_pq_.increase_key(data.minpq);
         }
     }
 
-    TrieNodeIndex insert_into_trie(TrieNodeIndex const parent, char const label) ALWAYS_INLINE {
+    TrieNodeIndex insert(TrieNodeIndex const parent, char const label) ALWAYS_INLINE {
         auto const v = trie_.new_node();
         trie_.insert_child(v, parent, label);
 
@@ -154,7 +172,7 @@ public:
         bool const edge_exists = s.frequent && trie_.try_get_child(s.node, c, ext.node);
         if(edge_exists) {
             // the current prefix is frequent, increment
-            increment_in_trie(ext.node);
+            increment(ext.node);
 
             // done
             ext.frequent = true;
@@ -167,12 +185,12 @@ public:
                     ext.node = recycle_min(s.node, c);
                 } else {
                     // the trie is full and there is no garbage, increment the threshold
-                    increment_threshold();
+                    decrement_all();
                     ext.node = 0;
                 }
             } else {
                 // the trie is not yet full, insert the prefix
-                ext.node = insert_into_trie(s.node, c);
+                ext.node = insert(s.node, c);
             }
 
             // we dropped out of the trie, so no extension can be frequent (not even if the current prefix was inserted or swapped in)
@@ -213,5 +231,20 @@ public:
     void print_debug_info() const {
         trie_.print_debug_info();
         min_pq_.print_debug_info();
+
+        std::cout << "# DEBUG: misra-gries" << ", threshold=" << threshold_;
+        if constexpr(gather_stats_) {
+            std::cout
+                << ", max_freq=" << stats_.max_freq
+                << ", num_increment=" << stats_.num_increment
+                << ", num_increment_leaf=" << stats_.num_increment_leaf
+                << ", num_decrement=" << stats_.num_decrement
+                << ", num_recycle=" << stats_.num_recycle
+                ;
+        } else {
+            std::cout << " (advanced stats disabled)";
+        }
+
+        std::cout << std::endl;
     }
 };

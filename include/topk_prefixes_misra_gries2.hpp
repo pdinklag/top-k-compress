@@ -55,6 +55,7 @@ private:
     struct Stats {
         TrieNodeIndex max_freq = 0;
         size_t num_increment = 0;
+        size_t num_increment_leaf = 0;
         size_t num_swap = 0;
         size_t num_decrement = 0;
         size_t num_renormalize = 0;
@@ -174,6 +175,9 @@ private:
         auto& vdata = trie_.node(v);
         auto const f = std::max(vdata.freq, threshold_);
         assert(f + 1 > threshold_);
+        if constexpr(gather_stats_) {
+            if(vdata.is_leaf()) ++stats_.num_increment_leaf;
+        }
 
         // swap to end of the corresponding bucket, if necessary
         auto const u = bucket_ends_[f];
@@ -352,6 +356,7 @@ public:
             std::cout
                 << ", max_freq=" << stats_.max_freq
                 << ", num_increment=" << stats_.num_increment
+                << ", num_increment_leaf=" << stats_.num_increment_leaf
                 << ", num_swap=" << stats_.num_swap
                 << ", num_decrement=" << stats_.num_decrement
                 << ", num_renormalize=" << stats_.num_renormalize
