@@ -64,7 +64,9 @@ public:
         assert(!try_get_child(parent, label, discard));
 
         nodes_[parent].children.insert(label, node);
-        nodes_[node] = Node(parent, label);
+        nodes_[node].parent = parent;
+        nodes_[node].inlabel = label;
+        nodes_[node].children.clear();
 
         assert(is_leaf(node));
 
@@ -160,6 +162,10 @@ public:
 
     Node const& node(NodeIndex const v) const {
         return nodes_[v];
+    }
+
+    Node* nodes() {
+        return nodes_.get();
     }
 
     size_t spell_reverse(NodeIndex const node, Character* buffer) const {
