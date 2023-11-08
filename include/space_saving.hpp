@@ -87,18 +87,24 @@ public:
             std::abort();
         }
 
+        // initialize buckets
+        bucket_head_ = std::make_unique<Index[]>(max_allowed_frequency_ + 1);
+        for(Index f = 0; f <= max_allowed_frequency_; f++) {
+            bucket_head_[f] = NIL;
+        }
+    }
+
+    void init_as_garbage(size_t const first, size_t const last) {
+        assert(first <= last);
+        assert(last < num_);
+
         // link items in garbage bucket
-        for(Index i = first; i < num_; i++) {
+        bucket_head_[0] = first;
+
+        for(Index i = first; i <= last; i++) {
             items_[i].prev((i > 1)        ? (i - 1) : NIL);
             items_[i].next((i < num_ - 1) ? (i + 1) : NIL);
         }
-
-        // create initial garbage bucket that contains all items
-        bucket_head_ = std::make_unique<Index[]>(max_allowed_frequency_ + 1);
-        bucket_head_[0] = 1;
-        for(Index f = 1; f <= max_allowed_frequency_; f++) {
-            bucket_head_[f] = NIL;
-        }   
     }
 
     bool get_garbage(Index& out_v) const ALWAYS_INLINE {

@@ -107,6 +107,9 @@ public:
         
         // initialize all k nodes as orphans in trie
         trie_.fill();
+
+        // make all of them garbage (except the root)
+        space_saving_.init_as_garbage(1, k_ - 1);
     }
 
     struct StringState {
