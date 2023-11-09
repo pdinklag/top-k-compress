@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cassert>
 #include <concepts>
+#include <functional>
 #include <iostream>
 #include <memory>
 
@@ -29,8 +30,16 @@ private:
     using Index = typename T::Index;
 
     static constexpr size_t renorm_divisor_ = 2;
+
+public:
+    struct RenormalizeFunc {
+        Index base;
+        Index operator()(Index const f) const { return (f - base) / renorm_divisor_; }
+    };
+    
     static constexpr Index NIL = -1;
 
+private:
     T* items_;
     size_t beg_;
     size_t end_;
@@ -61,7 +70,7 @@ private:
 
     void renormalize() {
         // we normalize the frequency to [0, renorm_divisor_ * max_allowed_frequency_]
-        auto renormalize = [&](size_t const f){ return (f - threshold_) / renorm_divisor_; };
+        RenormalizeFunc renormalize { threshold_ };
 
         for(Index i = beg_; i <= end_; i++) {
             auto const f = std::max(items_[i].freq(), threshold_); // nb: we must NOT allow frequency below the threshold, that would cause negative frequencies
@@ -89,9 +98,14 @@ private:
 
         // reset threshold
         threshold_ = 0;
+
+        // callback
+        if(on_renormalize) on_renormalize(renormalize);
     }
 
 public:
+    std::function<void(RenormalizeFunc)> on_renormalize;
+
     inline SpaceSaving(T* items, Index const begin, Index const end, Index const max_frequency)
         : items_(items), beg_(begin), end_(end), threshold_(0), max_frequency_(max_frequency) {
 

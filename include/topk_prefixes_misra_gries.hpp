@@ -25,7 +25,8 @@ class TopKPrefixesMisraGries {
 private:
     static constexpr bool gather_stats_ = true;
 
-    static constexpr TrieNodeIndex NIL = -1;
+    struct NodeData;
+    static constexpr auto NIL = SpaceSaving<NodeData>::NIL;
 
     struct NodeData : public TrieNode<TrieNodeIndex> {
         using Character = TrieNode<TrieNodeIndex>::Character;
