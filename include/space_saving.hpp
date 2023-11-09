@@ -32,15 +32,21 @@ private:
     static constexpr Index NIL = -1;
 
     T* items_;
-    size_t num_;
+    size_t beg_;
+    size_t end_;
 
     std::unique_ptr<Index[]> bucket_head_;
     Index threshold_;
     
-    Index max_allowed_frequency_;
+    Index max_frequency_;
 
     void preprend_list(Index const old_head, Index const new_head) {
         if(old_head != NIL) {
+            assert(old_head >= beg_);
+            assert(old_head <= end_);
+            assert(new_head >= beg_);
+            assert(new_head <= end_);
+
             // find tail of preprended list
             auto link = new_head;
             while(items_[link].next() != NIL) {
@@ -57,16 +63,23 @@ private:
         // we normalize the frequency to [0, renorm_divisor_ * max_allowed_frequency_]
         auto renormalize = [&](size_t const f){ return (f - threshold_) / renorm_divisor_; };
 
-        for(size_t i = 1; i < num_; i++) {
+        for(Index i = beg_; i <= end_; i++) {
             auto const f = std::max(items_[i].freq(), threshold_); // nb: we must NOT allow frequency below the threshold, that would cause negative frequencies
             items_[i].freq(renormalize(f));
         }
 
         // compact buckets
-        auto compacted_buckets = std::make_unique<Index[]>(max_allowed_frequency_ + 1);
-        for(size_t f = 0; f <= max_allowed_frequency_; f++) {
+        auto compacted_buckets = std::make_unique<Index[]>(max_frequency_ + 1);
+        for(size_t f = 0; f <= max_frequency_; f++) {
+            compacted_buckets[f] = NIL;
+        }
+
+        for(size_t f = 0; f <= max_frequency_; f++) {
             auto const head = bucket_head_[f];
             if(head != NIL) {
+                assert(head >= beg_);
+                assert(head <= end_);
+
                 auto const adjusted_f = renormalize(f);
                 preprend_list(compacted_buckets[adjusted_f], head);
                 compacted_buckets[adjusted_f] = head;
@@ -79,31 +92,26 @@ private:
     }
 
 public:
-    inline SpaceSaving(T* items, size_t const num, Index const max_frequency, size_t const first = 1)
-        : items_(items), num_(num), threshold_(0), max_allowed_frequency_(max_frequency) {
+    inline SpaceSaving(T* items, Index const begin, Index const end, Index const max_frequency)
+        : items_(items), beg_(begin), end_(end), threshold_(0), max_frequency_(max_frequency) {
 
-        if(max_frequency <= 1) {
-            std::cerr << "max frequency must be at least two" << std::endl;
-            std::abort();
-        }
+        assert(beg_ <= end_);
+        assert(max_frequency_ > 1);
 
         // initialize buckets
-        bucket_head_ = std::make_unique<Index[]>(max_allowed_frequency_ + 1);
-        for(Index f = 0; f <= max_allowed_frequency_; f++) {
+        bucket_head_ = std::make_unique<Index[]>(max_frequency_ + 1);
+        for(Index f = 0; f <= max_frequency_; f++) {
             bucket_head_[f] = NIL;
         }
     }
 
-    void init_as_garbage(size_t const first, size_t const last) {
-        assert(first <= last);
-        assert(last < num_);
-
+    void init_garbage() {
         // link items in garbage bucket
-        bucket_head_[0] = first;
+        bucket_head_[threshold_] = beg_;
 
-        for(Index i = first; i <= last; i++) {
-            items_[i].prev((i > 1)        ? (i - 1) : NIL);
-            items_[i].next((i < num_ - 1) ? (i + 1) : NIL);
+        for(Index i = beg_; i <= end_; i++) {
+            items_[i].prev((i > beg_)     ? (i - 1) : NIL);
+            items_[i].next((i < end_ - 1) ? (i + 1) : NIL);
         }
     }
 
@@ -113,6 +121,9 @@ public:
     }
 
     void increment(Index const v) ALWAYS_INLINE {
+        assert(v >= beg_);
+        assert(v <= end_);
+
         // get frequency, assuring that it is >= threshold
         auto const f = std::max(items_[v].freq(), threshold_);
 
@@ -123,6 +134,8 @@ public:
             // re-link as head of next bucket
             auto const u = bucket_head_[f+1];
             if(u != NIL) {
+                assert(u >= beg_);
+                assert(u <= end_);
                 assert(items_[u].prev() == NIL);
 
                 items_[v].next(u);
@@ -135,7 +148,7 @@ public:
         items_[v].freq(f + 1);
 
         // possibly renormalize
-        if(f + 1 == max_allowed_frequency_) {
+        if(f + 1 == max_frequency_) {
             renormalize();
         }
     }
@@ -144,6 +157,9 @@ public:
         // if current threshold bucket exists, prepend all its nodes to the next bucket
         auto const head = bucket_head_[threshold_];
         if(head != NIL) {
+            assert(head >= beg_);
+            assert(head <= end_);
+
             // prepend all to next bucket
             preprend_list(bucket_head_[threshold_ + 1], head);
             bucket_head_[threshold_ + 1] = head;
@@ -157,11 +173,16 @@ public:
     }
 
     void link(Index const v) ALWAYS_INLINE {
+        assert(v >= beg_);
+        assert(v <= end_);
+
         auto const f = std::max(items_[v].freq(), threshold_); // make sure frequency is at least threshold
 
         // make new head of bucket
         auto const u = bucket_head_[f];
         if(u != NIL) {
+            assert(u >= beg_);
+            assert(u <= end_);
             assert(items_[u].prev() == NIL);
 
             items_[v].next(u);
@@ -171,6 +192,9 @@ public:
     }
 
     void unlink(Index const v) ALWAYS_INLINE {
+        assert(v >= beg_);
+        assert(v <= end_);
+
         // remove
         auto const x = items_[v].prev();
         auto const y = items_[v].next();

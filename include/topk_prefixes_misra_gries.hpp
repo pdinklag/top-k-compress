@@ -82,7 +82,9 @@ private:
             }
 
             // new parent can no longer be a leaf
-            space_saving_.unlink(parent);
+            if(trie_.is_valid_nonroot(parent)) {
+                space_saving_.unlink(parent);
+            }
 
             // insert into trie with new parent
             trie_.insert_child(v, parent, label);
@@ -103,13 +105,13 @@ public:
     inline TopKPrefixesMisraGries(size_t const k, size_t const sketch_columns, size_t const fp_window_size = 8)
         : trie_(k),
           k_(k),
-          space_saving_(trie_.nodes(), k_, sketch_columns - 1) {
+          space_saving_(trie_.nodes(), 1, k_ - 1, sketch_columns - 1) {
         
         // initialize all k nodes as orphans in trie
         trie_.fill();
 
         // make all of them garbage (except the root)
-        space_saving_.init_as_garbage(1, k_ - 1);
+        space_saving_.init_garbage();
     }
 
     struct StringState {
