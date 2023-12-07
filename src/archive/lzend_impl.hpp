@@ -4,13 +4,13 @@
 #include <iopp/concepts.hpp>
 
 #include <tdc/text/suffix_array.hpp>
-#include <alx_rmq.hpp>
+#include <archive/alx_rmq.hpp>
 
 #include <pm/stopwatch.hpp>
 
 #include <display.hpp>
 
-#include <index/backward_search.hpp>
+#include <archive/index/backward_search.hpp>
 #include <ordered/btree.hpp>
 
 #include "lzend_decompress.hpp"

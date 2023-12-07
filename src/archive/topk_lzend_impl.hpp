@@ -9,9 +9,9 @@
 
 #include <display.hpp>
 
-#include <lzend_parsing.hpp>
-#include <lzend_window_index.hpp>
-#include <topk_lzend_trie.hpp>
+#include <archive/lzend_parsing.hpp>
+#include <archive/lzend_window_index.hpp>
+#include <archive/topk_lzend_trie.hpp>
 
 #include <code/concepts.hpp>
 

@@ -1,6 +1,6 @@
 #include "../compressor_base.hpp"
 
-#include <runs.hpp>
+#include <archive/runs.hpp>
 
 struct Compressor : public CompressorBase {
     Compressor() : CompressorBase("rle", "Run-length compression") {

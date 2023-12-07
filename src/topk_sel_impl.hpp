@@ -1,7 +1,7 @@
 #include <tlx/container/ring_buffer.hpp>
 
-#include <old/topk_substrings.hpp>
-#include <old/topk_trie_node.hpp>
+#include <archive/topk_substrings.hpp>
+#include <archive/topk_trie_node.hpp>
 #include <block_coding.hpp>
 #include <pm/result.hpp>
 

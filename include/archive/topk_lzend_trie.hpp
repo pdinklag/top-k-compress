@@ -3,10 +3,10 @@
 #include <memory>
 #include <display.hpp>
 
-#include <old/topk_substrings.hpp>
-#include <old/topk_trie_node.hpp>
+#include <archive/topk_substrings.hpp>
+#include <archive/topk_trie_node.hpp>
 
-#include <fp_string_view.hpp>
+#include <archive/fp_string_view.hpp>
 
 template<std::unsigned_integral Index = uint32_t>
 class TopKLZEndTrie : public TopKSubstrings<TopkTrieNode<Index>> {

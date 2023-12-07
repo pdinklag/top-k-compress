@@ -9,9 +9,9 @@
 #include <display.hpp>
 #include <iopp/concepts.hpp>
 
-#include <lzend_parsing.hpp>
-#include <lzend_rev_phrase_trie.hpp>
-#include <lzend_window_index.hpp>
+#include <archive/lzend_parsing.hpp>
+#include <archive/lzend_rev_phrase_trie.hpp>
+#include <archive/lzend_window_index.hpp>
 
 #include "lzend_decompress.hpp"
 

@@ -12,8 +12,8 @@
 
 #include <tdc/util/concepts.hpp>
 
-#include <fp_string_view.hpp>
-#include <lzend_parsing.hpp>
+#include <archive/fp_string_view.hpp>
+#include "lzend_parsing.hpp"
 
 // reset the i least significant bits of x
 template<std::unsigned_integral Index = uint32_t>

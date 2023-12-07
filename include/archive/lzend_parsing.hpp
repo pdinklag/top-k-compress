@@ -5,7 +5,7 @@
 #include <iterator>
 #include <vector>
 
-#include <lzend_phrase.hpp>
+#include "lzend_phrase.hpp"
 
 // represents a dynamically growing LZ-End parsing
 template<std::integral Char, std::unsigned_integral Index>
