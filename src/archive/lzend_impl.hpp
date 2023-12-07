@@ -3,7 +3,7 @@
 
 #include <iopp/concepts.hpp>
 
-#include <tdc/text/suffix_array.hpp>
+#include <libsais.h>
 #include <archive/alx_rmq.hpp>
 
 #include <pm/stopwatch.hpp>
@@ -52,7 +52,7 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
     
     if constexpr(TIME_PHASES) sw.start();
     auto sa = std::make_unique<Index[]>(n+1);
-    tdc::text::suffix_array(r.begin(), r.end(), sa.get());
+    libsais((uint8_t const*)r.data(), (int32_t*)sa.get(), n+1, 0, nullptr);
     assert(sa[0] == n);
     sw.stop();
     if constexpr(TIME_PHASES) { result.add("t_sa", (uint64_t)sw.elapsed_time_millis()); }

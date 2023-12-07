@@ -8,7 +8,7 @@
 #include "alx_rmq.hpp"
 #include <archive/fp_string_view.hpp>
 #include <ordered/range_marking.hpp>
-#include <tdc/text/util.hpp>
+#include "../libsais_wrapper.hpp"
 
 template<std::unsigned_integral Index>
 class LZEndWindowIndex {
@@ -38,7 +38,7 @@ public:
 
         // compute inverse suffix array and LCP array of reverse window
         {
-            auto [_sa, _isa, _lcp] = tdc::text::sa_isa_lcp_u32(rwindow.begin(), rwindow.end());
+            auto [_sa, _isa, _lcp] = sa_isa_lcp_u32(rwindow.begin(), rwindow.end());
             assert(_sa[0] == window_size);
 
             // keep inverse suffix array and LCP array, discard suffix array and reversed window

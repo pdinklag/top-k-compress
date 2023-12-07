@@ -1,6 +1,5 @@
 #include <display.hpp>
 
-#include <tdc/text/util.hpp>
 #include <tdc/lz/lpf_factorizer.hpp>
 
 #include <block_coding.hpp>
