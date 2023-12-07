@@ -18,32 +18,53 @@
 #include "trie.hpp"
 #include "trie_node.hpp"
 #include "truncated_trie.hpp"
-#include "min_pq.hpp"
 #include "count_min2.hpp"
 #include "rolling_karp_rabin.hpp"
 #include "display.hpp"
+#include "space_saving.hpp"
 
-template<bool approx_minpq_ = false, std::unsigned_integral TrieNodeIndex = uint32_t>
+template<std::unsigned_integral TrieNodeIndex = uint32_t>
 class TopKPrefixesCountMin {
 private:
+    struct NodeData;
+    static constexpr auto NIL = SpaceSaving<NodeData, true>::NIL;
+
     struct NodeData : public TrieNode<TrieNodeIndex> {
         using Character = TrieNode<TrieNodeIndex>::Character;
         using Index = TrieNode<TrieNodeIndex>::Index;
 
-        size_t freq;                    // the current estimated frequency
-        size_t insert_freq;             // the estimated frequency at time of insertion
-        MinPQ<size_t>::Location minpq;  // the entry in the minimum PQ, if any
-        uint64_t fingerprint;           // the 64-bit fingerprint of the represented string
+private:
+        TrieNodeIndex freq_; // the current frequency
+        TrieNodeIndex prev_; // the previous node in frequency order
+        TrieNodeIndex next_; // the next node in frequency order
 
-        void dump_extra_info() const {
-            std::cout << " [freq=" << freq << "]";
-        }
+        TrieNodeIndex insert_freq_; // the frequency at time of insertion
+        uint64_t fingerprint_;      // the fingerprint of the represented string
 
+public:
         NodeData() {
         }
 
-        NodeData(Index v, Character c) : TrieNode<TrieNodeIndex>(v, c) {
+        NodeData(Index v, Character c) : TrieNode<TrieNodeIndex>(v, c), freq_(0), prev_(NIL), next_(NIL), insert_freq_(0), fingerprint_(0) {
         }
+
+        // SpaceSavingItem
+        TrieNodeIndex freq() const ALWAYS_INLINE { return freq_; }
+        TrieNodeIndex prev() const ALWAYS_INLINE { return prev_; }
+        TrieNodeIndex next() const ALWAYS_INLINE { return next_; }
+        
+        bool is_linked() const ALWAYS_INLINE { return this->is_leaf(); }
+
+        void freq(TrieNodeIndex const f) ALWAYS_INLINE { freq_ = f; }
+        void prev(TrieNodeIndex const x) ALWAYS_INLINE { prev_ = x; }
+        void next(TrieNodeIndex const x) ALWAYS_INLINE { next_ = x; }
+
+        // additional data
+        TrieNodeIndex insert_freq() const ALWAYS_INLINE { return insert_freq_; }
+        void insert_freq(TrieNodeIndex const f) ALWAYS_INLINE { insert_freq_ = f; }
+
+        uint64_t fingerprint() const ALWAYS_INLINE { return fingerprint_; }
+        void fingerprint(uint64_t const fp) ALWAYS_INLINE { fingerprint_ = fp; }
     } __attribute__((packed));
 
     static constexpr bool DEBUG = false;
@@ -53,95 +74,87 @@ private:
 
     using TrieNodeDepth = TrieNodeIndex;
 
-    Trie<NodeData> trie_;
-    MinPQ<size_t, TrieNodeIndex> min_pq_;
-    RollingKarpRabin hash_;
-    CountMin2<size_t> sketch_;
-
     size_t k_;
+    Trie<NodeData> trie_;
+    SpaceSaving<NodeData, true> space_saving_;
+    RollingKarpRabin hash_;
+    CountMin2<TrieNodeIndex> sketch_;
 
     void increment_in_trie(TrieNodeIndex const v) ALWAYS_INLINE {
         // increment frequency
         auto& data = trie_.node(v);
-
-        ++data.freq;
-        if constexpr(approx_minpq_) {
-            if(std::has_single_bit(data.freq) && trie_.is_leaf(v)) {
-                // prefix is maximal frequent string, increase in min pq
-                assert((bool)data.minpq);
-                data.minpq = min_pq_.increase_key(data.minpq);
-            }
+        if(data.is_leaf()) {
+            // via Space-Saving
+            space_saving_.increment(v);
         } else {
-            if(trie_.is_leaf(v)) {
-                // prefix is maximal frequent string, increase in min pq
-                assert((bool)data.minpq);
-                data.minpq = min_pq_.increase_key(data.minpq);
-            }
+            // directly
+            data.freq(data.freq() + 1);
         }
     }
 
     TrieNodeIndex insert_into_trie(TrieNodeIndex const parent, char const label, uint64_t const fingerprint) ALWAYS_INLINE {
+        auto const parent_was_leaf = trie_.is_leaf(parent);
+
         auto const v = trie_.new_node();
         trie_.insert_child(v, parent, label);
 
-        // insert into min PQ as a maximal string
+        // insert into Space Saving as a maximal string
         auto& data = trie_.node(v);
-        data.freq = 1;
-        data.insert_freq = 0;
-        data.fingerprint = fingerprint;
-        data.minpq = min_pq_.insert(v, 1);
-
-        assert(min_pq_.freq(data.minpq) == 1);
+        data.freq(1);
+        data.insert_freq(0);
+        data.fingerprint(fingerprint);
+        space_saving_.link(v);
 
         // mark the parent no longer maximal
-        auto& parent_data = trie_.node(parent);
-        parent_data.minpq = min_pq_.remove(parent_data.minpq);
+        if(parent && parent_was_leaf) {
+            space_saving_.unlink(parent);
+        }
 
         return v;
     }
 
     TrieNodeIndex swap_into_trie(TrieNodeIndex const parent, char const label, uint64_t const fingerprint, size_t const frequency) ALWAYS_INLINE {
         // extract maximal frequent substring with minimal frequency
-        TrieNodeIndex const swap = min_pq_.extract_min();
+        TrieNodeIndex const swap = space_saving_.extract_min();
 
         // extract the substring from the trie and get the fingerprint and frequency delta
         assert(trie_.is_leaf(swap));
         auto const old_parent = trie_.extract(swap);
         auto& swap_data = trie_.node(swap);
 
-        assert(swap_data.freq >= swap_data.insert_freq);
-        auto const swap_freq_delta = swap_data.freq - swap_data.insert_freq;
+        assert(swap_data.freq() >= swap_data.insert_freq());
+        auto const swap_freq_delta = swap_data.freq() - swap_data.insert_freq();
 
         if(old_parent) {
             // propagate frequency delta to old parent (BEFORE potentially declaring it maximal)
             auto& old_parent_data = trie_.node(old_parent);
-            old_parent_data.freq += swap_freq_delta;
+            old_parent_data.freq(old_parent_data.freq() + swap_freq_delta);
         
             // the old parent may now be maximal
             if(old_parent_data.is_leaf()) {
                 // insert into min PQ
-                old_parent_data.minpq = min_pq_.insert(old_parent, approx_minpq_ ? std::bit_width(old_parent_data.freq) : old_parent_data.freq);
+                space_saving_.link(old_parent);
             }
         }
 
         // count the extracted string in the sketch as often as it had been counted in the trie
-        sketch_.increment(swap_data.fingerprint, swap_freq_delta);
+        sketch_.increment(swap_data.fingerprint(), swap_freq_delta);
 
         // insert the current string into the trie, reusing the old node ID
+        auto const parent_was_leaf = trie_.is_leaf(parent);
         trie_.insert_child(swap, parent, label);
 
-        swap_data.freq = frequency;
-        swap_data.insert_freq = frequency;
-        swap_data.fingerprint = fingerprint;
+        swap_data.freq(frequency);
+        swap_data.insert_freq(frequency);
+        swap_data.fingerprint(fingerprint);
         assert(trie_.is_leaf(swap));
 
         // also insert it into the min PQ
-        swap_data.minpq = min_pq_.insert(swap, approx_minpq_ ? std::bit_width(frequency) : frequency);
+        space_saving_.link(swap);
         
         // the parent is no longer maximal, remove from min PQ
-        if(parent) {
-            auto& parent_data = trie_.node(parent);
-            parent_data.minpq = min_pq_.remove(parent_data.minpq);
+        if(parent && parent_was_leaf) {
+            space_saving_.unlink(parent);
         }
 
         return swap;
@@ -149,11 +162,26 @@ private:
 
 public:
     inline TopKPrefixesCountMin(size_t const k, size_t const sketch_columns, size_t const fp_window_size = 8)
-        : hash_(fp_window_size, rolling_fp_base_),
+        : k_(k),
           trie_(k),
-          min_pq_(k),
-          sketch_(sketch_columns),
-          k_(k) {
+          space_saving_(trie_.nodes(), 1, k_ - 1, k_),
+          hash_(fp_window_size, rolling_fp_base_),
+          sketch_(sketch_columns) {
+        
+        space_saving_.on_renormalize = [&](auto renormalize){
+            // renormalize insert frequencies
+            for(size_t i = 0; i < trie_.size(); i++) {
+                auto& data = trie_.node(i);
+                data.insert_freq(renormalize(data.insert_freq()));
+            }
+
+            // renormalize sketch entries
+            auto const num_entries = sketch_.num_columns() * sketch_.num_rows();
+            auto* table = sketch_.table();
+            for(size_t i = 0; i < num_entries; i++) {
+                table[i] = renormalize(table[i]);
+            }
+        };
     }
 
     struct StringState {
@@ -200,13 +228,13 @@ public:
             if(trie_.full()) {
                 // the trie is full, count current prefix in the sketch
                 // increment in sketch
-                auto est = sketch_.increment_and_estimate<true>(ext_fp, 1);
+                auto est = sketch_.template increment_and_estimate<true>(ext_fp, 1);
 
                 // test if it is now frequent
-                auto const swap = (approx_minpq_ ? std::bit_width(est) : est) > min_pq_.min_frequency();
+                auto const swap = est > space_saving_.min_frequency();
                 if(swap) {
                     // it is now frequent according to just the numbers, test if we can swap
-                    if(i == 0 || (s.node && trie_.node(s.node).freq >= est)) {
+                    if(i == 0 || (s.node && trie_.node(s.node).freq() >= est)) {
                         // the immediate prefix was frequent, so yes, we can!
                         ext.node = swap_into_trie(s.node, c, ext_fp, est);
                     } else {
@@ -261,7 +289,7 @@ public:
     }
 
     void print_debug_info() const {
+        assert(space_saving_.threshold() == 0);
         trie_.print_debug_info();
-        min_pq_.print_debug_info();
     }
 };

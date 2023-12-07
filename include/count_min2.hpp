@@ -90,4 +90,9 @@ public:
             table_[h2(item)] += inc;
         }
     }
+
+    inline size_t num_columns() const { return num_columns_; }
+    inline size_t num_rows() const { return 2; }
+
+    inline Frequency* table() { return table_.get(); }
 };

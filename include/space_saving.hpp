@@ -24,7 +24,7 @@ concept SpaceSavingItem =
         { item.next(x) };
     };
 
-template<SpaceSavingItem T>
+template<SpaceSavingItem T, bool track_min_ = false>
 class SpaceSaving {
 private:
     using Index = typename T::Index;
@@ -47,7 +47,8 @@ private:
     std::unique_ptr<Index[]> bucket_head_;
     Index threshold_;
     
-    Index max_frequency_;
+    Index max_allowed_frequency_;
+    Index min_frequency_;
 
     void preprend_list(Index const old_head, Index const new_head) {
         if(old_head != NIL) {
@@ -78,12 +79,12 @@ private:
         }
 
         // compact buckets
-        auto compacted_buckets = std::make_unique<Index[]>(max_frequency_ + 1);
-        for(size_t f = 0; f <= max_frequency_; f++) {
+        auto compacted_buckets = std::make_unique<Index[]>(max_allowed_frequency_ + 1);
+        for(size_t f = 0; f <= max_allowed_frequency_; f++) {
             compacted_buckets[f] = NIL;
         }
 
-        for(size_t f = 0; f <= max_frequency_; f++) {
+        for(size_t f = 0; f <= max_allowed_frequency_; f++) {
             auto const head = bucket_head_[f];
             if(head != NIL) {
                 assert(head >= beg_);
@@ -95,6 +96,8 @@ private:
             }
         }
         bucket_head_ = std::move(compacted_buckets);
+    
+        if constexpr(track_min_) min_frequency_ = renormalize(min_frequency_);
 
         // reset threshold
         threshold_ = 0;
@@ -106,15 +109,15 @@ private:
 public:
     std::function<void(RenormalizeFunc)> on_renormalize;
 
-    inline SpaceSaving(T* items, Index const begin, Index const end, Index const max_frequency)
-        : items_(items), beg_(begin), end_(end), threshold_(0), max_frequency_(max_frequency) {
+    inline SpaceSaving(T* items, Index const begin, Index const end, Index const max_allowed_frequency)
+        : items_(items), beg_(begin), end_(end), threshold_(0), min_frequency_(NIL), max_allowed_frequency_(max_allowed_frequency) {
 
         assert(beg_ <= end_);
-        assert(max_frequency_ > 1);
+        assert(max_allowed_frequency_ > 1);
 
         // initialize buckets
-        bucket_head_ = std::make_unique<Index[]>(max_frequency_ + 1);
-        for(Index f = 0; f <= max_frequency_; f++) {
+        bucket_head_ = std::make_unique<Index[]>(max_allowed_frequency_ + 1);
+        for(Index f = 0; f <= max_allowed_frequency_; f++) {
             bucket_head_[f] = NIL;
         }
     }
@@ -140,6 +143,7 @@ public:
 
         // get frequency, assuring that it is >= threshold
         auto const f = std::max(items_[v].freq(), threshold_);
+        assert(f <= max_allowed_frequency_);
 
         if(items_[v].is_linked()) {
             // unlink from wherever it is currently linked at
@@ -161,8 +165,13 @@ public:
         // increment frequency
         items_[v].freq(f + 1);
 
+        // potentially set minimum frequency
+        if constexpr(track_min_) {
+            if(min_frequency_ == NIL) min_frequency_ = f + 1;
+        }
+
         // possibly renormalize
-        if(f + 1 == max_frequency_) {
+        if(f + 1 == max_allowed_frequency_) {
             renormalize();
         }
     }
@@ -191,6 +200,16 @@ public:
         assert(v <= end_);
 
         auto const f = std::max(items_[v].freq(), threshold_); // make sure frequency is at least threshold
+        if(f >= max_allowed_frequency_) {
+            // we are trying to directly insert something with a too large frequency
+            // renormalize until the frequency matches and then call link again
+            auto const& item = items_[v];
+            while(item.freq() >= max_allowed_frequency_) {
+                renormalize();
+            }
+            return;
+        }
+        assert(f <= max_allowed_frequency_);
 
         // make new head of bucket
         auto const u = bucket_head_[f];
@@ -203,6 +222,14 @@ public:
             items_[u].prev(v);
         }
         bucket_head_[f] = v;
+
+        if constexpr(track_min_) {
+            // f may be a new minimum
+            if(min_frequency_ == NIL || f < min_frequency_) {
+                min_frequency_ = f;
+            }
+            assert(min_frequency_ != NIL);
+        }
     }
 
     void unlink(Index const v) ALWAYS_INLINE {
@@ -221,15 +248,60 @@ public:
 
         // if v was the head of its bucket, update the bucket
         auto const f = items_[v].freq();
+        assert(f <= max_allowed_frequency_);
         if(bucket_head_[f] == v) {
             assert(x == NIL);
 
             // move bucket head to next (maybe NIL)
             bucket_head_[f] = y;
+
+            if constexpr(track_min_) {
+                if(f == min_frequency_ && y == NIL) {
+                    // the last item from the minimum bucket was removed
+                    // we need to find a new minimum
+                    min_frequency_ = NIL;
+
+                    // FIXME: in the worst case, v was the only item in the data structure at all
+                    // we then scan all possible frequencies despite guaranteed not to find anything
+                    // this could be resolved by tracking the number of linked items, or alternatively the current maximum frequency
+                    for(auto mf = f + 1; mf <= max_allowed_frequency_; mf++) {
+                        if(bucket_head_[mf] != NIL) {
+                            min_frequency_ = mf;
+                            break;
+                        }
+                    }
+                }
+            }
         }
     }
 
     Index threshold() const ALWAYS_INLINE {
         return threshold_;
+    }
+
+    // nb: the min frequency is NOT "threshold-corrected" in any way, and it is undefined if nothing was ever linked
+    Index min_frequency() ALWAYS_INLINE {
+        if constexpr(track_min_) {
+            assert(min_frequency_ != NIL);
+            return min_frequency_;
+        } else {
+            // not supported
+            assert(false);
+            return NIL;
+        }
+    }
+
+    Index extract_min() ALWAYS_INLINE {
+        if constexpr(track_min_) {
+            assert(min_frequency_ != NIL);
+            auto const v = bucket_head_[min_frequency_];
+            assert(v != NIL);
+            unlink(v);
+            return v;
+        } else {
+            // not supported
+            assert(false);
+            return NIL;
+        }
     }
 };

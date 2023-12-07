@@ -3,7 +3,7 @@
 
 #include <topk_prefixes_count_min.hpp>
 
-using Topk = TopKPrefixesCountMin<true>;
+using Topk = TopKPrefixesCountMin<>;
 
 struct Compressor : public TopkCompressor {
     uint64_t window = 8;
