@@ -1,15 +1,15 @@
 #include "compressor_base.hpp"
 #include "lzlike_decompress.hpp"
 
-#include <tdc/lz/factor.hpp>
+#include <lz77/factor.hpp>
 
 #include <iopp/util/output_iterator_base.hpp>
 
 #include <iterator>
 #include <vector>
 
-struct TdcCompressor : public CompressorBase {
-    using Factor = tdc::lz::Factor;
+struct Lz77Compressor : public CompressorBase {
+    using Factor = lz77::Factor;
 
     struct FactorWriter : iopp::OutputIteratorBase<Factor> {
         using IteratorBase = OutputIteratorBase<Factor>;
@@ -44,7 +44,7 @@ struct TdcCompressor : public CompressorBase {
         }
     };
 
-    TdcCompressor(std::string&& type_name, std::string&& desc) : CompressorBase(std::move(type_name), std::move(desc)) {
+    Lz77Compressor(std::string&& type_name, std::string&& desc) : CompressorBase(std::move(type_name), std::move(desc)) {
     }
 
     virtual void factorize(iopp::FileInputStream& in, FactorWriter& out) = 0;

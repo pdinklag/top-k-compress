@@ -7,8 +7,7 @@
 #include <limits>
 #include <utility>
 
-#include <tdc/util/math.hpp>
-
+#include <idiv_ceil.hpp>
 #include <word_packing.hpp>
 
 template <std::unsigned_integral Block = uintmax_t, size_t superblock_bit_exp_ = 12>
@@ -47,10 +46,10 @@ private:
 
 public:
     inline BinaryRank(std::unique_ptr<Block[]> &&bits, size_t const n) : bits_(std::move(bits)) {
-        size_t const num_blocks = tdc::idiv_ceil(n, block_size_);
+        size_t const num_blocks = idiv_ceil(n, block_size_);
         block_ranks_ = std::make_unique<Pack[]>(word_packing::num_packs_required<Pack>(num_blocks, superblock_bit_exp_));
 
-        size_t const num_superblocks = tdc::idiv_ceil(n, superblock_size_);
+        size_t const num_superblocks = idiv_ceil(n, superblock_size_);
         superblock_ranks_ = std::make_unique<uintmax_t[]>(num_superblocks);
 
         // construct

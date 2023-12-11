@@ -1,14 +1,14 @@
 add_executable(lz77-blockwise lz77_blockwise.cpp)
-target_link_libraries(lz77-blockwise topk word-packing)
+target_link_libraries(lz77-blockwise lz77 topk word-packing)
 
 add_library(topk INTERFACE)
-target_link_libraries(topk INTERFACE tdc ordered tlx unordered_dense pm-malloc rans)
+target_link_libraries(topk INTERFACE code iopp oocmd pm-malloc rans unordered_dense)
 
 add_executable(topk-lz77-cm topk_lz77_cm.cpp)
-target_link_libraries(topk-lz77-cm topk word-packing)
+target_link_libraries(topk-lz77-cm lz77 topk word-packing)
 
 add_executable(topk-lz77-mg topk_lz77_mg.cpp)
-target_link_libraries(topk-lz77-mg topk word-packing)
+target_link_libraries(topk-lz77-mg lz77 topk word-packing)
 
 add_executable(topk-lz78 topk_lz78.cpp)
 target_link_libraries(topk-lz78 topk)
@@ -28,13 +28,13 @@ message(STATUS "BUILD_ALL=${BUILD_ALL}")
 if(BUILD_ALL)
     # rarely used
     add_executable(lpf lpf.cpp)
-    target_link_libraries(lpf topk)
+    target_link_libraries(lpf lz77 topk)
     
     add_executable(lz78 lz78.cpp)
     target_link_libraries(lz78 topk)
 
-    add_executable(gzip-tdc archive/gzip_tdc.cpp)
-    target_link_libraries(gzip-tdc topk)
+    add_executable(gzip9 archive/gzip9.cpp)
+    target_link_libraries(gzip9 lz77 topk)
     
     # archive of older, no longer really relevant implementations
     add_executable(encode archive/encode.cpp)
@@ -53,17 +53,17 @@ if(BUILD_ALL)
     target_link_libraries(topk-weiner-lz77-fast topk)
 
     add_executable(topk-lzend archive/topk_lzend.cpp)
-    target_link_libraries(topk-lzend topk word-packing)
+    target_link_libraries(topk-lzend topk lz77 ordered word-packing)
 
     add_executable(lzend archive/lzend.cpp)
-    target_link_libraries(lzend topk word-packing)
+    target_link_libraries(lzend topk lz77 ordered word-packing)
 
     add_executable(lzend-kk archive/lzend_kk.cpp)
-    target_link_libraries(lzend-kk topk word-packing)
+    target_link_libraries(lzend-kk topk lz77 ordered word-packing)
 
     add_executable(lzend-kkl archive/lzend_kkl.cpp)
-    target_link_libraries(lzend-kkl topk word-packing)
+    target_link_libraries(lzend-kkl topk lz77 ordered word-packing)
 
     add_executable(lzend-blockwise archive/lzend_blockwise.cpp)
-    target_link_libraries(lzend-blockwise topk word-packing)
+    target_link_libraries(lzend-blockwise topk lz77 ordered word-packing)
 endif()

@@ -1,6 +1,3 @@
-[submodule "extlib/tudocomp2"]
-	path = extlib/tudocomp2
-	url = git@github.com:tudocomp/tudocomp2.git
 [submodule "extlib/unordered_dense"]
 	path = extlib/unordered_dense
 	url = https://github.com/martinus/unordered_dense.git
@@ -13,3 +10,18 @@
 [submodule "extlib/ordered"]
 	path = extlib/ordered
 	url = git@github.com:pdinklag/ordered.git
+[submodule "extlib/lz77"]
+	path = extlib/lz77
+	url = https://github.com/pdinklag/lz77.git
+[submodule "extlib/oocmd"]
+	path = extlib/oocmd
+	url = https://github.com/pdinklag/oocmd.git
+[submodule "extlib/iopp"]
+	path = extlib/iopp
+	url = https://github.com/pdinklag/iopp
+[submodule "extlib/pm"]
+	path = extlib/pm
+	url = https://github.com/pdinklag/pm.git
+[submodule "extlib/code"]
+	path = extlib/code
+	url = https://github.com/pdinklag/code.git

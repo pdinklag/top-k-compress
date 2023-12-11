@@ -10,8 +10,6 @@
 #include <ankerl/unordered_dense.h>
 #include <ankerl_memory_size.hpp>
 
-#include <tdc/util/concepts.hpp>
-
 #include <archive/fp_string_view.hpp>
 #include "lzend_parsing.hpp"
 

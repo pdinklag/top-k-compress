@@ -1,13 +1,13 @@
-#include "../tdc_compressor.hpp"
+#include "../lz77_compressor.hpp"
 
-#include <tdc/lz/gzip9_factorizer.hpp>
+#include <lz77/gzip9_factorizer.hpp>
 
-struct Compressor : public TdcCompressor {
-    Compressor() : TdcCompressor("gzip-tdc", "GZip provided by tudocomp2") {
+struct Compressor : public Lz77Compressor {
+    Compressor() : Lz77Compressor("gzip-tdc", "GZip provided by tudocomp2") {
     }
 
     virtual void init_result(pm::Result& result) override {
-        TdcCompressor::init_result(result);
+        Lz77Compressor::init_result(result);
         result.add("algo", "gzip-tdc");
     }
 
@@ -16,7 +16,7 @@ struct Compressor : public TdcCompressor {
     }
 
     virtual void factorize(iopp::FileInputStream& in, FactorWriter& out) override {
-        tdc::lz::Gzip9Factorizer factorizer;
+        lz77::Gzip9Factorizer factorizer;
         factorizer.factorize(in.begin(), in.end(), out);
     }
 };

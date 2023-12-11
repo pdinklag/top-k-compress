@@ -5,8 +5,6 @@
 #include <type_traits>
 #include <utility>
 
-#include <tdc/util/concepts.hpp>
-
 #include "wavelet_tree.hpp"
 
 template <std::integral Char = char>

@@ -1,6 +1,6 @@
 #include <display.hpp>
 
-#include <tdc/lz/lpf_factorizer.hpp>
+#include <lz77/lpf_factorizer.hpp>
 
 #include <block_coding.hpp>
 #include <pm/result.hpp>
@@ -68,9 +68,9 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold
     Topk topk(k - 1, sketch_columns);
 
     // initialize factorizer
-    tdc::lz::LPFFactorizer<> lpf;
+    lz77::LPFFactorizer lpf;
     lpf.min_reference_length(threshold);
-    std::vector<tdc::lz::Factor> factors;
+    std::vector<lz77::Factor> factors;
 
     // initialize buffers
     auto block_offs = 0;

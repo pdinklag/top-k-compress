@@ -1,5 +1,5 @@
 #include <trie_fcns.hpp>
-#include <tdc/lz/lpf_factorizer.hpp>
+#include <lz77/lpf_factorizer.hpp>
 
 #include <block_coding.hpp>
 
@@ -53,9 +53,9 @@ void compress_lz77_blockwise(In begin, In const& end, Out out, size_t const thre
     setup_encoding(enc, window_size);
 
     // initialize factorizer
-    tdc::lz::LPFFactorizer<> lpf;
+    lz77::LPFFactorizer lpf;
     lpf.min_reference_length(threshold);
-    std::vector<tdc::lz::Factor> factors;
+    std::vector<lz77::Factor> factors;
 
     // initialize buffers
     auto block_offs = 0;

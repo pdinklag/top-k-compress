@@ -1,16 +1,16 @@
-#include "tdc_compressor.hpp"
+#include "lz77_compressor.hpp"
 
-#include <tdc/lz/lpf_factorizer.hpp>
+#include <lz77/lpf_factorizer.hpp>
 
-struct Compressor : public TdcCompressor {
+struct Compressor : public Lz77Compressor {
     unsigned int threshold = 2;
 
-    Compressor() : TdcCompressor("lz77-lpf", "Computes the exact LZ77 factorization using the LPF array") {
+    Compressor() : Lz77Compressor("lz77-lpf", "Computes the exact LZ77 factorization using the LPF array") {
         param('t', "threshold", threshold, "The minimum reference length");
     }
 
     virtual void init_result(pm::Result& result) override {
-        TdcCompressor::init_result(result);
+        Lz77Compressor::init_result(result);
         result.add("algo", "lz77-lpf");
         result.add("threshold", threshold);
     }
@@ -24,7 +24,7 @@ struct Compressor : public TdcCompressor {
         std::string s;
         std::copy(in.begin(), in.end(), std::back_inserter(s));
 
-        tdc::lz::LPFFactorizer factorizer;
+        lz77::LPFFactorizer factorizer;
         factorizer.min_reference_length(threshold);
         factorizer.factorize(s.begin(), s.end(), out);
     }
