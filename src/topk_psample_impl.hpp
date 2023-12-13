@@ -25,7 +25,7 @@ constexpr uint64_t MAGIC =
 constexpr bool DEBUG = false;
 constexpr bool PROTOCOL = false;
 
-using TopK = TopKStrings<false, true>;
+using TopK = TopKStrings<false>;
 
 constexpr size_t rolling_fp_base = (1ULL << 16) - 39;
 
@@ -159,7 +159,7 @@ void topk_compress_psample(In begin, In const& end, Out out, size_t const window
                         assert(global_pos >= 0);
 
                         // lookup fingerprint in top-k structure
-                        TopK::Index slot;
+                        TopK::FilterIndex slot;
                         if(topk[l]->find(fp[l], len, slot)) {
                             // found it, make a reference
                             assert(src[l][slot] < size_t(global_pos));
@@ -179,7 +179,7 @@ void topk_compress_psample(In begin, In const& end, Out out, size_t const window
                     if(global_pos >= 0 && should_sample(fp[l], len >> sample_rsh)) {
                         ++num_sampled[l];
 
-                        TopK::Index slot;
+                        TopK::FilterIndex slot;
                         if(topk[l]->insert(fp[l], len, slot)) {
                             src[l][slot] = global_pos;
                             if constexpr(DEBUG) {

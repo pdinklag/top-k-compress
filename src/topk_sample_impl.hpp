@@ -25,7 +25,7 @@ constexpr uint64_t MAGIC =
 constexpr bool DEBUG = false;
 constexpr bool PROTOCOL = false;
 
-using TopK = TopKStrings<false, true>;
+using TopK = TopKStrings<false>;
 
 constexpr size_t rolling_fp_base = (1ULL << 16) - 39;
 
@@ -261,7 +261,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
             if(len > max_len)[[unlikely]] continue;
 
             // lookup and possibly encode reference
-            TopK::Index slot;
+            TopK::FilterIndex slot;
             if(pos >= next && b.topk[i]->find(b.fp[i], len, slot)) {
                 // we found it
                 // make sure it is far enough away
@@ -296,7 +296,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
 
                 assert(pos == q.pos);
                 
-                TopK::Index slot;
+                TopK::FilterIndex slot;
                 auto const frequent = b.topk[i]->insert(q.fp, len, slot);
                 if(frequent) {
                     b.ref[i][slot] = pos - len;
@@ -388,7 +388,7 @@ void topk_decompress_sample(In in, In const end, Out out) {
             auto const i = i_ - 1;
             size_t const len = b.get_len(i);
             if(pos >= len && b.is_sampling_pos(i)) {
-                TopK::Index slot;
+                TopK::FilterIndex slot;
                 auto const frequent = b.topk[i]->insert(b.fp[i], len, slot);
                 if(frequent) {
                     b.ref[i][slot] = pos - len;
