@@ -6,8 +6,6 @@
 #include <cstdint>
 #include <memory>
 
-#include <word_packing.hpp>
-
 #include <ankerl/unordered_dense.h>
 
 #include "count_min2.hpp"
@@ -80,20 +78,16 @@ private:
     FilterIndex size_;
 
     std::unique_ptr<FilterEntry[]> filter_;
-    std::unique_ptr<BitPack[]> used_;
     ankerl::unordered_dense::map<Hash, FilterIndex> filter_map_;
 
     SpaceSaving<FilterEntry, true> space_saving_;
     CountMin2<size_t> sketch_;
 
     bool find(Fingerprint const fp, Length const len, Hash& h, FilterIndex& out_slot) const {
-        auto used = word_packing::bit_accessor(used_.get());
-
         h = hash(fp, len);
         auto it = filter_map_.find(h);
         if(it != filter_map_.end()) {
             out_slot = it->second;
-            assert(used[out_slot]);
             return true;
         } else {
             return false;
@@ -102,8 +96,6 @@ private:
 
     void erase(FilterIndex const i) {
         assert(size_ > 0);
-        auto used = word_packing::bit_accessor(used_.get());
-        assert(used[i]);
         
         // sketch frequency delta
         auto const h = filter_[i].hash();
@@ -113,8 +105,6 @@ private:
         filter_map_.erase(h);
         --size_;
         assert(filter_map_.size() == size_);
-
-        used[i] = false;
     }
 
 public:
@@ -126,12 +116,6 @@ public:
           sketch_(sketch_columns) {
 
         filter_map_.reserve(k);
-
-        auto const num_packs = word_packing::num_packs_required<BitPack>(k, 1);
-        used_ = std::make_unique<BitPack[]>(num_packs);
-        for(size_t i = 0; i < num_packs; i++) {
-            used_[i] = 0;
-        }
 
         space_saving_.on_renormalize = [&](auto renormalize){
             // renormalize insert frequencies
@@ -167,15 +151,12 @@ public:
             return true;
         } else {
             // string is not frequent
-            auto used = word_packing::bit_accessor(used_.get());
-
             if(size_ < k_) {
                 // filter is not yet full, insert
                 slot = size_;
 
                 filter_[slot] = FilterEntry(h);
                 space_saving_.link(slot);
-                used[slot] = 1;
                 filter_map_.emplace(h, slot);
                 ++size_;
                 assert(filter_map_.size() == size_);
@@ -191,12 +172,10 @@ public:
                     slot = space_saving_.extract_min();
                     erase(slot);
                     assert(size_ == k_ - 1);
-                    assert(!used[slot]);
 
                     // move from sketch
                     filter_[slot] = FilterEntry(h, est);
                     space_saving_.link(slot);
-                    used[slot] = 1;
                     filter_map_.emplace(h, slot);
                     ++size_;
                     assert(size_ == k_);
