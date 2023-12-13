@@ -2,6 +2,7 @@
 #include "topk_sample_impl.hpp"
 
 #include <si_iec_literals.hpp>
+#include <topk_strings_count_min.hpp>
 
 struct Compressor : public CompressorBase {
     uint64_t k = 1'000'000;
@@ -39,11 +40,11 @@ struct Compressor : public CompressorBase {
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_compress_sample<false>(in.begin(), in.end(), iopp::StreamOutputIterator(out), sample_exp, len_exp_min, len_exp_max, min_dist, k, sketch_rows, sketch_columns, result);
+        topk_compress_sample<TopKStringsCountMin<>, false>(in.begin(), in.end(), iopp::StreamOutputIterator(out), sample_exp, len_exp_min, len_exp_max, min_dist, k, sketch_rows, sketch_columns, result);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_decompress_sample<false>(in.begin(), in.end(), iopp::StreamOutputIterator(out));
+        topk_decompress_sample<TopKStringsCountMin<>, false>(in.begin(), in.end(), iopp::StreamOutputIterator(out));
     }
 };
 

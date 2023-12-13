@@ -11,8 +11,8 @@
 #include "count_min2.hpp"
 #include "space_saving.hpp"
 
-template<bool hash_len_ = true>
-class TopKStrings {
+template<bool hash_len_ = false>
+class TopKStringsCountMin {
 public:
     using Fingerprint = uint64_t;
     using Length = uint32_t;
@@ -108,7 +108,7 @@ private:
     }
 
 public:
-    TopKStrings(FilterIndex const k, size_t const sketch_rows, size_t const sketch_columns)
+    TopKStringsCountMin(FilterIndex const k, size_t const sketch_rows, size_t const sketch_columns)
         : k_(k),
           size_(0),
           filter_(std::make_unique<FilterEntry[]>(k)),

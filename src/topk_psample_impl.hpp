@@ -6,7 +6,6 @@
 #include <vector>
 
 #include <display.hpp>
-#include <topk_strings.hpp>
 #include <rolling_karp_rabin.hpp>
 #include <write_bytes.hpp>
 
@@ -24,8 +23,6 @@ constexpr uint64_t MAGIC =
 
 constexpr bool DEBUG = false;
 constexpr bool PROTOCOL = false;
-
-using TopK = TopKStrings<false>;
 
 constexpr size_t rolling_fp_base = (1ULL << 16) - 39;
 
@@ -48,7 +45,7 @@ bool should_sample(uint64_t const fp, uint64_t const s) {
     return (fp & (s-1)) == 0;
 }
 
-template<iopp::InputIterator<char> In, std::output_iterator<char> Out>
+template<typename TopK, iopp::InputIterator<char> In, std::output_iterator<char> Out>
 void topk_compress_psample(In begin, In const& end, Out out, size_t const window, size_t const sample_rsh, size_t const len_exp_min, size_t const len_exp_max, size_t const min_dist, size_t const k, size_t const sketch_rows, size_t const sketch_columns, pm::Result& result) {
     assert(len_exp_max >= len_exp_min);
     assert(len_exp_max <= 31);
@@ -159,7 +156,7 @@ void topk_compress_psample(In begin, In const& end, Out out, size_t const window
                         assert(global_pos >= 0);
 
                         // lookup fingerprint in top-k structure
-                        TopK::FilterIndex slot;
+                        typename TopK::FilterIndex slot;
                         if(topk[l]->find(fp[l], len, slot)) {
                             // found it, make a reference
                             assert(src[l][slot] < size_t(global_pos));
@@ -179,7 +176,7 @@ void topk_compress_psample(In begin, In const& end, Out out, size_t const window
                     if(global_pos >= 0 && should_sample(fp[l], len >> sample_rsh)) {
                         ++num_sampled[l];
 
-                        TopK::FilterIndex slot;
+                        typename TopK::FilterIndex slot;
                         if(topk[l]->insert(fp[l], len, slot)) {
                             src[l][slot] = global_pos;
                             if constexpr(DEBUG) {
@@ -300,7 +297,7 @@ void topk_compress_psample(In begin, In const& end, Out out, size_t const window
     result.add("phrases_avg_ref_dist", std::round(100.0 * ((double)total_dist / (double)num_refs)) / 100.0);
 }
 
-template<iopp::InputIterator<char> In, std::output_iterator<char> Out>
+template<typename TopK, iopp::InputIterator<char> In, std::output_iterator<char> Out>
 void topk_decompress_psample(In in, In const end, Out out) {
     uint64_t const magic = read_uint(in, 8);
     if(magic != MAGIC) {

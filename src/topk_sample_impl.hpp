@@ -4,7 +4,6 @@
 #include <queue>
 
 #include <display.hpp>
-#include <topk_strings.hpp>
 #include <rolling_karp_rabin.hpp>
 
 #include <write_bytes.hpp>
@@ -25,8 +24,6 @@ constexpr uint64_t MAGIC =
 constexpr bool DEBUG = false;
 constexpr bool PROTOCOL = false;
 
-using TopK = TopKStrings<false>;
-
 constexpr size_t rolling_fp_base = (1ULL << 16) - 39;
 
 using Index = uint32_t;
@@ -34,7 +31,7 @@ constexpr size_t REF_BYTES = std::numeric_limits<Index>::digits >> 3;
 
 constexpr char SIGNAL = '$';
 
-template<bool use_sss>
+template<typename TopK, bool use_sss>
 struct Buffers {
     size_t sample;
     size_t max_len;
@@ -189,7 +186,7 @@ struct Buffers {
     }
 };
 
-template<bool use_sss, iopp::InputIterator<char> In, std::output_iterator<char> Out>
+template<typename TopK, bool use_sss, iopp::InputIterator<char> In, std::output_iterator<char> Out>
 void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_exp, size_t const len_exp_min, size_t const len_exp_max, size_t const min_dist, size_t const k, size_t const sketch_rows, size_t const sketch_columns, pm::Result& result) {
     assert(len_exp_max >= len_exp_min);
     assert(len_exp_max <= 31);
@@ -212,7 +209,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
     write_uint(out, sketch_columns, REF_BYTES);
 
     // init buffers
-    Buffers<use_sss> b(sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns);
+    Buffers<TopK, use_sss> b(sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns);
     
     struct SampleQueueEntry {
         size_t   pos;
@@ -261,7 +258,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
             if(len > max_len)[[unlikely]] continue;
 
             // lookup and possibly encode reference
-            TopK::FilterIndex slot;
+            typename TopK::FilterIndex slot;
             if(pos >= next && b.topk[i]->find(b.fp[i], len, slot)) {
                 // we found it
                 // make sure it is far enough away
@@ -296,7 +293,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
 
                 assert(pos == q.pos);
                 
-                TopK::FilterIndex slot;
+                typename TopK::FilterIndex slot;
                 auto const frequent = b.topk[i]->insert(q.fp, len, slot);
                 if(frequent) {
                     b.ref[i][slot] = pos - len;
@@ -358,7 +355,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
     result.add("phrases_avg_dist", std::round(100.0 * ((double)total_ref_dist / (double)num_refs)) / 100.0);
 }
 
-template<bool use_sss, iopp::InputIterator<char> In, std::output_iterator<char> Out>
+template<typename TopK, bool use_sss, iopp::InputIterator<char> In, std::output_iterator<char> Out>
 void topk_decompress_sample(In in, In const end, Out out) {
     uint64_t const magic = read_uint(in, 8);
     if(magic != MAGIC) {
@@ -375,7 +372,7 @@ void topk_decompress_sample(In in, In const end, Out out) {
     size_t const sketch_columns = read_uint(in, REF_BYTES);
 
     // init buffers
-    Buffers<use_sss> b(sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns);
+    Buffers<TopK, use_sss> b(sample_exp, len_exp_min, len_exp_max, k, sketch_rows, sketch_columns);
 
     // decode
     std::string s;
@@ -388,7 +385,7 @@ void topk_decompress_sample(In in, In const end, Out out) {
             auto const i = i_ - 1;
             size_t const len = b.get_len(i);
             if(pos >= len && b.is_sampling_pos(i)) {
-                TopK::FilterIndex slot;
+                typename TopK::FilterIndex slot;
                 auto const frequent = b.topk[i]->insert(b.fp[i], len, slot);
                 if(frequent) {
                     b.ref[i][slot] = pos - len;
