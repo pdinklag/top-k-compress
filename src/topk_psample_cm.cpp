@@ -14,7 +14,7 @@ struct Compressor : public CompressorBase {
     uint64_t len_exp_max = 6;
     uint64_t min_dist = 0;
 
-    Compressor() : CompressorBase("topk-sample", "Samples strings in expectedly regular synchronizing intervals and uses them as a top-k dictionary") {
+    Compressor() : CompressorBase("topk-psample-cm", "Samples strings in expectedly regular synchronizing intervals and uses them as a top-k dictionary") {
         param('k', "num-frequent", k, "The number of frequent substrings to maintain.");
         param('r', "sketch-rows", sketch_rows, "The number of rows in the Count-Min sketch.");
         param('c', "sketch-columns", sketch_columns, "The total number of columns in each Count-Min row.");
@@ -26,7 +26,7 @@ struct Compressor : public CompressorBase {
     }
 
     virtual void init_result(pm::Result& result) override {
-        result.add("algo", "topk-psample");
+        result.add("algo", "topk-psample-cm");
         result.add("k", k);
         result.add("sketch_columns", sketch_columns);
         result.add("sketch_rows", sketch_rows);
@@ -39,7 +39,7 @@ struct Compressor : public CompressorBase {
     }
 
     virtual std::string file_ext() override {
-        return ".topkpsample";
+        return ".topkpsamplecm";
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {

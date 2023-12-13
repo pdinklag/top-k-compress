@@ -8,11 +8,10 @@
 
 #include <ankerl/unordered_dense.h>
 
-#include "count_min2.hpp"
 #include "space_saving.hpp"
 
 template<bool hash_len_ = false>
-class TopKStringsCountMin {
+class TopKStringsMisraGries {
 public:
     using Fingerprint = uint64_t;
     using Length = uint32_t;
@@ -21,7 +20,7 @@ public:
 
 private:
     struct FilterEntry;
-    static constexpr auto NIL = SpaceSaving<FilterEntry, true>::NIL;
+    static constexpr auto NIL = SpaceSaving<FilterEntry>::NIL;
 
     using Hash = uint64_t;
     using BitPack = uint64_t;
@@ -41,18 +40,14 @@ private:
         private:
             Hash hash_;
             FilterIndex freq_;
-            FilterIndex insert_freq_;
             FilterIndex next_;
             FilterIndex prev_;
 
         public:
-            FilterEntry() : hash_(0), freq_(0), prev_(NIL), next_(NIL), insert_freq_(0) {
+            FilterEntry() : freq_(0), prev_(NIL), next_(NIL) {
             }
 
-            FilterEntry(Hash const h) : hash_(h), freq_(1), prev_(NIL), next_(NIL), insert_freq_(0) {
-            }
-
-            FilterEntry(Hash const h, FilterIndex const freq) : hash_(h), freq_(freq), prev_(NIL), next_(NIL), insert_freq_(freq) {
+            FilterEntry(Hash const hash, FilterIndex const freq) : hash_(hash), freq_(freq), prev_(NIL), next_(NIL) {
             }
 
             // SpaceSavingItem
@@ -66,11 +61,8 @@ private:
             void prev(FilterIndex const x) ALWAYS_INLINE { prev_ = x; }
             void next(FilterIndex const x) ALWAYS_INLINE { next_ = x; }
 
-            // additional data
-            FilterIndex insert_freq() const ALWAYS_INLINE { return insert_freq_; }
-            void insert_freq(FilterIndex const f) ALWAYS_INLINE { insert_freq_ = f; }
-
             Hash hash() const ALWAYS_INLINE { return hash_; }
+            void hash(Hash const hash) ALWAYS_INLINE { hash_ = hash; }
     } __attribute__((packed));
 
     FilterIndex k_;
@@ -79,9 +71,8 @@ private:
     std::unique_ptr<FilterEntry[]> filter_;
     ankerl::unordered_dense::map<Hash, FilterIndex> filter_map_;
 
-    SpaceSaving<FilterEntry, true> space_saving_;
-    CountMin2<size_t> sketch_;
-
+    SpaceSaving<FilterEntry> space_saving_;
+    
     bool find(Fingerprint const fp, Length const len, Hash& h, FilterIndex& out_slot) const {
         h = hash(fp, len);
         auto it = filter_map_.find(h);
@@ -95,41 +86,22 @@ private:
 
     void erase(FilterIndex const i) {
         assert(size_ > 0);
-        
-        // sketch frequency delta
-        auto const h = filter_[i].hash();
-        sketch_.increment(h, filter_[i].freq() - filter_[i].insert_freq());
 
         // remove from table
+        auto const h = filter_[i].hash();
         filter_map_.erase(h);
         --size_;
         assert(filter_map_.size() == size_);
     }
 
 public:
-    TopKStringsCountMin(FilterIndex const k, size_t const sketch_rows, size_t const sketch_columns)
+    TopKStringsMisraGries(FilterIndex const k, size_t const sketch_rows, size_t const sketch_columns)
         : k_(k),
           size_(0),
           filter_(std::make_unique<FilterEntry[]>(k)),
-          space_saving_(filter_.get(), 0, k-1, k),
-          sketch_(sketch_columns) {
+          space_saving_(filter_.get(), 0, k-1, sketch_columns-1) {
 
         filter_map_.reserve(k);
-
-        space_saving_.on_renormalize = [&](auto renormalize){
-            // renormalize insert frequencies
-            for(size_t i = 0; i < size_; i++) {
-                auto& e = filter_[i];
-                e.insert_freq(renormalize(e.insert_freq()));
-            }
-
-            // renormalize sketch entries
-            auto const num_entries = sketch_.num_columns() * sketch_.num_rows();
-            auto* table = sketch_.table();
-            for(size_t i = 0; i < num_entries; i++) {
-                table[i] = renormalize(table[i]);
-            }
-        };
     }
 
     FilterIndex k() const { return k_; }
@@ -154,32 +126,29 @@ public:
                 // filter is not yet full, insert
                 slot = size_;
 
-                filter_[slot] = FilterEntry(h);
+                filter_[slot] = FilterEntry(h, 1);
                 space_saving_.link(slot);
                 filter_map_.emplace(h, slot);
                 ++size_;
                 assert(filter_map_.size() == size_);
                 return true;
             } else {
-                // filter is full, sketch
-                auto const est = sketch_.increment_and_estimate(h, 1);
-                auto const swap = (est > space_saving_.min_frequency());
-                if(swap) {
-                    // estimated frequency is higher than minimum, swap!
-
-                    // erase minimum
-                    slot = space_saving_.extract_min();
+                // filter is full, try to recycle garbage
+                if(space_saving_.get_garbage(slot)) {
+                    // got something, recycle
                     erase(slot);
                     assert(size_ == k_ - 1);
 
-                    // move from sketch
-                    filter_[slot] = FilterEntry(h, est);
-                    space_saving_.link(slot);
+                    filter_[slot].hash(h);
+                    space_saving_.increment(slot);
                     filter_map_.emplace(h, slot);
                     ++size_;
                     assert(size_ == k_);
                     assert(filter_map_.size() == size_);
                     return true;
+                } else {
+                    // nothing to recycle, decrement all
+                    space_saving_.decrement_all();
                 }
             }
         }

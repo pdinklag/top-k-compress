@@ -16,8 +16,14 @@ target_link_libraries(topk-lz78 topk)
 add_executable(topk-psample-cm topk_psample_cm.cpp)
 target_link_libraries(topk-psample-cm topk)
 
+add_executable(topk-psample-mg topk_psample_mg.cpp)
+target_link_libraries(topk-psample-mg topk)
+
 add_executable(topk-sample-cm topk_sample_cm.cpp)
 target_link_libraries(topk-sample-cm topk)
+
+add_executable(topk-sample-mg topk_sample_mg.cpp)
+target_link_libraries(topk-sample-mg topk)
 
 add_executable(topk-sel topk_sel.cpp)
 target_link_libraries(topk-sel topk)

@@ -2,7 +2,7 @@
 #include "topk_sample_impl.hpp"
 
 #include <si_iec_literals.hpp>
-#include <topk_strings_count_min.hpp>
+#include <topk_strings_misra_gries.hpp>
 
 struct Compressor : public CompressorBase {
     uint64_t k = 1'000'000;
@@ -13,7 +13,7 @@ struct Compressor : public CompressorBase {
     uint64_t len_exp_max = 6;
     uint64_t min_dist = 0;
 
-    Compressor() : CompressorBase("topk-sample-cm", "Samples strings in expectedly regular synchronizing intervals and uses them as a top-k dictionary") {
+    Compressor() : CompressorBase("topk-sample-mg", "Samples strings in expectedly regular synchronizing intervals and uses them as a top-k dictionary") {
         param('k', "num-frequent", k, "The number of frequent substrings to maintain.");
         param('r', "sketch-rows", sketch_rows, "The number of rows in the Count-Min sketch.");
         param('c', "sketch-columns", sketch_columns, "The total number of columns in each Count-Min row.");
@@ -24,7 +24,7 @@ struct Compressor : public CompressorBase {
     }
 
     virtual void init_result(pm::Result& result) override {
-        result.add("algo", "topk-sample-cm");
+        result.add("algo", "topk-sample-mg");
         result.add("k", k);
         result.add("sketch_columns", sketch_columns);
         result.add("sketch_rows", sketch_rows);
@@ -36,15 +36,15 @@ struct Compressor : public CompressorBase {
     }
 
     virtual std::string file_ext() override {
-        return ".topksamplecm";
+        return ".topksamplemg";
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_compress_sample<TopKStringsCountMin<>, false>(in.begin(), in.end(), iopp::StreamOutputIterator(out), sample_exp, len_exp_min, len_exp_max, min_dist, k, sketch_rows, sketch_columns, result);
+        topk_compress_sample<TopKStringsMisraGries<>, false>(in.begin(), in.end(), iopp::StreamOutputIterator(out), sample_exp, len_exp_min, len_exp_max, min_dist, k, sketch_rows, sketch_columns, result);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_decompress_sample<TopKStringsCountMin<>, false>(in.begin(), in.end(), iopp::StreamOutputIterator(out));
+        topk_decompress_sample<TopKStringsMisraGries<>, false>(in.begin(), in.end(), iopp::StreamOutputIterator(out));
     }
 };
 
