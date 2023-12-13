@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../min_pq.hpp"
+#include "min_pq.hpp"
 #include "../trie_node.hpp"
 
 template<std::unsigned_integral NodeIndex = uint32_t>
