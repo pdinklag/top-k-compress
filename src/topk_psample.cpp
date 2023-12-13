@@ -42,6 +42,12 @@ struct Compressor : public CompressorBase {
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
+        auto const m = 1ULL << len_exp_max;
+        if(window < m) {
+            std::cerr << "window too small -- must at least fit the longest considered string length" << std::endl;
+            std::abort();
+        }
+
         topk_compress_psample(in.begin(), in.end(), iopp::StreamOutputIterator(out), window, sample_rsh, len_exp_min, len_exp_max, min_dist, k, sketch_rows, sketch_columns, result);
     }
     
