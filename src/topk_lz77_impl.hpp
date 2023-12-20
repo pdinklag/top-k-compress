@@ -5,7 +5,7 @@
 #include <block_coding.hpp>
 #include <pm/result.hpp>
 
-#include <valgrind/callgrind.h>
+#include <valgrind.hpp>
 
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
