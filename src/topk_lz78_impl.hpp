@@ -1,4 +1,3 @@
-#include <topk_prefixes_count_min.hpp>
 #include <block_coding.hpp>
 #include <pm/result.hpp>
 
@@ -14,8 +13,6 @@ constexpr uint64_t MAGIC =
 
 constexpr bool PROTOCOL = false;
 
-using Topk = TopKPrefixesCountMin<>;
-
 constexpr TokenType TOK_TRIE_REF = 0;
 constexpr TokenType TOK_LITERAL = 1;
 
@@ -24,7 +21,7 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k) {
     enc.register_huffman();   // TOK_LITERAL
 }
 
-template<iopp::InputIterator<char> In, iopp::BitSink Out>
+template<typename Topk, iopp::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     out.write(MAGIC, 64);
     out.write(k, 64);
@@ -45,7 +42,7 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
     BlockEncoder enc(out, block_size);
     setup_encoding(enc, k);
 
-    Topk::StringState s = topk.empty_string();
+    auto s = topk.empty_string();
     auto handle = [&](char const c) {
         auto next = topk.extend(s, c);
         if(!next.frequent) {
@@ -88,7 +85,7 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
     result.add("phrases_avg_dist", std::round(100.0 * ((double)total_ref / (double)num_phrases)) / 100.0);
 }
 
-template<iopp::BitSource In, std::output_iterator<char> Out>
+template<typename Topk, iopp::BitSource In, std::output_iterator<char> Out>
 void topk_decompress_lz78(In in, Out out) {
     // decode header
     uint64_t const magic = in.read(64);

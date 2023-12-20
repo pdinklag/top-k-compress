@@ -10,8 +10,11 @@ target_link_libraries(topk-lz77-cm lz77 topk word-packing)
 add_executable(topk-lz77-mg topk_lz77_mg.cpp)
 target_link_libraries(topk-lz77-mg lz77 topk word-packing)
 
-add_executable(topk-lz78 topk_lz78.cpp)
-target_link_libraries(topk-lz78 topk)
+add_executable(topk-lz78-cm topk_lz78_cm.cpp)
+target_link_libraries(topk-lz78-cm topk)
+
+add_executable(topk-lz78-mg topk_lz78_mg.cpp)
+target_link_libraries(topk-lz78-mg topk)
 
 add_executable(topk-psample-cm topk_psample_cm.cpp)
 target_link_libraries(topk-psample-cm topk)
