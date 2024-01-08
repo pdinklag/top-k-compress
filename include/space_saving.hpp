@@ -150,6 +150,11 @@ public:
         auto const f = std::max(items_[v].freq(), threshold_);
         assert(f <= max_allowed_frequency_);
 
+        if(f == max_allowed_frequency_) {
+            // this item already has the maximum frequency, don't increment
+            return;
+        }
+
         if(items_[v].is_linked()) {
             // unlink from wherever it is currently linked at
             unlink(v);
@@ -176,9 +181,11 @@ public:
         }
 
         // possibly renormalize
+        /*
         if(f + 1 == max_allowed_frequency_) {
             renormalize();
         }
+        */
     }
 
     void decrement_all() ALWAYS_INLINE {
@@ -198,6 +205,11 @@ public:
 
         // then simply increment the threshold
         ++threshold_;
+
+        // possibly renormalize
+        if(threshold_ >= max_allowed_frequency_ / 2) {
+            renormalize();
+        }
     }
 
     void link(Index const v) ALWAYS_INLINE {
