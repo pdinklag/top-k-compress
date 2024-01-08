@@ -183,6 +183,6 @@ public:
 
     void print_debug_info() const {
         trie_.print_debug_info();
-        std::cout << "# DEBUG: misra-gries2" << ", threshold=" << space_saving_.threshold() << std::endl;
+        space_saving_.print_debug_info();
     }
 };

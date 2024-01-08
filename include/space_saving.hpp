@@ -50,6 +50,8 @@ private:
     Index max_allowed_frequency_;
     Index min_frequency_;
 
+    Index num_renormalize_;
+
     void preprend_list(Index const old_head, Index const new_head) {
         if(old_head != NIL) {
             assert(old_head >= beg_);
@@ -104,13 +106,16 @@ private:
 
         // callback
         if(on_renormalize) on_renormalize(renormalize);
+
+        // keep count of renormalizations
+        ++num_renormalize_;
     }
 
 public:
     std::function<void(RenormalizeFunc)> on_renormalize;
 
     inline SpaceSaving(T* items, Index const begin, Index const end, Index const max_allowed_frequency)
-        : items_(items), beg_(begin), end_(end), threshold_(0), min_frequency_(NIL), max_allowed_frequency_(max_allowed_frequency) {
+        : items_(items), beg_(begin), end_(end), threshold_(0), min_frequency_(NIL), max_allowed_frequency_(max_allowed_frequency), num_renormalize_(0) {
 
         assert(beg_ <= end_);
         assert(max_allowed_frequency_ > 1);
@@ -303,5 +308,9 @@ public:
             assert(false);
             return NIL;
         }
+    }
+
+    void print_debug_info() const {
+        std::cout << "# DEBUG: space-saving << threshold=" << threshold_ << ", num_renormalize=" << num_renormalize_ << std::endl;
     }
 };

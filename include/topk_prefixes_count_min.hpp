@@ -285,7 +285,7 @@ public:
     }
 
     void print_debug_info() const {
-        assert(space_saving_.threshold() == 0);
         trie_.print_debug_info();
+        space_saving_.print_debug_info();
     }
 };
