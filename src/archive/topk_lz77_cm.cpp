@@ -1,7 +1,7 @@
-#include "topk_compressor.hpp"
-#include "topk_lz77_impl.hpp"
+#include "../topk_compressor.hpp"
+#include "../topk_lz77_impl.hpp"
 
-#include <topk_prefixes_count_min.hpp>
+#include <archive/cm/topk_prefixes_count_min.hpp>
 
 using Topk = TopKPrefixesCountMin<>;
 

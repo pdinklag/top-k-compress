@@ -1,7 +1,7 @@
-#include "topk_compressor.hpp"
-#include "topk_lz78_impl.hpp"
+#include "../topk_compressor.hpp"
+#include "../topk_lz78_impl.hpp"
 
-#include <topk_prefixes_count_min.hpp>
+#include <archive/cm/topk_prefixes_count_min.hpp>
 
 struct Compressor : public TopkCompressor {
     uint64_t ignored_ = 0;

@@ -8,8 +8,8 @@
 
 #include <ankerl/unordered_dense.h>
 
-#include "count_min2.hpp"
-#include "space_saving.hpp"
+#include "../../space_saving.hpp"
+#include "../count_min2.hpp"
 
 template<bool hash_len_ = false>
 class TopKStringsCountMin {

@@ -1,8 +1,8 @@
-#include "compressor_base.hpp"
-#include "topk_psample_impl.hpp"
+#include "../compressor_base.hpp"
+#include "../topk_psample_impl.hpp"
 
 #include <si_iec_literals.hpp>
-#include <topk_strings_count_min.hpp>
+#include <archive/cm/topk_strings_count_min.hpp>
 
 struct Compressor : public CompressorBase {
     uint64_t k = 1'000'000;

@@ -10,13 +10,14 @@
 #include <random>
 #include <vector>
 
-#include "always_inline.hpp"
-#include "trie.hpp"
-#include "trie_node.hpp"
-#include "count_min2.hpp"
-#include "rolling_karp_rabin.hpp"
-#include "display.hpp"
-#include "space_saving.hpp"
+#include "../../always_inline.hpp"
+#include "../../trie.hpp"
+#include "../../trie_node.hpp"
+#include "../../display.hpp"
+#include "../../space_saving.hpp"
+#include "../../rolling_karp_rabin.hpp"
+
+#include "../count_min2.hpp"
 
 template<std::unsigned_integral TrieNodeIndex = uint32_t>
 class TopKPrefixesCountMin {

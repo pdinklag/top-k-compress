@@ -4,26 +4,14 @@ target_link_libraries(lz77-blockwise lz77 topk word-packing)
 add_library(topk INTERFACE)
 target_link_libraries(topk INTERFACE code iopp oocmd pm-malloc rans unordered_dense)
 
-add_executable(topk-lz77-cm topk_lz77_cm.cpp)
-target_link_libraries(topk-lz77-cm lz77 topk word-packing)
-
 add_executable(topk-lz77-mg topk_lz77_mg.cpp)
 target_link_libraries(topk-lz77-mg lz77 topk word-packing)
-
-add_executable(topk-lz78-cm topk_lz78_cm.cpp)
-target_link_libraries(topk-lz78-cm topk)
 
 add_executable(topk-lz78-mg topk_lz78_mg.cpp)
 target_link_libraries(topk-lz78-mg topk)
 
-add_executable(topk-psample-cm topk_psample_cm.cpp)
-target_link_libraries(topk-psample-cm topk)
-
 add_executable(topk-psample-mg topk_psample_mg.cpp)
 target_link_libraries(topk-psample-mg topk)
-
-add_executable(topk-sample-cm topk_sample_cm.cpp)
-target_link_libraries(topk-sample-cm topk)
 
 add_executable(topk-sample-mg topk_sample_mg.cpp)
 target_link_libraries(topk-sample-mg topk)
@@ -45,6 +33,19 @@ if(BUILD_ALL)
     add_executable(gzip9 archive/gzip9.cpp)
     target_link_libraries(gzip9 lz77 topk)
     
+    # Count-Min variants
+    add_executable(topk-lz77-cm archive/topk_lz77_cm.cpp)
+    target_link_libraries(topk-lz77-cm lz77 topk word-packing)
+    
+    add_executable(topk-lz78-cm archive/topk_lz78_cm.cpp)
+    target_link_libraries(topk-lz78-cm topk)
+    
+    add_executable(topk-psample-cm archive/topk_psample_cm.cpp)
+    target_link_libraries(topk-psample-cm topk)
+    
+    add_executable(topk-sample-cm archive/topk_sample_cm.cpp)
+    target_link_libraries(topk-sample-cm topk)
+
     # archive of older, no longer really relevant implementations
     add_executable(encode archive/encode.cpp)
     target_link_libraries(encode topk)
