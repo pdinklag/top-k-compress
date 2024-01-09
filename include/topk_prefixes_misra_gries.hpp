@@ -57,7 +57,7 @@ private:
 
     size_t k_;
 
-    Trie<NodeData, true> trie_;
+    Trie<NodeData> trie_;
     SpaceSaving<NodeData> space_saving_;
 
     bool insert(TrieNodeIndex const parent, char const label, TrieNodeIndex& out_node) ALWAYS_INLINE {

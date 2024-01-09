@@ -13,7 +13,7 @@
 #include "always_inline.hpp"
 #include "trie_concepts.hpp"
 
-template<trie_node Node, bool allow_orphans_ = false>
+template<trie_node Node>
 class Trie {
 private:
     using Character = typename Node::Character;
@@ -76,14 +76,13 @@ public:
     // extract node from trie and return parent
     NodeIndex extract(NodeIndex const node) {
         assert(!is_root(node));
-        if constexpr(!allow_orphans_) assert(is_leaf(node)); // cannot extract an inner node
+        assert(is_leaf(node)); // cannot extract an inner node
 
         auto& v = nodes_[node];
 
         // orphan node
         auto const parent = v.parent;
-        if constexpr(!allow_orphans_) assert(is_valid(parent));
-        if(!allow_orphans_ || is_valid(parent)) {
+        if(is_valid(parent)) {
             auto const label = v.inlabel;
             assert(is_child_of(node, parent));
             nodes_[parent].children.remove(label);
@@ -93,16 +92,6 @@ public:
             assert(!is_child_of(node, parent));
         }
         v.parent = NIL;
-
-        if constexpr(allow_orphans_) {
-            // orphan all children
-            for(size_t i = 0; i < v.children.size(); i++) {
-                nodes_[v.children[i]].parent = NIL;
-            }
-
-            // clear children
-            v.children.clear();
-        }
 
         return parent;
     }
