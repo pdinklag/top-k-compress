@@ -9,6 +9,7 @@
 #include <memory>
 #include <random>
 #include <vector>
+#include <unordered_map>
 
 #include "always_inline.hpp"
 #include "trie.hpp"
@@ -179,6 +180,33 @@ public:
 
         out_node = v;
         return dv;
+    }
+
+private:
+    template<typename M>
+    void get_string_freq_mapping(TrieNodeIndex const v, std::string const& prefix, M& out_map) {
+        auto const& node = trie_.node(v);
+        auto s = prefix + node.inlabel;
+        out_map.emplace(s, trie_.freq());
+
+        for(size_t i = 0; i < node.children.size(); i++) {
+            get_string_freq_mapping(node.children[i], s, out_map);
+        }
+    }
+
+public:
+    auto get_string_freq_mapping() const {
+        std::unordered_map<std::string, TrieNodeIndex> map;
+        map.reserve(k_);
+
+        // get mapping recursively for children of root
+        std::string mt;
+        auto const& root = trie_.node(trie_.root());
+        for(size_t i = 0; i < root.children.size(); i++) {
+            get_string_freq_mapping(root.children[i], mt, map);
+        }
+
+        return map;
     }
 
     void print_debug_info() const {
