@@ -1,6 +1,9 @@
 add_executable(lz77-blockwise lz77_blockwise.cpp)
 target_link_libraries(lz77-blockwise lz77 topk word-packing)
 
+add_executable(lz78 lz78.cpp)
+target_link_libraries(lz78 topk)
+
 add_library(topk INTERFACE)
 target_link_libraries(topk INTERFACE code iopp oocmd pm-malloc rans unordered_dense)
 
@@ -23,9 +26,6 @@ if(BUILD_ALL)
     # rarely used
     add_executable(lpf lpf.cpp)
     target_link_libraries(lpf lz77 topk)
-    
-    add_executable(lz78 lz78.cpp)
-    target_link_libraries(lz78 topk)
 
     add_executable(gzip9 archive/gzip9.cpp)
     target_link_libraries(gzip9 lz77 topk)
