@@ -16,9 +16,6 @@ target_link_libraries(topk-psample-mg topk)
 add_executable(topk-sample-mg topk_sample_mg.cpp)
 target_link_libraries(topk-sample-mg topk)
 
-add_executable(topk-sel topk_sel.cpp)
-target_link_libraries(topk-sel topk)
-
 option(BUILD_ALL "build ALL algorithms, even those no longer relevant" OFF)
 message(STATUS "BUILD_ALL=${BUILD_ALL}")
 
@@ -73,4 +70,7 @@ if(BUILD_ALL)
 
     add_executable(lzend-blockwise archive/lzend_blockwise.cpp)
     target_link_libraries(lzend-blockwise topk lz77 ordered word-packing)
+
+    add_executable(topk-sel topk_sel.cpp)
+    target_link_libraries(topk-sel topk)
 endif()
