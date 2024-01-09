@@ -13,7 +13,6 @@
 #include "always_inline.hpp"
 #include "trie.hpp"
 #include "trie_node.hpp"
-#include "truncated_trie.hpp"
 #include "count_min2.hpp"
 #include "rolling_karp_rabin.hpp"
 #include "display.hpp"
