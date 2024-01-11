@@ -135,6 +135,7 @@ public:
                 data_.ext.links[i] = other.data_.ext.links[i];
             }
         }
+        return *this;
     }
 
     TrieEdgeArray(TrieEdgeArray&& other) { size_ = 0; *this = std::move(other); }
