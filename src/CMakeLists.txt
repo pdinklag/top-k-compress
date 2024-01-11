@@ -10,6 +10,9 @@ target_link_libraries(topk INTERFACE code iopp oocmd pm-malloc rans unordered_de
 add_executable(topk-lz77-mg topk_lz77_mg.cpp)
 target_link_libraries(topk-lz77-mg lz77 topk word-packing)
 
+add_executable(topk-plz77-mg topk_plz77_mg.cpp)
+target_link_libraries(topk-plz77-mg lz77 topk word-packing)
+
 add_executable(topk-lz78-mg topk_lz78_mg.cpp)
 target_link_libraries(topk-lz78-mg topk)
 
