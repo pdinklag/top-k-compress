@@ -100,6 +100,9 @@ private:
     }
 
 public:
+    inline TopKPrefixesMisraGries() : k_(0) {
+    }
+
     inline TopKPrefixesMisraGries(size_t const k, size_t const sketch_columns, size_t const fp_window_size = 8)
         : trie_(k),
           k_(k),
@@ -110,6 +113,21 @@ public:
 
         // make all of them garbage (except the root)
         space_saving_.init_garbage();
+    }
+
+    TopKPrefixesMisraGries(TopKPrefixesMisraGries&&) = default;
+    TopKPrefixesMisraGries& operator=(TopKPrefixesMisraGries&&) = default;
+
+    TopKPrefixesMisraGries(TopKPrefixesMisraGries const& other) {
+        *this = other;
+    }
+
+    TopKPrefixesMisraGries& operator=(TopKPrefixesMisraGries const& other) {
+        k_ = other.k_;
+        trie_ = other.trie_;
+        space_saving_ = other.space_saving_;
+        space_saving_.set_items(trie_.nodes());
+        return *this;
     }
 
     struct StringState {

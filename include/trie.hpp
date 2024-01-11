@@ -42,11 +42,31 @@ private:
     #endif
 
 public:
+    Trie() : capacity_(0), size_(0) {
+    }
+
     Trie(NodeIndex const capacity) : capacity_(capacity), size_(1) {
         nodes_ = std::make_unique<Node[]>(capacity_);
         for(NodeIndex i = 0; i < capacity_; i++) {
             nodes_[i] = Node(NIL, {});
         }
+    }
+
+    Trie(Trie&&) = default;
+    Trie& operator=(Trie&&) = default;
+
+    Trie(Trie const& other) {
+        *this = other;
+    }
+
+    Trie& operator=(Trie const& other) {
+        capacity_ = other.capacity_;
+        size_ = other.size_;
+        nodes_ = std::make_unique<Node[]>(capacity_);
+        for(NodeIndex i = 0; i < capacity_; i++) {
+            nodes_[i] = other.nodes_[i];
+        }
+        return *this;
     }
 
     void fill() {

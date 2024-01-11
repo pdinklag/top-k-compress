@@ -118,8 +118,24 @@ public:
         }
     }
 
-    TrieEdgeArray(TrieEdgeArray const&) = delete;
-    TrieEdgeArray& operator=(TrieEdgeArray const&) = delete;
+    TrieEdgeArray(TrieEdgeArray const& other) {
+        *this = other;
+    }
+
+    TrieEdgeArray& operator=(TrieEdgeArray const& other) {
+        clear();
+
+        size_ = other.size_;
+        data_ = other.data_;
+
+        if(!other.is_inline()) {
+            // deep copy of links
+            data_.ext.links = new NodeIndex[capacity_for(size_)];
+            for(size_t i = 0; i < size_; i++) {
+                data_.ext.links[i] = other.data_.ext.links[i];
+            }
+        }
+    }
 
     TrieEdgeArray(TrieEdgeArray&& other) { size_ = 0; *this = std::move(other); }
     TrieEdgeArray& operator=(TrieEdgeArray&& other) {

@@ -114,7 +114,10 @@ private:
 public:
     std::function<void(RenormalizeFunc)> on_renormalize;
 
-    inline SpaceSaving(T* items, Index const begin, Index const end, Index const max_allowed_frequency)
+    SpaceSaving() : items_(nullptr), threshold_(0) {
+    }
+
+    SpaceSaving(T* items, Index const begin, Index const end, Index const max_allowed_frequency)
         : items_(items), beg_(begin), end_(end), threshold_(0), min_frequency_(NIL), max_allowed_frequency_(max_allowed_frequency), num_renormalize_(0) {
 
         assert(beg_ <= end_);
@@ -125,6 +128,34 @@ public:
         for(Index f = 0; f <= max_allowed_frequency_; f++) {
             bucket_head_[f] = NIL;
         }
+    }
+
+    SpaceSaving(SpaceSaving&&) = default;
+    SpaceSaving& operator=(SpaceSaving&&) = default;
+
+    SpaceSaving(SpaceSaving const& other) {
+        *this = other;
+    }
+
+    SpaceSaving& operator=(SpaceSaving const& other) {
+        items_ = other.items_;
+        beg_ = other.beg_;
+        end_ = other.end_;
+        threshold_ = other.threshold_;
+        max_allowed_frequency_ = other.max_allowed_frequency_;
+        min_frequency_ = other.min_frequency_;
+        num_renormalize_ = 0;
+
+        bucket_head_ = std::make_unique<Index[]>(max_allowed_frequency_ + 1);
+        for(Index f = 0; f <= max_allowed_frequency_; f++) {
+            bucket_head_[f] = other.bucket_head_[f];
+        }
+
+        return *this;
+    }
+
+    void set_items(T* items) {
+        items_ = items;
     }
 
     void init_garbage() {
