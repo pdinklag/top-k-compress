@@ -78,6 +78,8 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
 
     enc.flush();
     
+    // stats
+    topk.print_debug_info();
     result.add("phrases_total", num_phrases);
     result.add("phrases_longest", longest);
     result.add("phrases_furthest", furthest);
