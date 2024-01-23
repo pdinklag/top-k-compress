@@ -3,7 +3,7 @@
 #include <iopp/concepts.hpp>
 
 #include <block_coding.hpp>
-#include <trie_fcns.hpp>
+#include <simple_trie.hpp>
 
 constexpr uint64_t MAGIC =
     ((uint64_t)'L') << 56 |
@@ -30,10 +30,10 @@ void lz78_compress(In begin, In const& end, Out out, size_t const block_size, pm
     BlockEncoder enc(out, block_size);
     setup_encoding(enc);
 
-    TrieFCNS trie;
-    TrieFCNS::Node u = trie.root();
+    SimpleTrie trie;
+    SimpleTrie::Node u = trie.root();
     size_t d = 0;
-    TrieFCNS::Node v;
+    SimpleTrie::Node v;
 
     size_t num_phrases = 0;
     size_t longest = 0;

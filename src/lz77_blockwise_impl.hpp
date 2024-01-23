@@ -1,4 +1,3 @@
-#include <trie_fcns.hpp>
 #include <lz77/lpf_factorizer.hpp>
 
 #include <block_coding.hpp>
