@@ -9,7 +9,7 @@
 #include <iopp/stream_input_iterator.hpp>
 #include <iopp/stream_output_iterator.hpp>
 
-#include <vitter87.hpp>
+#include <archive/vitter87.hpp>
 
 using namespace oocmd;
 
