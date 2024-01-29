@@ -17,6 +17,7 @@
 using namespace oocmd;
 
 struct CompressorBase : public ConfigObject {
+    std::string input;
     std::string output;
     bool decompress_flag = false;
 
@@ -42,7 +43,7 @@ struct CompressorBase : public ConfigObject {
 
     int run(Application const& app) {
         if(!app.args().empty()) {
-            auto const& input = app.args()[0];
+            input = app.args()[0];
             if(output.empty()) {
                 output = input + (decompress_flag ? ".dec" : file_ext());
             }

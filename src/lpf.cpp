@@ -1,5 +1,6 @@
 #include "lz77_compressor.hpp"
 
+#include <filesystem>
 #include <lz77/lpf_factorizer.hpp>
 
 struct Compressor : public Lz77Compressor {
@@ -22,8 +23,8 @@ struct Compressor : public Lz77Compressor {
     virtual void factorize(iopp::FileInputStream& in, FactorWriter& out) override {
         // fully read file into RAM
         std::string s;
+        s.reserve(std::filesystem::file_size(input));
         std::copy(in.begin(), in.end(), std::back_inserter(s));
-        s.shrink_to_fit();
 
         lz77::LPFFactorizer factorizer;
         factorizer.min_reference_length(threshold);
