@@ -1,6 +1,6 @@
 #include "lz77_compressor.hpp"
 
-#include <lpf_succinct_factorizer.hpp>
+#include <lpf_semi_external_factorizer.hpp>
 
 struct Compressor : public Lz77Compressor {
     unsigned int threshold = 2;
@@ -23,13 +23,11 @@ struct Compressor : public Lz77Compressor {
         // fully read file into RAM
         std::string s;
         std::copy(in.begin(), in.end(), std::back_inserter(s));
-        s.push_back(0);
-        s.pop_back();
         s.shrink_to_fit();
 
-        LPFSuccinctFactorizer factorizer;
+        LPFSemiExternalFactorizer factorizer;
         factorizer.min_reference_length(threshold);
-        factorizer.factorize(s, out);
+        factorizer.factorize(s.begin(), s.end(), out);
     }
 };
 
