@@ -172,7 +172,7 @@ public:
                 // emit reference
                 *out++ = Factor(i - sa[max_pos], max_lcp);
                 i += max_lcp; //advance
-                for(size_t j = 0; j < max_lcp - 1; j++) read5(isa_in); // skip
+                for(size_t j = 1; j < max_lcp; j++) read5(isa_in); // skip
             } else {
                 // emit literal
                 *out++ = Factor(t[i]);
