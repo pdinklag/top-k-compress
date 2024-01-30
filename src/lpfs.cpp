@@ -5,26 +5,8 @@
 struct Compressor : public Lz77Compressor {
     using Factor = lz77::Factor;
 
-    struct BlackHole : iopp::OutputIteratorBase<Factor> {
-        using IteratorBase = OutputIteratorBase<Factor>;
-
-        using IteratorBase::iterator_category;
-        using IteratorBase::difference_type;
-        using IteratorBase::value_type;
-        using IteratorBase::pointer;
-        using IteratorBase::reference;
-
-        BlackHole() {
-        }
-
-        using IteratorBase::operator*;
-
-        auto operator++(int) { return iopp::LatentWriter<Factor, BlackHole>(*this); }
-        BlackHole& operator++() { return *this; }
-    };
-
     unsigned int threshold = 2;
-    bool keep_index;
+    bool keep_index = false;
 
     Compressor() : Lz77Compressor("lpfs", "Computes the exact LZ77 factorization using the LPF array") {
         param('t', "threshold", threshold, "The minimum reference length");
