@@ -21,7 +21,7 @@ struct CompressorBase : public ConfigObject {
     std::string output;
     bool decompress_flag = false;
 
-    uint64_t block_size = 4'096;
+    uint64_t block_size = 32'768; // best value according to many many experiments
     uint64_t prefix = UINTMAX_MAX;
 
     CompressorBase(std::string&& type_name, std::string&& desc) : ConfigObject(std::move(type_name), std::move(desc)) {
