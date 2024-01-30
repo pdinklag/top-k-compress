@@ -41,74 +41,84 @@ private:
     }
 
     size_t min_ref_len_;
+    std::filesystem::path sa_path_;
+    std::filesystem::path isa_path_;
 
 public:
     LPFSemiExternalFactorizer() : min_ref_len_(2) {
+        sa_path_ = std::filesystem::current_path() / ".sa5";
+        isa_path_ = std::filesystem::current_path() / ".isa5";
     }
 
     template<std::contiguous_iterator Input, std::output_iterator<Factor> Output>
     requires (sizeof(std::iter_value_t<Input>) == 1)
-    void factorize(Input begin, Input const& end, Output out) {
+    void factorize(Input begin, Input const& end, Output out, bool keep_index = false) {
         std::string_view const t(begin, end);
         size_t const n = t.size();
         std::cout << "loaded input: n=" << n << std::endl;
 
         pm::Stopwatch sw;
 
-        auto const work_file_sa = std::filesystem::current_path() / "_work_sa";
-        auto const work_file_isa = std::filesystem::current_path() / "_work_isa";
+        auto const work_file_sa = sa_path();
+        auto const work_file_isa = isa_path();
 
         // allocate working memory
         std::cout << "allocating working memory" << std::endl;
         auto work_mem = std::make_unique<int64_t[]>(n);
 
-        // construct suffix array
-        {
-            auto* sa = work_mem.get();
-
-            std::cout << "construct suffix array ... ";
-            std::cout.flush();
-            sw.start();
-            libsais64((uint8_t const*)t.data(), sa, n, 0, nullptr);
-            sw.stop();
-            std::cout << long(sw.elapsed_time_millis()/1000.0) << "s" << std::endl;
-
-            // externalize suffix array
-            std::cout << "externalize suffix array ... ";
-            std::cout.flush();
-            sw.start();
+        if(!(keep_index && std::filesystem::is_regular_file(work_file_sa) && std::filesystem::is_regular_file(work_file_isa))) {        
+            // construct suffix array
             {
-                auto sa_out = iopp::FileOutputStream(work_file_sa);
-                for(size_t i = 0; i < n; i++) write5(sa_out, sa[i]);
+                auto* sa = work_mem.get();
+
+                std::cout << "construct suffix array ... ";
+                std::cout.flush();
+                sw.start();
+                libsais64((uint8_t const*)t.data(), sa, n, 0, nullptr);
+                sw.stop();
+                std::cout << long(sw.elapsed_time_millis()/1000.0) << "s" << std::endl;
+
+                // externalize suffix array
+                std::cout << "externalize suffix array ... ";
+                std::cout.flush();
+                sw.start();
+                {
+                    auto sa_out = iopp::FileOutputStream(work_file_sa);
+                    for(size_t i = 0; i < n; i++) write5(sa_out, sa[i]);
+                }
+                sw.stop();
+                std::cout << long(sw.elapsed_time_millis()/1000.0) << "s" << std::endl;
             }
-            sw.stop();
-            std::cout << long(sw.elapsed_time_millis()/1000.0) << "s" << std::endl;
-        }
 
-        // construct inverse suffix array and load suffix array
-        {
-            auto* isa = work_mem.get();
-
-            std::cout << "construct inverse suffix array ... ";
-            std::cout.flush();
-            sw.start();
+            // construct inverse suffix array and load suffix array
             {
-                auto sa_in = iopp::FileInputStream(work_file_sa);
-                for(size_t i = 0; i < n; i++) isa[read5(sa_in)] = i;
-            }
-            sw.stop();
-            std::cout << long(sw.elapsed_time_millis()/1000.0) << "s" << std::endl;
+                auto* isa = work_mem.get();
 
-            // externalize suffix array and load sufix array
-            std::cout << "externalize inverse suffix array ... ";
-            std::cout.flush();
-            sw.start();
-            {
-                auto isa_out = iopp::FileOutputStream(work_file_isa);
-                for(size_t i = 0; i < n; i++) write5(isa_out, isa[i]);
+                std::cout << "construct inverse suffix array ... ";
+                std::cout.flush();
+                sw.start();
+                {
+                    auto sa_in = iopp::FileInputStream(work_file_sa);
+                    for(size_t i = 0; i < n; i++) isa[read5(sa_in)] = i;
+                }
+                sw.stop();
+                std::cout << long(sw.elapsed_time_millis()/1000.0) << "s" << std::endl;
+
+                // externalize suffix array and load sufix array
+                std::cout << "externalize inverse suffix array ... ";
+                std::cout.flush();
+                sw.start();
+                {
+                    auto isa_out = iopp::FileOutputStream(work_file_isa);
+                    for(size_t i = 0; i < n; i++) write5(isa_out, isa[i]);
+                }
+                sw.stop();
+                std::cout << long(sw.elapsed_time_millis()/1000.0) << "s" << std::endl;
             }
-            sw.stop();
-            std::cout << long(sw.elapsed_time_millis()/1000.0) << "s" << std::endl;
+        } else {
+            std::cout << "index files already present -- skipping suffix array and inverse construction" << std::endl;
+            std::cout << "\t" << work_file_sa << std::endl;
+            std::cout << "\t" << work_file_isa << std::endl;
         }
 
         // reload suffix array
@@ -124,7 +134,7 @@ public:
             sw.stop();
             std::cout << long(sw.elapsed_time_millis()/1000.0) << "s" << std::endl;
 
-            std::filesystem::remove(work_file_sa);
+            if(!keep_index) std::filesystem::remove(work_file_sa);
         }
 
         // stream inverse suffix array
@@ -182,7 +192,7 @@ public:
 
         // discard inverse suffix array
         isa_in = iopp::FileInputStream();
-        std::filesystem::remove(work_file_isa);
+        if(!keep_index) std::filesystem::remove(work_file_isa);
     }
 
     /**
@@ -202,4 +212,9 @@ public:
      * \param min_ref_len the minimum reference length
      */
     void min_reference_length(size_t min_ref_len) { min_ref_len_ = min_ref_len; }
+
+    std::filesystem::path const& sa_path() const { return sa_path_; }
+    void sa_path(std::filesystem::path const& path) { sa_path_ = path; }
+    std::filesystem::path const& isa_path() const { return isa_path_; }
+    void isa_path(std::filesystem::path const& path) { isa_path_ = path; }
 };
