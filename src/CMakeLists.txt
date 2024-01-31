@@ -11,7 +11,7 @@ add_executable(lpf lpf.cpp)
 target_link_libraries(lpf lz77 topk)
 
 add_executable(lpfs lpfs.cpp)
-target_link_libraries(lpfs lz77 topk sdsl)
+target_link_libraries(lpfs lz77 topk)
 
 add_executable(topk-lz77-mg topk_lz77_mg.cpp)
 target_link_libraries(topk-lz77-mg lz77 topk word-packing)

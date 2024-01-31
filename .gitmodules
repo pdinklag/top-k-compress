@@ -25,6 +25,3 @@
 [submodule "extlib/code"]
 	path = extlib/code
 	url = https://github.com/pdinklag/code.git
-[submodule "extlib/sdsl-lite"]
-	path = extlib/sdsl-lite
-	url = https://github.com/xxsds/sdsl-lite
