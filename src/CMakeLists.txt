@@ -12,6 +12,13 @@ target_link_libraries(lpf lz77 topk)
 
 add_executable(lpfs lpfs.cpp)
 target_link_libraries(lpfs lz77 topk)
+target_link_options(lpfs PRIVATE -fopenmp)
+
+find_library(TBB_LIBRARY tbb)
+if(TBB_LIBRARY)
+    target_compile_definitions(lpfs PRIVATE PARALLEL_ISA)
+    target_link_libraries(lpfs ${TBB_LIBRARY})
+endif()
 
 add_executable(topk-lz77-mg topk_lz77_mg.cpp)
 target_link_libraries(topk-lz77-mg lz77 topk word-packing)

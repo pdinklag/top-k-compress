@@ -3,6 +3,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <execution>
 #include <filesystem>
 #include <iterator>
 #include <memory>
@@ -74,7 +75,11 @@ public:
                 std::cout << "construct suffix array ... ";
                 std::cout.flush();
                 sw.start();
+                #if LIBSAIS_OPENMP
+                libsais64_omp((uint8_t const*)t.data(), sa, n, 0, nullptr, 0);
+                #else
                 libsais64((uint8_t const*)t.data(), sa, n, 0, nullptr);
+                #endif
                 sw.stop();
                 std::cout << long(sw.elapsed_time_millis()/1000.0) << "s" << std::endl;
 
@@ -99,7 +104,30 @@ public:
                 sw.start();
                 {
                     auto sa_in = iopp::FileInputStream(work_file_sa);
+
+                    #ifdef PARALLEL_ISA
+                    struct ISAEntry { int64_t sa_i; int64_t i; };
+                    static constexpr size_t isa_qbufsize = 1ULL << 20;
+                    static constexpr size_t isa_qsize = isa_qbufsize / sizeof(ISAEntry);
+                    std::vector<ISAEntry> isa_q;
+                    isa_q.reserve(isa_qsize);
+
+                    auto isa_qflush = [&](){
+                        std::sort(std::execution::par_unseq, isa_q.begin(), isa_q.end(), [](auto const& a, auto const& b){ return a.sa_i < b.sa_i; });
+                        for(auto const& e : isa_q) {
+                            isa[e.sa_i] = e.i;
+                        }
+                        isa_q.clear();
+                    };
+
+                    for(size_t i = 0; i < n; i++) {
+                        isa_q.push_back({ read5(sa_in), int64_t(i) });
+                        if(isa_q.size() >= isa_q.capacity()) isa_qflush();
+                    }
+                    if(!isa_q.empty()) isa_qflush();
+                    #else
                     for(size_t i = 0; i < n; i++) isa[read5(sa_in)] = i;
+                    #endif
                 }
                 sw.stop();
                 std::cout << long(sw.elapsed_time_millis()/1000.0) << "s" << std::endl;
@@ -160,17 +188,13 @@ public:
 
             // compute PSV and NSV
             ssize_t psv_pos = (ssize_t)cur_pos - 1;
-            while (psv_pos >= 0 && sa[psv_pos] > i) {
-                --psv_pos;
-            }
+            while (psv_pos >= 0 && sa[psv_pos] > i) --psv_pos;
             size_t const psv_lcp = psv_pos >= 0 ? lce(t, i, (size_t)sa[psv_pos]) : 0;
 
             size_t nsv_pos = cur_pos + 1;
-            while(nsv_pos < n && sa[nsv_pos] > i) {
-                ++nsv_pos;
-            }
+            while(nsv_pos < n && sa[nsv_pos] > i) ++nsv_pos;
             size_t const nsv_lcp = nsv_pos < n ? lce(t, i, (size_t)sa[nsv_pos]) : 0;
-
+            
             //select maximum
             size_t const max_lcp = std::max(psv_lcp, nsv_lcp);
             if(max_lcp >= min_ref_len_) {
