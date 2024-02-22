@@ -1,0 +1,140 @@
+#pragma once
+
+#include <algorithm>
+#include <cassert>
+#include <concepts>
+#include <functional>
+#include <iostream>
+#include <memory>
+
+#include "always_inline.hpp"
+
+template<typename T>
+concept LinkedListItem =
+    requires { typename T::Index; } &&
+    requires(T const& item) {
+        { item.prev() } -> std::convertible_to<typename T::Index>;
+        { item.next() } -> std::convertible_to<typename T::Index>;
+    } &&
+    requires(T& item, typename T::Index const x) {
+        { item.prev(x) };
+        { item.next(x) };
+    };
+
+template<LinkedListItem T>
+class LinkedList {
+private:
+    using Index = typename T::Index;
+
+    static constexpr Index NIL = -1;
+
+    Index head_;
+
+    void verify(T const* items) const {
+        #ifndef NDEBUG
+        Index count = 0;
+        auto prev = NIL;
+        for(auto cur = head_; cur != NIL; cur = items[cur].next()) {
+            assert(cur != prev);
+            ++count;
+
+            assert(items[cur].prev() == prev);
+            prev = cur;
+        }
+
+        assert(count == size(items));
+        #endif
+    }
+
+public:
+    LinkedList() : head_(NIL) {
+    }
+
+    LinkedList(LinkedList&&) = default;
+    LinkedList& operator=(LinkedList&&) = default;
+
+    LinkedList(LinkedList const& other) = default;
+    LinkedList& operator=(LinkedList const& other) = default;
+
+    void push_front(T* items, Index const i) {
+        auto& item = items[i];
+
+        if(head_ != NIL) {
+            auto& head = items[head_];
+            head.prev(i);
+        }
+
+        item.prev(NIL);
+        item.next(head_);
+
+        head_ = i;
+
+        #ifndef NDEBUG
+        verify(items);
+        assert(contains(items, i));
+        #endif
+    }
+
+    void pop_front(T* items) {
+        erase(head_, items);
+    }
+
+    void erase(T* items, Index const i) {
+        assert(!empty());
+
+        auto const& item_to_delete = items[i];
+        auto const iprev = item_to_delete.prev();
+        auto const inext = item_to_delete.next();
+
+        if(iprev != NIL) items[iprev].next(inext);
+        if(inext != NIL) items[inext].prev(iprev);
+
+        if(head_ == i) {
+            head_ = inext;
+        }
+
+        #ifndef NDEBUG
+        verify(items);
+        assert(!contains(items, i));
+        #endif
+    }
+
+    void append(T* items, LinkedList<T> const& other) {
+        if(empty()) {
+            // trivial
+            *this = other;
+        } else {
+            // find tail
+            Index last;
+            for(auto x = head_; x != NIL; last = x, x = items[x].next());
+
+            // link tail to head of other
+            auto& tail = items[last];
+            tail.next(other.front());
+
+            if(other.front() != NIL) {
+                auto& link = items[other.front()];
+                link.prev(last);
+            }
+
+            #ifndef NDEBUG
+            verify(items);
+            #endif
+        }
+    }
+
+    void clear() {
+        head_ = NIL; // well ...
+    }
+
+    bool contains(T const* items, Index const i) const {
+        for(auto cur = head_; cur != NIL; cur = items[cur].next()) {
+            if(cur == i) return true;
+        }
+        return false;
+    }
+
+    Index front() const { return head_; }
+    size_t size(T const* items) const { return 0; } // nb: not supported
+    bool empty() const { return head_ == NIL; }
+} __attribute__((packed));

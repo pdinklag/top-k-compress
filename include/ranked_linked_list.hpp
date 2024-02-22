@@ -159,19 +159,19 @@ public:
             
             // find tail and adjust ranks on the way
             auto rank = total_size;
-            Index x;
-            for(x = head_; x != NIL; x = items[x].next()) {
+            Index last;
+            for(auto x = head_; x != NIL; last = x, x = items[x].next()) {
                 assert(rank > 0);
                 items[x].rank(--rank);
             }
 
             // link tail to head of other
-            auto& tail = items[x];
+            auto& tail = items[last];
             tail.next(other.front());
 
             if(other.front() != NIL) {
                 auto& link = items[other.front()];
-                link.prev(x);
+                link.prev(last);
                 assert(link.rank() == rank);
             }
 
