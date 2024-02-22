@@ -6,7 +6,7 @@
 using Topk = TopKPrefixesMisraGries<>;
 
 struct Compressor : public TopkCompressor {
-    uint64_t window = 8;
+    uint64_t window = 1_Mi;
     unsigned int threshold = 2;
 
     Compressor() : TopkCompressor("topk-lz77-mg", "Factorizes (small) windows to use as relevant strings in a Misra-Gries top-k data structure.") {
