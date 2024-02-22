@@ -80,7 +80,7 @@ private:
             }
 
             // new parent can no longer be a leaf
-            if(trie_.is_valid_nonroot(parent)) {
+            if(trie_.is_valid_nonroot(parent) && trie_.is_leaf(parent)) {
                 space_saving_.unlink(parent);
             }
 
