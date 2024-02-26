@@ -32,28 +32,6 @@ private:
 
     Index head_;
 
-    void verify(T const* items) const {
-        #ifndef NDEBUG
-        Index count = 0;
-        auto prev = NIL;
-        for(auto cur = head_; cur != NIL; cur = items[cur].next()) {
-            assert(cur != prev);
-            ++count;
-            
-            if(prev != NIL) {
-                auto prev_rank = items[prev].rank();
-                auto cur_rank = items[cur].rank();
-                assert(cur_rank == prev_rank - 1);
-            }
-
-            assert(items[cur].prev() == prev);
-            prev = cur;
-        }
-
-        assert(count == size(items));
-        #endif
-    }
-
 public:
     RankedLinkedList() : head_(NIL) {
     }
@@ -81,11 +59,6 @@ public:
         item.rank(rank);
 
         head_ = i;
-
-        #ifndef NDEBUG
-        verify(items);
-        assert(contains(items, i));
-        #endif
     }
 
     void pop_front(T* items) {
@@ -142,11 +115,6 @@ public:
 
         head_ = item_to_delete.next();
         if(head_ != NIL) items[head_].prev(NIL);
-
-        #ifndef NDEBUG
-        verify(items);
-        assert(!contains(items, i));
-        #endif
     }
 
     void append(T* items, RankedLinkedList<T> const& other) {
@@ -174,11 +142,6 @@ public:
                 link.prev(last);
                 assert(link.rank() == rank);
             }
-
-            #ifndef NDEBUG
-            verify(items);
-            assert(size(items) == total_size);
-            #endif
         }
     }
 

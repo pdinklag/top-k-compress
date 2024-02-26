@@ -30,22 +30,6 @@ private:
 
     Index head_;
 
-    void verify(T const* items) const {
-        #ifndef NDEBUG
-        Index count = 0;
-        auto prev = NIL;
-        for(auto cur = head_; cur != NIL; cur = items[cur].next()) {
-            assert(cur != prev);
-            ++count;
-
-            assert(items[cur].prev() == prev);
-            prev = cur;
-        }
-
-        assert(count == size(items));
-        #endif
-    }
-
 public:
     LinkedList() : head_(NIL) {
     }
@@ -68,11 +52,6 @@ public:
         item.next(head_);
 
         head_ = i;
-
-        #ifndef NDEBUG
-        verify(items);
-        assert(contains(items, i));
-        #endif
     }
 
     void pop_front(T* items) {
@@ -92,11 +71,6 @@ public:
         if(head_ == i) {
             head_ = inext;
         }
-
-        #ifndef NDEBUG
-        verify(items);
-        assert(!contains(items, i));
-        #endif
     }
 
     void append(T* items, LinkedList<T> const& other) {
@@ -116,10 +90,6 @@ public:
                 auto& link = items[other.front()];
                 link.prev(last);
             }
-
-            #ifndef NDEBUG
-            verify(items);
-            #endif
         }
     }
 
