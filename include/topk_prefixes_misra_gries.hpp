@@ -227,6 +227,11 @@ public:
         return map;
     }
 
+    void print_snapshot() const {
+        trie_.print_snapshot();
+        space_saving_.print_snapshot();        
+    }
+
     void print_debug_info() const {
         trie_.print_debug_info();
         space_saving_.print_debug_info();

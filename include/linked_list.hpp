@@ -135,6 +135,12 @@ public:
     }
 
     Index front() const { return head_; }
-    size_t size(T const* items) const { return 0; } // nb: not supported
+
+    size_t size(T const* items) const { 
+        size_t sz = 0;
+        for(auto cur = head_; cur != NIL; cur = items[cur].next()) ++sz;
+        return sz;
+    }
+
     bool empty() const { return head_ == NIL; }
 } __attribute__((packed));

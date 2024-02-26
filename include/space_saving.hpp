@@ -298,6 +298,17 @@ public:
         }
     }
 
+    void print_snapshot() const {
+        print_debug_info();
+        std::cout << "#           bucket population:" << std::endl;
+        for(size_t f = 0; f <= max_allowed_frequency_; f++) {
+            auto sz = buckets_[f].size(items_);
+            if(sz > 0) {
+                std::cout << "#           " << f << " -> " << sz << " (product: " << (f * sz) << ")" << std::endl;
+            }
+        }
+    }
+
     void print_debug_info() const {
         std::cout << "# DEBUG: space-saving << threshold=" << threshold_ << ", num_renormalize=" << num_renormalize_ << std::endl;
     }

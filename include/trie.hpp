@@ -193,11 +193,15 @@ public:
         return d;
     }
 
+    void print_snapshot() const {
+        print_debug_info();
+    }
+
     void print_debug_info() const {
         size_t num_leaves = 0;
         size_t num_small = 0;
         
-        for(size_t i = 0; i < capacity_; i++) {
+        for(size_t i = 0; i < size_; i++) {
             auto& v = nodes_[i];
 
             if(v.size() == 0) ++num_leaves;
@@ -208,6 +212,7 @@ public:
                   << ", sizeof(Node)=" << sizeof(Node)
                   << ", small_node_size_=" << Node::ChildArray::inline_size_
                   << ", small_node_align_=" << Node::ChildArray::inline_align_
+                  << ", num_nodes=" << size_
                   << ", num_leaves=" << num_leaves
                   << ", num_small=" << num_small
                   << std::endl;
