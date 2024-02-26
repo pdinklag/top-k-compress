@@ -38,7 +38,7 @@ constexpr size_t MAX_LZ_REF_LEN = 255;
 void setup_encoding(BlockEncodingBase& enc, size_t const k, size_t const window_size) {
     enc.register_binary(k-1);           // TOK_TRIE_REF
     enc.register_binary(window_size-1); // TOK_FACT_SRC
-    enc.register_rans();                // TOK_FACT_LEN
+    enc.register_huffman();             // TOK_FACT_LEN
     enc.register_binary(255, false);    // TOK_FACT_LITERAL
     enc.register_binary(window_size, false); // TOK_FACT_REMAINDER
 }
