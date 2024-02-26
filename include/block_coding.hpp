@@ -287,6 +287,10 @@ public:
         params.encoding = TokenEncoding::rANS;
         register_token(params);
     }
+
+    void set_max(TokenType const type, Token const max) {
+        tokens_[type].params().max = max;
+    }
 };
 
 template<iopp::BitSink Sink>
