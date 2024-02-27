@@ -10,19 +10,26 @@
 #include "always_inline.hpp"
 #include "linked_list.hpp"
 
-template<typename T>
+template <typename T>
 concept SpaceSavingItem =
     LinkedListItem<T> &&
-    requires(T const& item) {
-        { item.freq() } -> std::convertible_to<typename T::Index>;
-        { item.is_linked() } -> std::same_as<bool>;
+    requires(T const &item) {
+        {
+            item.freq()
+        } -> std::convertible_to<typename T::Index>;
+        {
+            item.is_linked()
+        } -> std::same_as<bool>;
     } &&
-    requires(T& item, typename T::Index const x) {
-        { item.freq(x) };
+    requires(T &item, typename T::Index const x) {
+        {
+            item.freq(x)
+        };
     };
 
-template<SpaceSavingItem T, bool track_min_ = false>
-class SpaceSaving {
+template <SpaceSavingItem T, bool track_min_ = false>
+class SpaceSaving
+{
 private:
     using Index = typename T::Index;
     using List = LinkedList<T>;
@@ -30,31 +37,34 @@ private:
     static constexpr size_t renorm_divisor_ = 2;
 
 public:
-    struct RenormalizeFunc {
+    struct RenormalizeFunc
+    {
         Index base;
         Index operator()(Index const f) const { return (f - base) / renorm_divisor_; }
     };
-    
+
     static constexpr Index NIL = -1;
 
 private:
-    T* items_;
+    T *items_;
     size_t beg_;
     size_t end_;
 
     std::unique_ptr<List[]> buckets_;
     Index threshold_;
-    
+
     Index max_allowed_frequency_;
     Index min_frequency_;
 
     Index num_renormalize_;
 
-    void renormalize() {
+    void renormalize()
+    {
         // we normalize the frequency to [0, renorm_divisor_ * max_allowed_frequency_]
-        RenormalizeFunc renormalize { threshold_ };
+        RenormalizeFunc renormalize{threshold_};
 
-        for(Index i = beg_; i <= end_; i++) {
+        for (Index i = beg_; i <= end_; i++)
+        {
             auto const f = std::max(items_[i].freq(), threshold_); // nb: we must NOT allow frequency below the threshold, that would cause negative frequencies
             items_[i].freq(renormalize(f));
         }
@@ -62,22 +72,26 @@ private:
         // compact buckets
         auto compacted_buckets = std::make_unique<List[]>(max_allowed_frequency_ + 1);
 
-        for(size_t f = 0; f <= max_allowed_frequency_; f++) {
-            auto& bucket = buckets_[f];
-            if(!bucket.empty()) {
+        for (size_t f = 0; f <= max_allowed_frequency_; f++)
+        {
+            auto &bucket = buckets_[f];
+            if (!bucket.empty())
+            {
                 auto const adjusted_f = renormalize(f);
                 compacted_buckets[adjusted_f].append(items_, bucket);
             }
         }
         buckets_ = std::move(compacted_buckets);
-    
-        if constexpr(track_min_) min_frequency_ = renormalize(min_frequency_);
+
+        if constexpr (track_min_)
+            min_frequency_ = renormalize(min_frequency_);
 
         // reset threshold
         threshold_ = 0;
 
         // callback
-        if(on_renormalize) on_renormalize(renormalize);
+        if (on_renormalize)
+            on_renormalize(renormalize);
 
         // keep count of renormalizations
         ++num_renormalize_;
@@ -86,11 +100,13 @@ private:
 public:
     std::function<void(RenormalizeFunc)> on_renormalize;
 
-    SpaceSaving() : items_(nullptr), threshold_(0) {
+    SpaceSaving() : items_(nullptr), threshold_(0)
+    {
     }
 
-    SpaceSaving(T* items, Index const begin, Index const end, Index const max_allowed_frequency)
-        : items_(items), beg_(begin), end_(end), threshold_(0), min_frequency_(NIL), max_allowed_frequency_(max_allowed_frequency), num_renormalize_(0) {
+    SpaceSaving(T *items, Index const begin, Index const end, Index const max_allowed_frequency)
+        : items_(items), beg_(begin), end_(end), threshold_(0), min_frequency_(NIL), max_allowed_frequency_(max_allowed_frequency), num_renormalize_(0)
+    {
 
         assert(beg_ <= end_);
         assert(max_allowed_frequency_ > 1);
@@ -99,14 +115,16 @@ public:
         buckets_ = std::make_unique<List[]>(max_allowed_frequency_ + 1);
     }
 
-    SpaceSaving(SpaceSaving&&) = default;
-    SpaceSaving& operator=(SpaceSaving&&) = default;
+    SpaceSaving(SpaceSaving &&) = default;
+    SpaceSaving &operator=(SpaceSaving &&) = default;
 
-    SpaceSaving(SpaceSaving const& other) {
+    SpaceSaving(SpaceSaving const &other)
+    {
         *this = other;
     }
 
-    SpaceSaving& operator=(SpaceSaving const& other) {
+    SpaceSaving &operator=(SpaceSaving const &other)
+    {
         items_ = other.items_;
         beg_ = other.beg_;
         end_ = other.end_;
@@ -116,36 +134,55 @@ public:
         num_renormalize_ = 0;
 
         buckets_ = std::make_unique<List[]>(max_allowed_frequency_ + 1);
-        for(Index f = 0; f <= max_allowed_frequency_; f++) {
+        for (Index f = 0; f <= max_allowed_frequency_; f++)
+        {
             buckets_[f] = other.buckets_[f];
         }
 
         return *this;
     }
 
-    void set_items(T* items) {
+    void set_items(T *items)
+    {
         items_ = items;
     }
 
-    void init_garbage() {
+    void init_garbage(bool reverse = false)
+    {
         // link items in garbage bucket
-        auto& garbage_bucket = buckets_[threshold_];
-        for(Index i = beg_; i <= end_; i++) {
-            garbage_bucket.push_front(items_, i);
+        auto &garbage_bucket = buckets_[threshold_];
+
+        if (reverse)
+        {
+            for (Index i = end_ + 1; i > beg_; i--) garbage_bucket.push_front(items_, i-1);
+        }
+        else
+        {
+            for (Index i = beg_; i <= end_; i++) garbage_bucket.push_front(items_, i);
+        }
+
+        if constexpr (track_min_)
+        {
+            min_frequency_ = threshold_;
         }
     }
 
-    bool get_garbage(Index& out_v) const ALWAYS_INLINE {
-        auto& garbage_bucket = buckets_[threshold_];
-        if(garbage_bucket.empty()) {
+    bool get_garbage(Index &out_v) const ALWAYS_INLINE
+    {
+        auto &garbage_bucket = buckets_[threshold_];
+        if (garbage_bucket.empty())
+        {
             return false;
-        } else {
+        }
+        else
+        {
             out_v = garbage_bucket.front();
             return true;
         }
     }
 
-    void increment(Index const v) ALWAYS_INLINE {
+    void increment(Index const v) ALWAYS_INLINE
+    {
         assert(v >= beg_);
         assert(v <= end_);
 
@@ -153,17 +190,19 @@ public:
         auto const f = std::max(items_[v].freq(), threshold_);
         assert(f <= max_allowed_frequency_);
 
-        if(f == max_allowed_frequency_) {
+        if (f == max_allowed_frequency_)
+        {
             // this item already has the maximum frequency, don't increment
             return;
         }
 
-        if(items_[v].is_linked()) {
+        if (items_[v].is_linked())
+        {
             // unlink from wherever it is currently linked at
             unlink(v);
 
             // re-link in next bucket
-            auto& next_bucket = buckets_[f+1];
+            auto &next_bucket = buckets_[f + 1];
             next_bucket.push_front(items_, v);
         }
 
@@ -171,8 +210,10 @@ public:
         items_[v].freq(f + 1);
 
         // potentially set minimum frequency
-        if constexpr(track_min_) {
-            if(min_frequency_ == NIL) min_frequency_ = f + 1;
+        if constexpr (track_min_)
+        {
+            if (min_frequency_ == NIL)
+                min_frequency_ = f + 1;
         }
 
         // possibly renormalize
@@ -183,12 +224,50 @@ public:
         */
     }
 
-    void decrement_all() ALWAYS_INLINE {
+    void decrement(Index const v) ALWAYS_INLINE
+    {
+        assert(v >= beg_);
+        assert(v <= end_);
+
+        // get frequency, assuring that it is >= threshold
+        auto const f = std::max(items_[v].freq(), threshold_);
+        assert(f <= max_allowed_frequency_);
+
+        if (f == threshold_)
+        {
+            // this item already has the minimum allowed frequency, don't decrement
+            return;
+        }
+
+        if (items_[v].is_linked())
+        {
+            // unlink from wherever it is currently linked at
+            unlink(v);
+
+            // re-link in previous bucket
+            auto &prev_bucket = buckets_[f - 1];
+            prev_bucket.push_front(items_, v);
+        }
+
+        // decrement frequency
+        items_[v].freq(f - 1);
+
+        // potentially set minimum frequency
+        if constexpr (track_min_)
+        {
+            if (min_frequency_ == NIL || min_frequency_ == f)
+                min_frequency_ = f - 1;
+        }
+    }
+
+    void decrement_all() ALWAYS_INLINE
+    {
         // if current threshold bucket exists, prepend all its nodes to the next bucket
-        auto& min_bucket = buckets_[threshold_];
-        if(!min_bucket.empty()) {
+        auto &min_bucket = buckets_[threshold_];
+        if (!min_bucket.empty())
+        {
             // prepend all to next bucket
-            auto& bucket = buckets_[threshold_ + 1];
+            auto &bucket = buckets_[threshold_ + 1];
             bucket.append(items_, min_bucket);
 
             // delete threshold bucket
@@ -199,21 +278,25 @@ public:
         ++threshold_;
 
         // possibly renormalize
-        if(threshold_ >= max_allowed_frequency_ / 2) {
+        if (threshold_ >= max_allowed_frequency_ / 2)
+        {
             renormalize();
         }
     }
 
-    void link(Index const v) ALWAYS_INLINE {
+    void link(Index const v) ALWAYS_INLINE
+    {
         assert(v >= beg_);
         assert(v <= end_);
 
         auto const f = std::max(items_[v].freq(), threshold_); // make sure frequency is at least threshold
-        if(f >= max_allowed_frequency_) {
+        if (f >= max_allowed_frequency_)
+        {
             // we are trying to directly insert something with a too large frequency
             // renormalize until the frequency matches and then call link again
-            auto const& item = items_[v];
-            while(item.freq() >= max_allowed_frequency_) {
+            auto const &item = items_[v];
+            while (item.freq() >= max_allowed_frequency_)
+            {
                 renormalize();
             }
             return;
@@ -221,19 +304,22 @@ public:
         assert(f <= max_allowed_frequency_);
 
         // make new head of bucket
-        auto& bucket = buckets_[f];
+        auto &bucket = buckets_[f];
         bucket.push_front(items_, v);
 
-        if constexpr(track_min_) {
+        if constexpr (track_min_)
+        {
             // f may be a new minimum
-            if(min_frequency_ == NIL || f < min_frequency_) {
+            if (min_frequency_ == NIL || f < min_frequency_)
+            {
                 min_frequency_ = f;
             }
             assert(min_frequency_ != NIL);
         }
     }
 
-    void unlink(Index const v) ALWAYS_INLINE {
+    void unlink(Index const v) ALWAYS_INLINE
+    {
         assert(v >= beg_);
         assert(v <= end_);
 
@@ -241,11 +327,13 @@ public:
         auto const f = items_[v].freq();
         assert(f <= max_allowed_frequency_);
 
-        auto& bucket = buckets_[f];
+        auto &bucket = buckets_[f];
         bucket.erase(items_, v);
 
-        if constexpr(track_min_) {
-            if(bucket.empty() && f == min_frequency_) {
+        if constexpr (track_min_)
+        {
+            if (bucket.empty() && f == min_frequency_)
+            {
                 // the last item from the minimum bucket was removed
                 // we need to find a new minimum
                 min_frequency_ = NIL;
@@ -253,8 +341,10 @@ public:
                 // FIXME: in the worst case, v was the only item in the data structure at all
                 // we then scan all possible frequencies despite guaranteed not to find anything
                 // this could be resolved by tracking the number of linked items, or alternatively the current maximum frequency
-                for(auto mf = f + 1; mf <= max_allowed_frequency_; mf++) {
-                    if(!buckets_[mf].empty()) {
+                for (auto mf = f + 1; mf <= max_allowed_frequency_; mf++)
+                {
+                    if (!buckets_[mf].empty())
+                    {
                         min_frequency_ = mf;
                         break;
                     }
@@ -263,53 +353,84 @@ public:
         }
     }
 
-    Index threshold() const ALWAYS_INLINE {
+    Index threshold() const ALWAYS_INLINE
+    {
         return threshold_;
     }
 
-    Index bucket_size(Index const f) const {
+    Index bucket_size(Index const f) const
+    {
         return buckets_[f].size(items_);
     }
 
     // nb: the min frequency is NOT "threshold-corrected" in any way, and it is undefined if nothing was ever linked
-    Index min_frequency() ALWAYS_INLINE {
-        if constexpr(track_min_) {
+    Index min_frequency() ALWAYS_INLINE
+    {
+        if constexpr (track_min_)
+        {
             assert(min_frequency_ != NIL);
             return min_frequency_;
-        } else {
+        }
+        else
+        {
             // not supported
             assert(false);
             return NIL;
         }
     }
 
-    Index extract_min() ALWAYS_INLINE {
-        if constexpr(track_min_) {
+    Index min() const ALWAYS_INLINE
+    {
+        if constexpr (track_min_)
+        {
             assert(min_frequency_ != NIL);
-            auto& bucket = buckets_[min_frequency_];
+            auto &bucket = buckets_[min_frequency_];
+            assert(!bucket.empty());
+            return bucket.front();
+        }
+        else
+        {
+            // not supported
+            assert(false);
+            return NIL;
+        }
+    }
+
+    Index extract_min() ALWAYS_INLINE
+    {
+        if constexpr (track_min_)
+        {
+            assert(min_frequency_ != NIL);
+            auto &bucket = buckets_[min_frequency_];
             assert(!bucket.empty());
             auto const v = bucket.front();
             unlink(v);
             return v;
-        } else {
+        }
+        else
+        {
             // not supported
             assert(false);
             return NIL;
         }
     }
 
-    void print_snapshot() const {
+    void print_snapshot() const
+    {
         print_debug_info();
         std::cout << "#           bucket population:" << std::endl;
-        for(size_t f = 0; f <= max_allowed_frequency_; f++) {
+        for (size_t f = 0; f <= max_allowed_frequency_; f++)
+        {
             auto sz = buckets_[f].size(items_);
-            if(sz > 0) {
+            if (sz > 0)
+            {
                 std::cout << "#           " << f << " -> " << sz << " (product: " << (f * sz) << ")" << std::endl;
             }
         }
     }
 
-    void print_debug_info() const {
+    void print_debug_info() const
+    {
         std::cout << "# DEBUG: space-saving << threshold=" << threshold_ << ", num_renormalize=" << num_renormalize_ << std::endl;
     }
 };

@@ -20,6 +20,9 @@ if(TBB_LIBRARY)
     target_link_libraries(lpfs ${TBB_LIBRARY})
 endif()
 
+add_executable(topk-attract topk_attract.cpp)
+target_link_libraries(topk-attract topk word-packing)
+
 add_executable(topk-lz77-mg topk_lz77_mg.cpp)
 target_link_libraries(topk-lz77-mg lz77 topk word-packing)
 
