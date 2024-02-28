@@ -7,13 +7,4 @@ if(BUILD_TOOLS)
 
     add_executable(hist hist.cpp)
     target_link_libraries(hist iopp)
-
-    add_executable(repl0 repl0.cpp)
-    target_link_libraries(repl0 iopp)
-
-    add_executable(sync sync.cpp)
-    target_link_libraries(sync iopp oocmd)
-
-    add_executable(vitter87 vitter87.cpp)
-    target_link_libraries(vitter87 iopp oocmd)
 endif()
