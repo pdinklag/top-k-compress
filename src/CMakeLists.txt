@@ -32,9 +32,6 @@ target_link_libraries(topk-lz78 topk)
 add_executable(topk-psample topk_psample.cpp)
 target_link_libraries(topk-psample topk)
 
-add_executable(topk-sample topk_sample.cpp)
-target_link_libraries(topk-sample topk)
-
 option(BUILD_ALL "build ALL algorithms, even those no longer relevant" OFF)
 message(STATUS "BUILD_ALL=${BUILD_ALL}")
 
@@ -55,6 +52,9 @@ if(BUILD_ALL)
     
     add_executable(topk-sample-cm archive/topk_sample_cm.cpp)
     target_link_libraries(topk-sample-cm topk)
+
+    add_executable(topk-sample archive/topk_sample.cpp)
+    target_link_libraries(topk-sample topk)
 
     # archive of older, no longer really relevant implementations
     add_executable(encode archive/encode.cpp)
