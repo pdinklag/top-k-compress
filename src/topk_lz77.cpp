@@ -9,20 +9,20 @@ struct Compressor : public TopkCompressor {
     uint64_t window = 1_Mi;
     unsigned int threshold = 2;
 
-    Compressor() : TopkCompressor("topk-lz77-mg", "Factorizes (small) windows to use as relevant strings in a Misra-Gries top-k data structure.") {
+    Compressor() : TopkCompressor("topk-lz77", "Best of both worlds approach to blockwise LZ77 and top-k LZ78.") {
         param('w', "window", window, "The window size.");
         param('t', "threshold", threshold, "The minimum reference length");
     }
 
     virtual void init_result(pm::Result& result) override {
-        result.add("algo", "topk-lz77-mg");
+        result.add("algo", "topk-lz77");
         TopkCompressor::init_result(result);
         result.add("window", window);
         result.add("threshold", threshold);
     }
 
     virtual std::string file_ext() override {
-        return ".topklz77mg";
+        return ".topklz77";
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {

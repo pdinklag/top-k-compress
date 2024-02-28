@@ -6,17 +6,17 @@
 struct Compressor : public TopkCompressor {
     uint64_t ignored_ = 0;
 
-    Compressor() : TopkCompressor("topk-lz78-mg", "Implements the top-k LZ78 compression algorithm") {
+    Compressor() : TopkCompressor("topk-lz78", "LZ78 with a trie constrained to the top-k phrases.") {
         param('w', "window", ignored_, "Ignored, provided only for interoperability.");
     }
 
     virtual void init_result(pm::Result& result) override {
-        result.add("algo", "topk-lz78-mg");
+        result.add("algo", "topk-lz78");
         TopkCompressor::init_result(result);
     }
 
     virtual std::string file_ext() override {
-        return ".topklz78mg";
+        return ".topklz78";
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {

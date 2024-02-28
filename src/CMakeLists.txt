@@ -23,17 +23,17 @@ endif()
 add_executable(topk-attract topk_attract.cpp)
 target_link_libraries(topk-attract topk word-packing)
 
-add_executable(topk-lz77-mg topk_lz77_mg.cpp)
-target_link_libraries(topk-lz77-mg lz77 topk word-packing)
+add_executable(topk-lz77 topk_lz77.cpp)
+target_link_libraries(topk-lz77 lz77 topk word-packing)
 
-add_executable(topk-lz78-mg topk_lz78_mg.cpp)
-target_link_libraries(topk-lz78-mg topk)
+add_executable(topk-lz78 topk_lz78.cpp)
+target_link_libraries(topk-lz78 topk)
 
-add_executable(topk-psample-mg topk_psample_mg.cpp)
-target_link_libraries(topk-psample-mg topk)
+add_executable(topk-psample topk_psample.cpp)
+target_link_libraries(topk-psample topk)
 
-add_executable(topk-sample-mg topk_sample_mg.cpp)
-target_link_libraries(topk-sample-mg topk)
+add_executable(topk-sample topk_sample.cpp)
+target_link_libraries(topk-sample topk)
 
 option(BUILD_ALL "build ALL algorithms, even those no longer relevant" OFF)
 message(STATUS "BUILD_ALL=${BUILD_ALL}")
