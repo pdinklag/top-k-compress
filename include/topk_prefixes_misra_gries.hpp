@@ -236,4 +236,10 @@ public:
         trie_.print_debug_info();
         space_saving_.print_debug_info();
     }
+
+    using TrieType = Trie<NodeData>;
+
+    TrieType&& trie() {
+        return std::move(trie_);
+    }
 };

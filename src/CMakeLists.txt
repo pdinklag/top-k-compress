@@ -29,6 +29,9 @@ target_link_libraries(topk-lz77 lz77 topk word-packing)
 add_executable(topk-lz78 topk_lz78.cpp)
 target_link_libraries(topk-lz78 topk)
 
+add_executable(topk-twopass topk_twopass.cpp)
+target_link_libraries(topk-twopass topk)
+
 add_executable(topk-psample topk_psample.cpp)
 target_link_libraries(topk-psample topk)
 
