@@ -11,6 +11,7 @@
 #include <string>
 
 #include "always_inline.hpp"
+#include "display.hpp"
 #include "trie_concepts.hpp"
 
 template<trie_node Node>
@@ -216,5 +217,93 @@ public:
                   << ", num_leaves=" << num_leaves
                   << ", num_small=" << num_small
                   << std::endl;
+    }
+
+private:
+    void dfo(NodeIndex* map, NodeIndex const v, NodeIndex& rank) const {
+        map[v] = rank++;
+
+        auto const& children = nodes_[v].children;
+        for(size_t i = 0; i < children.size(); i++) {
+            dfo(map, children[i], rank);
+        }
+    }
+
+public:
+    void dfo(NodeIndex* map) const {
+        NodeIndex rank = 0;
+        dfo(map, root(), rank);
+    }
+
+    struct Analysis {
+        size_t leaves;
+        size_t arms_num;
+        size_t arms_total;
+        size_t arms_longest;
+        size_t outd_total;
+        size_t outd_max;
+        size_t ioutd_total;
+        size_t ioutd_max;
+
+        Analysis()
+            : leaves(0),
+              arms_num(0),
+              arms_total(0),
+              arms_longest(0),
+              outd_total(0),
+              outd_max(0),
+              ioutd_total(0) {
+        }
+    };
+
+private:
+    void to_bp(std::ostringstream& out, NodeIndex const v) const {
+        out << "(";
+        auto const& children = nodes_[v].children;
+        for(size_t i = 0; i < children.size(); i++) {
+            to_bp(out, children[i]);
+        }
+        out << ")";
+    }
+
+    void analyze_arms(Analysis& ana, NodeIndex const v, size_t const arm_len) const { 
+        auto const& children = nodes_[v].children;
+        if(children.size() == 0) {
+            // we reached a leaf
+            ++ana.arms_num;
+            ana.arms_total += arm_len + 1;
+            ana.arms_longest = std::max(ana.arms_longest, arm_len + 1);
+        } else {
+            for(size_t i = 0; i < children.size(); i++) {
+                analyze_arms(ana, children[i], (children.size() == 1) ? arm_len + 1 : 0);
+            }
+        }
+    }
+
+    void analyze_outd(Analysis& ana) const {
+        for(size_t v = 0; v < size(); v++) {
+            size_t const outd = nodes_[v].children.size();
+            ana.outd_total += outd;
+            ana.outd_max = std::max(ana.outd_max, outd);
+            if(outd > 0) {
+                ana.ioutd_total += outd;
+            } else {
+                ++ana.leaves;
+            }
+        }
+    }
+
+public:
+    std::string to_bp() const {
+        std::ostringstream out;
+        to_bp(out, root());
+        return out.str();
+    }
+
+    Analysis analyze() const {
+        Analysis ana;
+        analyze_arms(ana, root(), 0);
+        analyze_outd(ana);
+        return ana;
     }
 };

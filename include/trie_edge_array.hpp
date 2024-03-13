@@ -179,6 +179,25 @@ public:
         }
     }
 
+    void sort() ALWAYS_INLINE {
+        if(is_inline()) {
+            std::pair<UCharacter, NodeIndex> c[size_];
+            for(size_t i = 0; i < size_; i++) {
+                auto const label = (UCharacter)data_.inl.labels[i];
+                auto const link = data_.inl.links[i];
+                c[i] = std::make_pair(label, link);
+            }
+            std::sort(c, c + size_, [](auto const& a, auto const& b){ return a.first < b.first; });
+
+            for(size_t i = 0; i < size_; i++) {
+                data_.inl.labels[i] = (Character)c[i].first;
+                data_.inl.links[i] = c[i].second;
+            }
+        } else {
+            // nothing to do, children in external array are always sorted
+        }
+    }
+
     bool contains(NodeIndex const what) const ALWAYS_INLINE {
         if(is_inline()) {
             for(NodeIndex i = 0; i < size_; i++) {

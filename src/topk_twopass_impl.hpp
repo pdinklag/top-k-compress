@@ -4,7 +4,22 @@
 
 #include <pm/result.hpp>
 
+#include <code/counter.hpp>
+
 #include <topk_prefixes_misra_gries.hpp>
+
+#include <stack>
+#include <unordered_map>
+
+constexpr uint64_t MAGIC =
+    ((uint64_t)'T') << 56 |
+    ((uint64_t)'O') << 48 |
+    ((uint64_t)'P') << 40 |
+    ((uint64_t)'K') << 32 |
+    ((uint64_t)'2') << 24 |
+    ((uint64_t)'P') << 16 |
+    ((uint64_t)'S') << 8 |
+    ((uint64_t)'S');
 
 using Node = uint32_t;
 using Index = uint32_t;
@@ -16,6 +31,28 @@ constexpr TokenType TOK_LITERAL = 1;
 void setup_encoding(BlockEncodingBase& enc, size_t const k) {
     enc.register_binary(k-1); // TOK_TRIE_REF
     enc.register_binary(255, false);   // TOK_LITERAL
+}
+
+template<typename Trie>
+void gather_labels_preorder(Trie const& trie, Node const v, std::string& labels) {
+    labels.push_back(trie.node(v).inlabel);
+
+    auto const& children = trie.node(v).children;
+    for(size_t i = 0; i < children.size(); i++) {
+        gather_labels_preorder(trie, children[i], labels);
+    }
+}
+
+template<typename Trie>
+void gather_labels(Trie const& trie, Node const v, std::string& labels) {
+    auto const& children = trie.node(v).children;
+    for(size_t i = 0; i < children.size(); i++) {
+        auto const u = children[i];
+        labels.push_back(trie.node(u).inlabel);
+    }
+    for(size_t i = 0; i < children.size(); i++) {
+        gather_labels(trie, children[i], labels);
+    }
 }
 
 template<typename Trie, iopp::BitSink Out>
@@ -38,6 +75,11 @@ inline void write_file_str(std::filesystem::path const& path, std::string const&
 
 template<iopp::BitSink Out>
 void topk_compress_twopass(iopp::FileInputStream& in, Out out, size_t const k, size_t const max_frequency, size_t const block_size, pm::Result& result) {
+    // write header and initialize encoding
+    out.write(MAGIC, 64);
+    out.write(k, 64);
+    out.write(max_frequency, 64);
+
     // pass 1: build top-k LZ78 trie
     Topk::TrieType trie;
     {
@@ -56,6 +98,65 @@ void topk_compress_twopass(iopp::FileInputStream& in, Out out, size_t const k, s
         trie = std::move(topk.trie());
     }
 
+    // relabel and encode trie
+    {
+        // sort children of all nodes alphabetically by their inlabel
+        for(size_t v = 0; v < trie.size(); v++) {
+            trie.node(v).children.sort();
+        }
+        
+        // renumber nodes in depth-first order
+        {
+            // compute DFO
+            auto dfo = std::make_unique<Node[]>(k-1);
+            for(size_t i = 0; i < k-1; i++) dfo[i] = i; // unused nodes map to themselves
+            trie.dfo(dfo.get());
+
+            // TODO: renumber
+        }
+
+        // topology
+        auto bits0 = out.num_bits_written();
+        encode_topology(trie, trie.root(), out);
+        auto const size_trie_topology = (out.num_bits_written() - bits0) / 8;
+
+        // compress labels using Huffman
+        {
+            std::string labels;
+            labels.reserve(k);
+            {
+                auto const& root_children = trie.node(trie.root()).children;
+                for(size_t i = 0; i < root_children.size(); i++) {
+                    gather_labels(trie, root_children[i], labels);
+                }
+            }
+
+            // write_file_str("trie.labels", labels);
+
+            bits0 = out.num_bits_written();
+            code::HuffmanTree<char> huff(labels.begin(), labels.end());
+            huff.encode(out);
+
+            auto table = huff.table();
+            for(auto const c : labels) {
+                code::Huffman::encode(out, uint8_t(c), table);
+            }
+        }
+
+        
+        auto const size_trie_labels = (out.num_bits_written() - bits0) / 8;
+        auto const size_trie = size_trie_topology + size_trie_labels;
+
+        result.add("outsize_trie_topology", size_trie_topology);
+        result.add("outsize_trie_labels", size_trie_labels);
+        result.add("outsize_trie", size_trie);
+
+        // debug
+        trie.print_debug_info();
+
+        out.flush();
+    }
+
     // pass 2: parse
 
     // stats
@@ -63,39 +164,10 @@ void topk_compress_twopass(iopp::FileInputStream& in, Out out, size_t const k, s
     size_t num_trie = 0;
     size_t longest = 0;
     size_t total_len = 0;
-    size_t size_trie_topology = 0;
-    size_t size_trie_labels = 0;
 
     // initialize encoding
     BlockEncoder enc(out, block_size);
     setup_encoding(enc, k);
-
-    // encode trie
-    {
-        // topology
-        auto bits0 = out.num_bits_written();
-        encode_topology(trie, trie.root(), out);
-        size_trie_topology = (out.num_bits_written() - bits0) / 8;
-
-        // labels
-        std::string labels;
-        labels.reserve(k);
-        for(Index i = 1; i < trie.size(); i++) {
-            labels.push_back(trie.node(i).inlabel);
-        }
-
-        bits0 = out.num_bits_written();
-        code::HuffmanTree<char> huff(labels.begin(), labels.end());
-        huff.encode(out);
-
-        auto table = huff.table();
-        for(auto const c : labels) {
-            code::Huffman::encode(out, uint8_t(c), table);
-        }
-        size_trie_labels = (out.num_bits_written() - bits0) / 8;
-        
-        out.flush();
-    }
 
     {
         in.seekg(0, std::ios::beg);
@@ -159,7 +231,4 @@ void topk_compress_twopass(iopp::FileInputStream& in, Out out, size_t const k, s
     result.add("phrases_trie", num_trie);
     result.add("phrases_longest", longest);
     result.add("phrases_avg_len", std::round(100.0 * ((double)total_len / (double)num_phrases)) / 100.0);
-    result.add("size_trie_topology", size_trie_topology);
-    result.add("size_trie_labels", size_trie_labels);
-    result.add("size_trie", size_trie_topology + size_trie_labels);
 }
