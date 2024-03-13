@@ -15,11 +15,11 @@ struct Compressor : public CompressorBase {
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        lzend_compress(in.begin(), in.end(), iopp::bitwise_output_to(out), block_size, result);
+        lzend::compress(in.begin(), in.end(), iopp::bitwise_output_to(out), block_size, result);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        lzend_decompress(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
+        lzend::decompress(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
     }
 };
 

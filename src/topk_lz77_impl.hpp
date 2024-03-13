@@ -7,6 +7,8 @@
 
 #include <valgrind.hpp>
 
+namespace topk_lz77 {
+
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
     ((uint64_t)'O') << 48 |
@@ -44,7 +46,7 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k, size_t const window_
 }
 
 template<typename Topk, iopp::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
+void compress(In begin, In const& end, Out out, size_t const threshold, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     // init stats
     size_t num_lz = 0;
     size_t num_trie = 0;
@@ -218,7 +220,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const threshold
 }
 
 template<typename Topk, iopp::BitSource In, std::output_iterator<char> Out>
-void topk_decompress_lz77(In in, Out out) {
+void decompress(In in, Out out) {
     // decode header
     uint64_t const magic = in.read(64);
     if(magic != MAGIC) {
@@ -304,4 +306,6 @@ void topk_decompress_lz77(In in, Out out) {
     for(size_t i = 0; i < curpos; i++) {
         *out++ = block[i];
     }
+}
+
 }

@@ -1,17 +1,19 @@
 #include <block_coding.hpp>
 
+namespace lzend {
+
 constexpr TokenType TOK_REF = 0;
 constexpr TokenType TOK_LEN = 1;
 constexpr TokenType TOK_LITERAL = 2;
 
-void setup_lzend_encoding(BlockEncodingBase& enc) {
+void setup_encoding(BlockEncodingBase& enc) {
     enc.register_binary(SIZE_MAX); // TOK_REF
     enc.register_huffman();        // TOK_LEN
     enc.register_huffman();        // TOK_LITERAL
 }
 
 template<bool protocol, iopp::BitSource In, std::output_iterator<char> Out>
-void lzend_decompress_offline(In in, Out out, uint64_t const expected_magic) {
+void decompress_offline(In in, Out out, uint64_t const expected_magic) {
     uint64_t const magic = in.read(64);
     if(magic != expected_magic) {
         std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << expected_magic << ")" << std::endl;
@@ -22,7 +24,7 @@ void lzend_decompress_offline(In in, Out out, uint64_t const expected_magic) {
     std::vector<size_t> factors;
     
     BlockDecoder dec(in);
-    setup_lzend_encoding(dec);
+    setup_encoding(dec);
     while(in) {
         auto const q = dec.read_uint(TOK_REF);
         auto const len = (q > 0) ? dec.read_uint(TOK_LEN) : 0;
@@ -51,4 +53,6 @@ void lzend_decompress_offline(In in, Out out, uint64_t const expected_magic) {
 
     // output
     std::copy(s.begin(), s.end(), out);
+}
+
 }

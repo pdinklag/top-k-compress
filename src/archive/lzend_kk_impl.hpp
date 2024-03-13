@@ -15,6 +15,8 @@
 
 #include "lzend_decompress.hpp"
 
+namespace lzend_kk {
+
 constexpr uint64_t MAGIC =
     ((uint64_t)'L') << 56 |
     ((uint64_t)'Z') << 48 |
@@ -632,11 +634,11 @@ public:
 };
 
 template<bool prefer_local, iopp::InputIterator<char> In, iopp::BitSink Out>
-void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block, size_t const block_size, pm::Result& result) {
+void compress(In begin, In const& end, Out out, size_t const max_block, size_t const block_size, pm::Result& result) {
     // initialize encoding
     out.write(MAGIC, 64);
     BlockEncoder enc(out, block_size);
-    setup_lzend_encoding(enc);
+    lzend::setup_encoding(enc);
 
     // init stats
     size_t num_phrases = 0;
@@ -663,16 +665,16 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
         ++num_phrases;
         if(phrase.len > 1) {
             // referencing phrase
-            enc.write_uint(TOK_REF, phrase.link);
-            enc.write_uint(TOK_LEN, phrase.len - 1);
-            enc.write_char(TOK_LITERAL, phrase.last);
+            enc.write_uint(lzend::TOK_REF, phrase.link);
+            enc.write_uint(lzend::TOK_LEN, phrase.len - 1);
+            enc.write_char(lzend::TOK_LITERAL, phrase.last);
 
             ++num_ref;
         } else {
             // literal phrase
             ++num_literal;
-            enc.write_uint(TOK_REF, 0);
-            enc.write_char(TOK_LITERAL, phrase.last);
+            enc.write_uint(lzend::TOK_REF, 0);
+            enc.write_char(lzend::TOK_LITERAL, phrase.last);
         }
         
         longest = std::max(longest, size_t(phrase.len));
@@ -738,4 +740,6 @@ void lzend_kk_compress(In begin, In const& end, Out out, size_t const max_block,
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
-void lzend_kk_decompress(In in, Out out) { lzend_decompress_offline<PROTOCOL>(in, out, MAGIC); }
+void decompress(In in, Out out) { lzend::decompress_offline<PROTOCOL>(in, out, MAGIC); }
+
+}

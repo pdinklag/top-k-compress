@@ -5,7 +5,9 @@
 
 #include <block_coding.hpp>
 
-constexpr uint64_t LZLIKE_MAGIC =
+namespace lzlike {
+
+constexpr uint64_t MAGIC =
     ((uint64_t)'L') << 56 |
     ((uint64_t)'Z') << 48 |
     ((uint64_t)'7') << 40 |
@@ -15,23 +17,23 @@ constexpr uint64_t LZLIKE_MAGIC =
     ((uint64_t)'K') << 8 |
     ((uint64_t)'E');
 
-constexpr bool LZLIKE_DEBUG = false;
+constexpr bool DEBUG = false;
 
 constexpr TokenType TOK_LEN = 0;
 constexpr TokenType TOK_SRC = 1;
 constexpr TokenType TOK_LITERAL = 2;
 
-void setup_lz77like_encoding(BlockEncodingBase& enc) {
+void setup_encoding(BlockEncodingBase& enc) {
     enc.register_huffman();   // TOK_LEN
     enc.register_binary(SIZE_MAX); // TOK_SRC
     enc.register_huffman();   // TOK_LITERAL
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
-void lz77like_decompress(In in, Out out) {
+void decompress(In in, Out out) {
     uint64_t const magic = in.read(64);
-    if(magic != LZLIKE_MAGIC) {
-        std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << LZLIKE_MAGIC << ")" << std::endl;
+    if(magic != MAGIC) {
+        std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << MAGIC << ")" << std::endl;
         std::abort();
     }
 
@@ -41,7 +43,7 @@ void lz77like_decompress(In in, Out out) {
     size_t num_literal = 0;
 
     BlockDecoder dec(in);
-    setup_lz77like_encoding(dec);
+    setup_encoding(dec);
     while(in) {
         auto len = dec.read_uint(TOK_LEN);
         if(len > 0) {
@@ -50,7 +52,7 @@ void lz77like_decompress(In in, Out out) {
             auto const src = dec.read_uint(TOK_SRC);
             assert(src > 0);
 
-            if constexpr(LZLIKE_DEBUG) std::cout << s.length() << ": REFERENCE (" << src << ", " << len << ")" << std::endl;            
+            if constexpr(DEBUG) std::cout << s.length() << ": REFERENCE (" << src << ", " << len << ")" << std::endl;            
 
             auto const i = s.length();
             assert(i >= src);
@@ -61,7 +63,7 @@ void lz77like_decompress(In in, Out out) {
             ++num_literal;
 
             auto const c = dec.read_char(TOK_LITERAL);
-            if constexpr(LZLIKE_DEBUG) std::cout << s.length() << ": LITERAL " << display(c) << std::endl;
+            if constexpr(DEBUG) std::cout << s.length() << ": LITERAL " << display(c) << std::endl;
 
             s.push_back(c);
         }
@@ -69,4 +71,6 @@ void lz77like_decompress(In in, Out out) {
 
     // output
     std::copy(s.begin(), s.end(), out);
+}
+
 }

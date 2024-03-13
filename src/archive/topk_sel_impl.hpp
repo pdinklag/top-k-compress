@@ -5,6 +5,8 @@
 #include <block_coding.hpp>
 #include <pm/result.hpp>
 
+namespace topk_sel {
+
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
     ((uint64_t)'O') << 48 |
@@ -31,7 +33,7 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k) {
 }
 
 template<iopp::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
+void compress(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     // write header
     out.write(MAGIC, 64);
     out.write(k, 64);
@@ -204,7 +206,7 @@ void topk_compress_sel(In begin, In const& end, Out out, size_t const k, size_t 
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
-void topk_decompress_sel(In in, Out out) {
+void decompress(In in, Out out) {
     // decode header
     uint64_t const magic = in.read(64);
     if(magic != MAGIC) {
@@ -282,4 +284,6 @@ void topk_decompress_sel(In in, Out out) {
             handle(c);
         }
     }
+}
+
 }

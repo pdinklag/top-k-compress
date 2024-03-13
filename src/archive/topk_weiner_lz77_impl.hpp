@@ -33,7 +33,7 @@ struct TopkLZ77TrieNode : public TopkTrieNode<> {
 
 template<bool fast, iopp::InputIterator<char> In, iopp::BitSink Out>
 void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, size_t const threshold, pm::Result& result) {
-    out.write(LZLIKE_MAGIC, 64);
+    out.write(lzlike::MAGIC, 64);
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
@@ -149,7 +149,7 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
 
     // initialize encoding
     BlockEncoder enc(out, block_size);
-    setup_lz77like_encoding(enc);
+    lzlike::setup_encoding(enc);
 
     // 
     tlx::RingBuffer<char> buffer(window_size);
@@ -162,8 +162,8 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     auto write_literal = [&](char const c){
         if constexpr(DEBUG) std::cout << xbegin << ": LITERAL " << display(c) << std::endl;
 
-        enc.write_uint(TOK_LEN, 0);
-        enc.write_char(TOK_LITERAL, c);
+        enc.write_uint(lzlike::TOK_LEN, 0);
+        enc.write_char(lzlike::TOK_LITERAL, c);
 
         ++num_phrases;
         ++num_literal;
@@ -173,8 +173,8 @@ void topk_compress_lz77(In begin, In const& end, Out out, size_t const k, size_t
     auto write_ref = [&](size_t const src, size_t const len){
         if constexpr(DEBUG) std::cout << xbegin << ": REFERENCE (" << src << "/" << xbegin - src << ", " << len << ")" << std::endl;
 
-        enc.write_uint(TOK_LEN, len);
-        enc.write_uint(TOK_SRC, src);
+        enc.write_uint(lzlike::TOK_LEN, len);
+        enc.write_uint(lzlike::TOK_SRC, src);
 
         ++num_phrases;
         ++num_ref;

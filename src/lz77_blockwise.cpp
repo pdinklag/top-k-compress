@@ -25,11 +25,11 @@ struct Compressor : public CompressorBase {
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        compress_lz77_blockwise(in.begin(), in.end(), iopp::bitwise_output_to(out), threshold, window, block_size, result);
+        lz77_blockwise::compress(in.begin(), in.end(), iopp::bitwise_output_to(out), threshold, window, block_size, result);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        decompress_lz77_blockwise(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
+        lz77_blockwise::decompress(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
     }
 };
 

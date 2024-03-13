@@ -49,11 +49,11 @@ struct Compressor : public CompressorBase {
             std::abort();
         }
 
-        topk_compress_psample<TopKStringsMisraGries<>>(in.begin(), in.end(), iopp::StreamOutputIterator(out), window, sample_rsh, len_exp_min, len_exp_max, min_dist, k, sketch_rows, sketch_columns, result);
+        topk_psample::compress<TopKStringsMisraGries<>>(in.begin(), in.end(), iopp::StreamOutputIterator(out), window, sample_rsh, len_exp_min, len_exp_max, min_dist, k, sketch_rows, sketch_columns, result);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_decompress_psample<TopKStringsMisraGries<>>(in.begin(), in.end(), iopp::StreamOutputIterator(out));
+        topk_psample::decompress<TopKStringsMisraGries<>>(in.begin(), in.end(), iopp::StreamOutputIterator(out));
     }
 };
 

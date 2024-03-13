@@ -1,6 +1,8 @@
 #include <block_coding.hpp>
 #include <pm/result.hpp>
 
+namespace topk_lz78 {
+
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
     ((uint64_t)'O') << 48 |
@@ -22,7 +24,7 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k) {
 }
 
 template<typename Topk, iopp::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
+void compress(In begin, In const& end, Out out, size_t const k, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     out.write(MAGIC, 64);
     out.write(k, 64);
     out.write(sketch_columns, 64);
@@ -88,7 +90,7 @@ void topk_compress_lz78(In begin, In const& end, Out out, size_t const k, size_t
 }
 
 template<typename Topk, iopp::BitSource In, std::output_iterator<char> Out>
-void topk_decompress_lz78(In in, Out out) {
+void decompress(In in, Out out) {
     // decode header
     uint64_t const magic = in.read(64);
     if(magic != MAGIC) {
@@ -141,4 +143,6 @@ void topk_decompress_lz78(In in, Out out) {
 
         if constexpr(PROTOCOL) std::cout << std::endl;
     }
+}
+
 }

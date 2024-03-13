@@ -8,6 +8,8 @@
 
 #include <valgrind.hpp>
 
+namespace topk_attract {
+
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
     ((uint64_t)'O') << 48 |
@@ -21,7 +23,7 @@ constexpr uint64_t MAGIC =
 using Index = uint32_t;
 
 template<iopp::InputIterator<char> In, iopp::BitSink Out>
-void topk_compress_attract(In begin, In const& end, Out out, size_t const k, size_t const max_frequency, size_t const block_size, pm::Result& result) {
+void compress(In begin, In const& end, Out out, size_t const k, size_t const max_frequency, size_t const block_size, pm::Result& result) {
     // tlx::RingBuffer<char> window(k);
     auto window = std::make_unique<char[]>(2 * k);
     size_t window_offs = 0;
@@ -78,4 +80,6 @@ void topk_compress_attract(In begin, In const& end, Out out, size_t const k, siz
     result.add("phrases_total", num_phrases);
     result.add("phrases_longest", longest);
     result.add("phrases_avg_len", std::round(100.0 * ((double)total_len / (double)num_phrases)) / 100.0);
+}
+
 }

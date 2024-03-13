@@ -87,6 +87,6 @@ if(BUILD_ALL)
     add_executable(lzend-blockwise archive/lzend_blockwise.cpp)
     target_link_libraries(lzend-blockwise topk lz77 ordered word-packing)
 
-    add_executable(topk-sel topk_sel.cpp)
+    add_executable(topk-sel archive/topk_sel.cpp)
     target_link_libraries(topk-sel topk)
 endif()

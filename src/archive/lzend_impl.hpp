@@ -15,6 +15,8 @@
 
 #include "lzend_decompress.hpp"
 
+namespace lzend {
+
 constexpr bool PROTOCOL = false;
 constexpr bool TIME_PHASES = false;
 constexpr bool TIME_OPS = false;
@@ -33,7 +35,7 @@ using Index = uint32_t;
 using SIndex = std::make_signed_t<Index>;
 
 template<iopp::InputIterator<char> In, iopp::BitSink Out>
-void lzend_compress(In begin, In const& end, Out out, size_t const block_size, pm::Result& result) {
+void compress(In begin, In const& end, Out out, size_t const block_size, pm::Result& result) {
     pm::Stopwatch sw;
 
     // fully read file into RAM
@@ -95,7 +97,7 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
     // initialize encoding
     out.write(MAGIC, 64);
     BlockEncoder enc(out, block_size);
-    setup_lzend_encoding(enc);
+    setup_encoding(enc);
     
     // translate a position in the text to the corresponding position in the reverse text (which has a sentinel!)
     auto pos_to_reverse = [&](size_t const i) {
@@ -204,4 +206,6 @@ void lzend_compress(In begin, In const& end, Out out, size_t const block_size, p
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
-void lzend_decompress(In in, Out out) { lzend_decompress_offline<PROTOCOL>(in, out, MAGIC); }
+void decompress(In in, Out out) { decompress_offline<PROTOCOL>(in, out, MAGIC); }
+
+}

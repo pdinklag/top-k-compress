@@ -1,4 +1,4 @@
-#include "topk_compressor.hpp"
+#include "../topk_compressor.hpp"
 #include "topk_sel_impl.hpp"
 
 struct Compressor : public TopkCompressor {
@@ -19,11 +19,11 @@ struct Compressor : public TopkCompressor {
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_compress_sel(in.begin(), in.end(), iopp::bitwise_output_to(out), k, window, sketch_rows, sketch_columns, block_size, result);
+        topk_sel::compress(in.begin(), in.end(), iopp::bitwise_output_to(out), k, window, sketch_rows, sketch_columns, block_size, result);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_decompress_sel(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
+        topk_sel::decompress(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
     }
 };
 

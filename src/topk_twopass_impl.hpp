@@ -11,6 +11,8 @@
 #include <stack>
 #include <unordered_map>
 
+namespace topk_twopass {
+
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
     ((uint64_t)'O') << 48 |
@@ -74,7 +76,7 @@ inline void write_file_str(std::filesystem::path const& path, std::string const&
 }
 
 template<iopp::BitSink Out>
-void topk_compress_twopass(iopp::FileInputStream& in, Out out, size_t const k, size_t const max_frequency, size_t const block_size, pm::Result& result) {
+void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const max_frequency, size_t const block_size, pm::Result& result) {
     // write header and initialize encoding
     out.write(MAGIC, 64);
     out.write(k, 64);
@@ -231,4 +233,6 @@ void topk_compress_twopass(iopp::FileInputStream& in, Out out, size_t const k, s
     result.add("phrases_trie", num_trie);
     result.add("phrases_longest", longest);
     result.add("phrases_avg_len", std::round(100.0 * ((double)total_len / (double)num_phrases)) / 100.0);
+}
+
 }

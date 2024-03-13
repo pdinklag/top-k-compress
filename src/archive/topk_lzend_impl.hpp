@@ -18,6 +18,8 @@
 #include <block_coding.hpp>
 #include <pm/result.hpp>
 
+namespace topk_lzend {
+
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
     ((uint64_t)'O') << 48 |
@@ -500,7 +502,7 @@ public:
 };
 
 template<bool use_trie, iopp::InputIterator<char> In, iopp::BitSink Out>
-void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_block, size_t const k, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
+void compress(In begin, In const& end, Out out, size_t const max_block, size_t const k, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
     // write header
     out.write(MAGIC, 64);
     out.write(k, 64);
@@ -588,7 +590,7 @@ void topk_lzend_compress(In begin, In const& end, Out out, size_t const max_bloc
 }
 
 template<bool use_trie, iopp::BitSource In, std::output_iterator<char> Out>
-void topk_lzend_decompress(In in, Out out) {
+void decompress(In in, Out out) {
     // decode header
     uint64_t const magic = in.read(64);
     if(magic != MAGIC) {
@@ -797,4 +799,6 @@ void topk_lzend_decompress(In in, Out out) {
         if(z > 1) assert(local_phrases[z-1] - local_phrases[z-2] <= max_block);
         ++num_phrases;
     }
+}
+
 }

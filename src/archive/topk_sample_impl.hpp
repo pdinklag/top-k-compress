@@ -11,6 +11,8 @@
 
 #include <code/vbyte.hpp>
 
+namespace topk_sample {
+
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
     ((uint64_t)'O') << 48 |
@@ -187,7 +189,7 @@ struct Buffers {
 };
 
 template<typename TopK, bool use_sss, iopp::InputIterator<char> In, std::output_iterator<char> Out>
-void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_exp, size_t const len_exp_min, size_t const len_exp_max, size_t const min_dist, size_t const k, size_t const sketch_rows, size_t const sketch_columns, pm::Result& result) {
+void compress(In begin, In const& end, Out out, size_t const sample_exp, size_t const len_exp_min, size_t const len_exp_max, size_t const min_dist, size_t const k, size_t const sketch_rows, size_t const sketch_columns, pm::Result& result) {
     assert(len_exp_max >= len_exp_min);
     assert(len_exp_max <= 31);
     assert(sample_exp < 64);
@@ -356,7 +358,7 @@ void topk_compress_sample(In begin, In const& end, Out out, size_t const sample_
 }
 
 template<typename TopK, bool use_sss, iopp::InputIterator<char> In, std::output_iterator<char> Out>
-void topk_decompress_sample(In in, In const end, Out out) {
+void decompress(In in, In const end, Out out) {
     uint64_t const magic = read_uint(in, 8);
     if(magic != MAGIC) {
         std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << MAGIC << ")" << std::endl;
@@ -438,4 +440,6 @@ void topk_decompress_sample(In in, In const end, Out out) {
     for(char const c : s) {
         *out++ = c;
     }
+}
+
 }

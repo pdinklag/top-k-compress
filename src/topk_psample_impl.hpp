@@ -11,6 +11,8 @@
 
 #include <pm.hpp>
 
+namespace topk_psample {
+
 constexpr uint64_t MAGIC =
     ((uint64_t)'T') << 56 |
     ((uint64_t)'O') << 48 |
@@ -46,7 +48,7 @@ bool should_sample(uint64_t const fp, uint64_t const s) {
 }
 
 template<typename TopK, iopp::InputIterator<char> In, std::output_iterator<char> Out>
-void topk_compress_psample(In begin, In const& end, Out out, size_t const window, size_t const sample_rsh, size_t const len_exp_min, size_t const len_exp_max, size_t const min_dist, size_t const k, size_t const sketch_rows, size_t const sketch_columns, pm::Result& result) {
+void compress(In begin, In const& end, Out out, size_t const window, size_t const sample_rsh, size_t const len_exp_min, size_t const len_exp_max, size_t const min_dist, size_t const k, size_t const sketch_rows, size_t const sketch_columns, pm::Result& result) {
     assert(len_exp_max >= len_exp_min);
     assert(len_exp_max <= 31);
 
@@ -298,7 +300,7 @@ void topk_compress_psample(In begin, In const& end, Out out, size_t const window
 }
 
 template<typename TopK, iopp::InputIterator<char> In, std::output_iterator<char> Out>
-void topk_decompress_psample(In in, In const end, Out out) {
+void decompress(In in, In const end, Out out) {
     uint64_t const magic = read_uint(in, 8);
     if(magic != MAGIC) {
         std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << MAGIC << ")" << std::endl;
@@ -340,4 +342,6 @@ void topk_decompress_psample(In in, In const end, Out out) {
     for(auto c : s) {
         *out++ = c;
     }
+}
+
 }

@@ -52,9 +52,9 @@ struct Lz77Compressor : public CompressorBase {
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
         // initialize encoding
         auto bitout = iopp::bitwise_output_to(out);
-        bitout.write(LZLIKE_MAGIC, 64);
+        bitout.write(lzlike::MAGIC, 64);
         BlockEncoder enc(bitout, block_size);
-        setup_lz77like_encoding(enc);
+        lzlike::setup_encoding(enc);
 
         size_t num_ref = 0;
         size_t num_literal = 0;
@@ -67,8 +67,8 @@ struct Lz77Compressor : public CompressorBase {
             if(f.is_literal()) {
                 ++num_literal;
 
-                enc.write_uint(TOK_LEN, 0);
-                enc.write_char(TOK_LITERAL, f.literal());
+                enc.write_uint(lzlike::TOK_LEN, 0);
+                enc.write_char(lzlike::TOK_LITERAL, f.literal());
             } else {
                 ++num_ref;
 
@@ -77,8 +77,8 @@ struct Lz77Compressor : public CompressorBase {
                 total_ref_len += f.len;
                 longest = std::max(longest, (size_t)f.len);
 
-                enc.write_uint(TOK_LEN, f.len);
-                enc.write_uint(TOK_SRC, f.src);
+                enc.write_uint(lzlike::TOK_LEN, f.len);
+                enc.write_uint(lzlike::TOK_SRC, f.src);
             }
         });
 
@@ -95,6 +95,6 @@ struct Lz77Compressor : public CompressorBase {
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        lz77like_decompress(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
+        lzlike::decompress(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
     }
 };

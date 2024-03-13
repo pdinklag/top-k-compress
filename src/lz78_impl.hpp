@@ -5,6 +5,8 @@
 #include <block_coding.hpp>
 #include <simple_trie.hpp>
 
+namespace lz78 {
+
 constexpr uint64_t MAGIC =
     ((uint64_t)'L') << 56 |
     ((uint64_t)'Z') << 48 |
@@ -24,7 +26,7 @@ void setup_encoding(BlockEncodingBase& enc) {
 }
 
 template<iopp::InputIterator<char> In, iopp::BitSink Out>
-void lz78_compress(In begin, In const& end, Out out, size_t const block_size, pm::Result& result) {
+void compress(In begin, In const& end, Out out, size_t const block_size, pm::Result& result) {
     out.write(MAGIC, 64);
 
     BlockEncoder enc(out, block_size);
@@ -81,7 +83,7 @@ void lz78_compress(In begin, In const& end, Out out, size_t const block_size, pm
 }
 
 template<iopp::BitSource In, std::output_iterator<char> Out>
-void lz78_decompress(In in, Out out) {
+void decompress(In in, Out out) {
     uint64_t const magic = in.read(64);
     if(magic != MAGIC) {
         std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << MAGIC << ")" << std::endl;
@@ -115,4 +117,6 @@ void lz78_decompress(In in, Out out) {
 
     // output
     std::copy(s.begin(), s.end(), out);
+}
+
 }

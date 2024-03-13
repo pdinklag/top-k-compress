@@ -21,11 +21,11 @@ struct Compressor : public CompressorBase {
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_lzend_compress<false>(in.begin(), in.end(), iopp::bitwise_output_to(out), window, 1, 1, 1, block_size, result);
+        topk_lzend::compress<false>(in.begin(), in.end(), iopp::bitwise_output_to(out), window, 1, 1, 1, block_size, result);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_lzend_decompress<false>(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
+        topk_lzend::decompress<false>(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
     }
 };
 
