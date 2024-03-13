@@ -20,7 +20,7 @@ struct Compressor : public TopkCompressor {
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_twopass::compress(in, iopp::bitwise_output_to(out), k, sketch_columns, block_size, result);
+        topk_twopass::compress(in, iopp::bitwise_output_to(out), k, max_freq, block_size, result);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {

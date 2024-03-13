@@ -1,18 +1,18 @@
-#include "../topk_compressor.hpp"
+#include "topk_compressor_cm.hpp"
 #include "topk_weiner_lz77_impl.hpp"
 
-struct Compressor : public TopkCompressor {
+struct Compressor : public TopkCompressorCountMin {
     uint64_t window = 8;
     unsigned int threshold = 2;
 
-    Compressor() : TopkCompressor("topk-weiner-lz77", "Implements the top-k LZ77 compression algorithm using Weiner links") {
+    Compressor() : TopkCompressorCountMin("topk-weiner-lz77", "Implements the top-k LZ77 compression algorithm using Weiner links") {
         param('w', "window", window, "The window size.");
         param('t', "threshold", threshold, "The minimum reference length");
     }
 
     virtual void init_result(pm::Result& result) override {
         result.add("algo", "topk-lz77");
-        TopkCompressor::init_result(result);
+        TopkCompressorCountMin::init_result(result);
         result.add("window", window);
         result.add("threshold", threshold);
     }

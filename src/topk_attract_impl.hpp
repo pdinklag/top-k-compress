@@ -23,7 +23,7 @@ constexpr uint64_t MAGIC =
 using Index = uint32_t;
 
 template<iopp::InputIterator<char> In, iopp::BitSink Out>
-void compress(In begin, In const& end, Out out, size_t const k, size_t const max_frequency, size_t const block_size, pm::Result& result) {
+void compress(In begin, In const& end, Out out, size_t const k, size_t const max_freq, size_t const block_size, pm::Result& result) {
     // tlx::RingBuffer<char> window(k);
     auto window = std::make_unique<char[]>(2 * k);
     size_t window_offs = 0;
@@ -35,7 +35,7 @@ void compress(In begin, In const& end, Out out, size_t const k, size_t const max
     size_t total_len = 0;
 
     using Topk = KAttractor<Index>;
-    Topk topk(k, max_frequency);
+    Topk topk(k, max_freq);
     Topk::MatchResult r(k);
 
     // read initial window

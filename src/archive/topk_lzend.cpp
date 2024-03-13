@@ -1,19 +1,19 @@
-#include "../topk_compressor.hpp"
+#include "topk_compressor_cm.hpp"
 #include "topk_lzend_impl.hpp"
 
 #include <si_iec_literals.hpp>
 
-struct Compressor : public TopkCompressor {
+struct Compressor : public TopkCompressorCountMin {
     uint64_t window = 1_Mi;
 
-    Compressor() : TopkCompressor("topk-lzend", "Implements the top-k LZEnd compression algorithm") {
+    Compressor() : TopkCompressorCountMin("topk-lzend", "Implements the top-k LZEnd compression algorithm") {
         param('w', "window", window, "The window size.");
     }
 
     virtual void init_result(pm::Result& result) override {
         result.add("algo", "topk-lzend");
         result.add("window", window);
-        TopkCompressor::init_result(result);
+        TopkCompressorCountMin::init_result(result);
     }
 
     virtual std::string file_ext() override {

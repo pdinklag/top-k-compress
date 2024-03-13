@@ -24,15 +24,15 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k) {
 }
 
 template<typename Topk, iopp::InputIterator<char> In, iopp::BitSink Out>
-void compress(In begin, In const& end, Out out, size_t const k, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
+void compress(In begin, In const& end, Out out, size_t const k, size_t const max_freq, size_t const block_size, pm::Result& result) {
     out.write(MAGIC, 64);
     out.write(k, 64);
-    out.write(sketch_columns, 64);
+    out.write(max_freq, 64);
 
     // initialize compression
     // - frequent substring 0 is reserved to indicate a literal character
     
-    Topk topk(k - 1, sketch_columns);
+    Topk topk(k - 1, max_freq);
     size_t n = 0;
     size_t num_phrases = 0;
     size_t longest = 0;
@@ -99,11 +99,11 @@ void decompress(In in, Out out) {
     }
 
     auto const k = in.read(64);
-    auto const sketch_columns = in.read(64);
+    auto const max_freq = in.read(64);
 
     // initialize decompression
     // - frequent substring 0 is reserved to indicate a literal character
-    Topk topk(k - 1, sketch_columns);
+    Topk topk(k - 1, max_freq);
 
     size_t n = 0;
     size_t num_phrases = 0;

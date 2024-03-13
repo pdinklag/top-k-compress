@@ -46,7 +46,7 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k, size_t const window_
 }
 
 template<typename Topk, iopp::InputIterator<char> In, iopp::BitSink Out>
-void compress(In begin, In const& end, Out out, size_t const threshold, size_t const k, size_t const window_size, size_t const sketch_rows, size_t const sketch_columns, size_t const block_size, pm::Result& result) {
+void compress(In begin, In const& end, Out out, size_t const threshold, size_t const k, size_t const window_size, size_t const max_freq, size_t const block_size, pm::Result& result) {
     // init stats
     size_t num_lz = 0;
     size_t num_trie = 0;
@@ -61,13 +61,13 @@ void compress(In begin, In const& end, Out out, size_t const threshold, size_t c
     out.write(MAGIC, 64);
     out.write(k, 64);
     out.write(window_size, 64);
-    out.write(sketch_columns, 64);
+    out.write(max_freq, 64);
 
     BlockEncoder enc(out, block_size);
     setup_encoding(enc, k, window_size);
 
     // initialize top-k
-    Topk topk(k - 1, sketch_columns);
+    Topk topk(k - 1, max_freq);
 
     // initialize factorizer
     lz77::LPFFactorizer lpf;
@@ -230,12 +230,12 @@ void decompress(In in, Out out) {
 
     auto const k = in.read(64);
     auto const window_size = in.read(64);
-    auto const sketch_columns = in.read(64);
+    auto const max_freq = in.read(64);
 
     // initialize decoding
     BlockDecoder dec(in);
     setup_encoding(dec, k, window_size);
-    Topk topk(k - 1, sketch_columns);
+    Topk topk(k - 1, max_freq);
     
     auto block = std::make_unique<char[]>(window_size);
     auto block_offs = 0;

@@ -76,11 +76,11 @@ inline void write_file_str(std::filesystem::path const& path, std::string const&
 }
 
 template<iopp::BitSink Out>
-void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const max_frequency, size_t const block_size, pm::Result& result) {
+void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const max_freq, size_t const block_size, pm::Result& result) {
     // write header and initialize encoding
     out.write(MAGIC, 64);
     out.write(k, 64);
-    out.write(max_frequency, 64);
+    out.write(max_freq, 64);
 
     // pass 1: build top-k LZ78 trie
     Topk::TrieType trie;
@@ -88,7 +88,7 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
         auto begin = in.begin();
         auto const end = in.end();
 
-        Topk topk(k - 1, max_frequency);
+        Topk topk(k - 1, max_freq);
         auto s = topk.empty_string();
         while(begin != end) {
             // read next character

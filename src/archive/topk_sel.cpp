@@ -1,16 +1,16 @@
-#include "../topk_compressor.hpp"
+#include "topk_compressor_cm.hpp"
 #include "topk_sel_impl.hpp"
 
-struct Compressor : public TopkCompressor {
+struct Compressor : public TopkCompressorCountMin {
     uint64_t window = 8;
 
-    Compressor() : TopkCompressor("topk-sel", "Implements the selective top-k compression algorithm") {
+    Compressor() : TopkCompressorCountMin("topk-sel", "Implements the selective top-k compression algorithm") {
         param('w', "window", window, "The window size.");
     }
 
     virtual void init_result(pm::Result& result) override {
         result.add("algo", "topk-sel");
-        TopkCompressor::init_result(result);
+        TopkCompressorCountMin::init_result(result);
         result.add("window", window);
     }
 

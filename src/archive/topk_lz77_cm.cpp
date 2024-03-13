@@ -1,22 +1,22 @@
-#include "../topk_compressor.hpp"
+#include "topk_compressor_cm.hpp"
 #include "../topk_lz77_impl.hpp"
 
 #include <archive/cm/topk_prefixes_count_min.hpp>
 
 using Topk = TopKPrefixesCountMin<>;
 
-struct Compressor : public TopkCompressor {
+struct Compressor : public TopkCompressorCountMin {
     uint64_t window = 8;
     unsigned int threshold = 2;
 
-    Compressor() : TopkCompressor("topk-lz77-cm", "Factorizes (small) windows to use as relevant strings in a Misra-Gries top-k data structure.") {
+    Compressor() : TopkCompressorCountMin("topk-lz77-cm", "Factorizes (small) windows to use as relevant strings in a Misra-Gries top-k data structure.") {
         param('w', "window", window, "The window size.");
         param('t', "threshold", threshold, "The minimum reference length");
     }
 
     virtual void init_result(pm::Result& result) override {
         result.add("algo", "topk-lz77-cm");
-        TopkCompressor::init_result(result);
+        TopkCompressorCountMin::init_result(result);
         result.add("window", window);
         result.add("threshold", threshold);
     }
@@ -26,7 +26,7 @@ struct Compressor : public TopkCompressor {
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        topk_lz77::compress<Topk>(in.begin(), in.end(), iopp::bitwise_output_to(out), threshold, k, window, sketch_rows, sketch_columns, block_size, result);
+        topk_lz77::compress<Topk>(in.begin(), in.end(), iopp::bitwise_output_to(out), threshold, k, window, sketch_columns, block_size, result);
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
