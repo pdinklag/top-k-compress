@@ -235,6 +235,20 @@ public:
         dfo(map, root(), rank);
     }
 
+    void renumber(std::function<NodeIndex(NodeIndex)> map) {
+        // renumber node links
+        for(size_t i = 0; i < capacity_; i++) {
+            nodes_[i].renumber(map);
+        }
+
+        // physically reorder
+        auto new_nodes = std::make_unique<Node[]>(capacity_);
+        for(size_t i = 0; i < capacity_; i++) {
+            new_nodes[map(i)] = std::move(nodes_[i]);
+        }
+        nodes_ = std::move(new_nodes);
+    }
+
     struct Analysis {
         size_t leaves;
         size_t arms_num;

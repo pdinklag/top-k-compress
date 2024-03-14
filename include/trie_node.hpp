@@ -7,6 +7,8 @@
 
 template<std::unsigned_integral NodeIndex = uint32_t>
 struct TrieNode {
+    static constexpr NodeIndex NIL = std::numeric_limits<NodeIndex>::max(); // nb: used to denote orphans and is only ever used if orphans are allowed
+
     using Character = char;
     using Index = NodeIndex;
     using Size = uint16_t;
@@ -29,6 +31,11 @@ struct TrieNode {
 
     bool is_leaf() const ALWAYS_INLINE {
         return size() == 0;
+    }
+
+    void renumber(std::function<NodeIndex(NodeIndex)> map) ALWAYS_INLINE {
+        if(parent != NIL) parent = map(parent);
+        children.renumber(map);
     }
 
     void dump_extra_info() const {

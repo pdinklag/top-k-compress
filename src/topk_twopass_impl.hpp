@@ -114,7 +114,8 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
             for(size_t i = 0; i < k-1; i++) dfo[i] = i; // unused nodes map to themselves
             trie.dfo(dfo.get());
 
-            // TODO: renumber
+            // renumber
+            trie.renumber([&](Node const v){ return dfo[v]; });
         }
 
         // topology

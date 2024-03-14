@@ -6,6 +6,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <utility>
 
 #include "always_inline.hpp"
@@ -176,6 +177,14 @@ public:
             return data_.inl.links[i];
         } else {
             return data_.ext.links[i];
+        }
+    }
+
+    void renumber(std::function<NodeIndex(NodeIndex)> map) ALWAYS_INLINE {
+        if(is_inline()) {
+            for(size_t i = 0; i < size_; i++) data_.inl.links[i] = map(data_.inl.links[i]);
+        } else {
+            for(size_t i = 0; i < size_; i++) data_.ext.links[i] = map(data_.ext.links[i]);
         }
     }
 
