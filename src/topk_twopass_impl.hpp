@@ -10,6 +10,7 @@
 
 #include <stack>
 #include <unordered_map>
+#include <vector>
 
 namespace topk_twopass {
 
@@ -83,6 +84,8 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
     out.write(max_freq, 64);
 
     // pass 1: build top-k LZ78 trie
+    pm::Stopwatch sw;
+    sw.start();
     Topk::TrieType trie;
     {
         auto begin = in.begin();
@@ -99,8 +102,11 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
 
         trie = std::move(topk.trie());
     }
+    sw.stop();
+    result.add("time_build", (size_t)sw.elapsed_time_millis());
 
     // relabel and encode trie
+    sw.start();
     {
         // sort children of all nodes alphabetically by their inlabel
         for(size_t v = 0; v < trie.size(); v++) {
@@ -145,7 +151,6 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
                 code::Huffman::encode(out, uint8_t(c), table);
             }
         }
-
         
         auto const size_trie_labels = (out.num_bits_written() - bits0) / 8;
         auto const size_trie = size_trie_topology + size_trie_labels;
@@ -159,6 +164,8 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
 
         out.flush();
     }
+    sw.stop();
+    result.add("time_enc_trie", (size_t)sw.elapsed_time_millis());
 
     // pass 2: parse
 
@@ -172,6 +179,7 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
     BlockEncoder enc(out, block_size);
     setup_encoding(enc, k);
 
+    sw.start();
     {
         in.seekg(0, std::ios::beg);
 
@@ -227,6 +235,8 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
 
         enc.flush();
     }
+    sw.stop();
+    result.add("time_parse", (size_t)sw.elapsed_time_millis());
 
     auto const num_phrases = num_literal + num_trie;
     result.add("phrases_total", num_literal + num_trie);
