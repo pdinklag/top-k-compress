@@ -8,6 +8,7 @@
 
 #include <topk_prefixes_misra_gries.hpp>
 #include <simple_trie.hpp>
+#include <small_trie.hpp>
 
 #include <stack>
 #include <unordered_map>
@@ -76,16 +77,6 @@ inline void write_file_str(std::filesystem::path const& path, std::string const&
     std::copy(s.begin(), s.end(), iopp::StreamOutputIterator(fout));
 }
 
-void reduce_depth_first(auto const& topk_trie, Node const topk_v, auto& trie, Node const v) {
-    auto const& children = topk_trie.node(topk_v).children;
-    for(size_t i = 0; i < children.size(); i++) {
-        auto const& topk_child = topk_trie.node(children[i]);
-        Node child;
-        trie.follow_edge(v, topk_child.inlabel, child);
-        reduce_depth_first(topk_trie, children[i], trie, child);
-    }
-}
-
 template<iopp::BitSink Out>
 void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const max_freq, size_t const block_size, pm::Result& result) {
     // write header and initialize encoding
@@ -96,7 +87,9 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
     // pass 1: build top-k LZ78 trie
     pm::Stopwatch sw;
     sw.start();
-    SimpleTrie<Node> trie;
+
+    using ReducedTrie = SmallTrie; //SimpleTrie<Node>;
+    ReducedTrie trie;
     {
         auto begin = in.begin();
         auto const end = in.end();
@@ -112,7 +105,8 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
 
         // reduce top-k trie to a simple ("static") trie, depth-first
         auto topk_trie = std::move(topk.trie());
-        reduce_depth_first(topk_trie, topk_trie.root(), trie, trie.root());
+        trie = ReducedTrie(topk_trie);
+        // reduce_depth_first(topk_trie, topk_trie.root(), trie, trie.root());
     }
     sw.stop();
     result.add("time_build", (size_t)sw.elapsed_time_millis());

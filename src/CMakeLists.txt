@@ -30,7 +30,7 @@ add_executable(topk-lz78 topk_lz78.cpp)
 target_link_libraries(topk-lz78 topk)
 
 add_executable(topk-twopass topk_twopass.cpp)
-target_link_libraries(topk-twopass topk)
+target_link_libraries(topk-twopass topk word-packing)
 
 add_executable(topk-psample topk_psample.cpp)
 target_link_libraries(topk-psample topk)

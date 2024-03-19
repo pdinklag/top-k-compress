@@ -46,9 +46,32 @@ private:
         return std::make_unique<NodeData[]>(block_size_);
     }
 
+    template<typename Trie>
+    void construct(Trie const& other, size_t const other_v, Node const v) {
+        auto const& children = other.children_of(other_v);
+        for(size_t i = 0; i < children.size(); i++) {
+            Node child;
+            follow_edge(v, children.label(i), child);
+            construct(other, children[i], child);
+        }
+    }
+
 public:
     SimpleTrie() {
         clear();
+    }
+
+    SimpleTrie(SimpleTrie&&) = default;
+    SimpleTrie& operator=(SimpleTrie&&) = default;
+
+    SimpleTrie(SimpleTrie const&) = delete;
+    SimpleTrie& operator=(SimpleTrie const&) = delete;
+
+
+    template<typename Trie>
+    SimpleTrie(Trie const& other) {
+        clear();
+        construct(other, other.root(), root());
     }
 
     Node root() const { return 0; }

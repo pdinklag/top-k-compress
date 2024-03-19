@@ -223,36 +223,6 @@ public:
                   << std::endl;
     }
 
-private:
-    void dfo(NodeIndex* map, NodeIndex const v, NodeIndex& rank) const {
-        map[v] = rank++;
-
-        auto const& children = nodes_[v].children;
-        for(size_t i = 0; i < children.size(); i++) {
-            dfo(map, children[i], rank);
-        }
-    }
-
-public:
-    void dfo(NodeIndex* map) const {
-        NodeIndex rank = 0;
-        dfo(map, root(), rank);
-    }
-
-    void renumber(std::function<NodeIndex(NodeIndex)> map) {
-        // renumber node links
-        for(size_t i = 0; i < capacity_; i++) {
-            nodes_[i].renumber(map);
-        }
-
-        // physically reorder
-        auto new_nodes = std::make_unique<Node[]>(capacity_);
-        for(size_t i = 0; i < capacity_; i++) {
-            new_nodes[map(i)] = std::move(nodes_[i]);
-        }
-        nodes_ = std::move(new_nodes);
-    }
-
     struct Analysis {
         size_t leaves;
         size_t arms_num;
@@ -275,15 +245,6 @@ public:
     };
 
 private:
-    void to_bp(std::ostringstream& out, NodeIndex const v) const {
-        out << "(";
-        auto const& children = nodes_[v].children;
-        for(size_t i = 0; i < children.size(); i++) {
-            to_bp(out, children[i]);
-        }
-        out << ")";
-    }
-
     void analyze_arms(Analysis& ana, NodeIndex const v, size_t const arm_len) const { 
         auto const& children = nodes_[v].children;
         if(children.size() == 0) {
@@ -312,12 +273,6 @@ private:
     }
 
 public:
-    std::string to_bp() const {
-        std::ostringstream out;
-        to_bp(out, root());
-        return out.str();
-    }
-
     Analysis analyze() const {
         Analysis ana;
         analyze_arms(ana, root(), 0);
