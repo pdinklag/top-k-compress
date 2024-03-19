@@ -11,7 +11,7 @@ struct Compressor : public CompressorBase {
     }
 
     virtual std::string file_ext() override {
-        return ".lz78full";
+        return ".lz78";
     }
 
     virtual void compress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
