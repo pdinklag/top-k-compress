@@ -7,6 +7,7 @@
 #include <code/counter.hpp>
 
 #include <topk_prefixes_misra_gries.hpp>
+#include <simple_trie.hpp>
 
 #include <stack>
 #include <unordered_map>
@@ -48,10 +49,9 @@ void gather_labels_preorder(Trie const& trie, Node const v, std::string& labels)
 
 template<typename Trie>
 void gather_labels(Trie const& trie, Node const v, std::string& labels) {
-    auto const& children = trie.node(v).children;
-    for(size_t i = 0; i < children.size(); i++) {
-        auto const u = children[i];
-        labels.push_back(trie.node(u).inlabel);
+    auto const& children = trie.children_of(v);
+    for(size_t i = 0; i < children.size(); i++) { 
+        labels.push_back(children.label(i));
     }
     for(size_t i = 0; i < children.size(); i++) {
         gather_labels(trie, children[i], labels);
@@ -63,7 +63,7 @@ void encode_topology(Trie const& trie, Node const v, Out& out) {
     // balanced parantheses
     out.write(bool(1));
     
-    auto const& children = trie.node(v).children;
+    auto const& children = trie.children_of(v);
     for(size_t i = 0; i < children.size(); i++) {
         encode_topology(trie, children[i], out);
     }
@@ -76,6 +76,16 @@ inline void write_file_str(std::filesystem::path const& path, std::string const&
     std::copy(s.begin(), s.end(), iopp::StreamOutputIterator(fout));
 }
 
+void reduce_depth_first(auto const& topk_trie, Node const topk_v, auto& trie, Node const v) {
+    auto const& children = topk_trie.node(topk_v).children;
+    for(size_t i = 0; i < children.size(); i++) {
+        auto const& topk_child = topk_trie.node(children[i]);
+        Node child;
+        trie.follow_edge(v, topk_child.inlabel, child);
+        reduce_depth_first(topk_trie, children[i], trie, child);
+    }
+}
+
 template<iopp::BitSink Out>
 void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const max_freq, size_t const block_size, pm::Result& result) {
     // write header and initialize encoding
@@ -86,7 +96,7 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
     // pass 1: build top-k LZ78 trie
     pm::Stopwatch sw;
     sw.start();
-    Topk::TrieType trie;
+    SimpleTrie<Node> trie;
     {
         auto begin = in.begin();
         auto const end = in.end();
@@ -100,30 +110,22 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
             s = next.frequent ? next : topk.empty_string();
         }
 
-        trie = std::move(topk.trie());
+        // reduce top-k trie to a simple ("static") trie, depth-first
+        auto topk_trie = std::move(topk.trie());
+        reduce_depth_first(topk_trie, topk_trie.root(), trie, trie.root());
     }
     sw.stop();
     result.add("time_build", (size_t)sw.elapsed_time_millis());
 
+    {
+        auto const trie_mem = trie.mem_size();
+        result.add("trie_mem", trie.mem_size());
+        result.add("trie_mem_avg_per_node", std::round(100.0 * ((double)trie_mem / (double)k)) / 100.0);
+    }
+
     // relabel and encode trie
     sw.start();
     {
-        // sort children of all nodes alphabetically by their inlabel
-        for(size_t v = 0; v < trie.size(); v++) {
-            trie.node(v).children.sort();
-        }
-        
-        // renumber nodes in depth-first order
-        {
-            // compute DFO
-            auto dfo = std::make_unique<Node[]>(k-1);
-            for(size_t i = 0; i < k-1; i++) dfo[i] = i; // unused nodes map to themselves
-            trie.dfo(dfo.get());
-
-            // renumber
-            trie.renumber([&](Node const v){ return dfo[v]; });
-        }
-
         // topology
         auto bits0 = out.num_bits_written();
         encode_topology(trie, trie.root(), out);
@@ -134,13 +136,11 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
             std::string labels;
             labels.reserve(k);
             {
-                auto const& root_children = trie.node(trie.root()).children;
+                auto const& root_children = trie.children_of(trie.root());
                 for(size_t i = 0; i < root_children.size(); i++) {
                     gather_labels(trie, root_children[i], labels);
                 }
             }
-
-            // write_file_str("trie.labels", labels);
 
             bits0 = out.num_bits_written();
             code::HuffmanTree<char> huff(labels.begin(), labels.end());

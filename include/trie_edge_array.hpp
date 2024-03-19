@@ -80,6 +80,28 @@ private:
             BitPack const mask = std::numeric_limits<BitPack>::max() >> (std::numeric_limits<BitPack>::digits - 1 - j);
             return r + std::popcount(ind[b] & mask) - 1;
         }
+
+        UCharacter select(size_t k) const ALWAYS_INLINE {
+            for(size_t i = 0; i < num_bit_packs_; i++) {
+                auto x = ind[i];
+                size_t rsh = 0;
+
+                while(x) {
+                    auto const j = std::countr_zero(x);
+                    if(k == 0) {
+                        // this is the bit we were looking for, reconstruct the character
+                        return UCharacter(i * bits_per_pack_ + rsh + j);
+                    } else {
+                        // continue
+                        x >>= j + 1;
+                        rsh += j + 1;
+                        --k;
+                    }
+                }
+            }
+            assert(false);
+            return 0;
+        }
     } __attribute__((packed));
 
 public:
@@ -172,11 +194,23 @@ public:
         return size_;
     }
 
+    size_t allocated_extra_memory() const ALWAYS_INLINE {
+        return is_inline() ? 0 : capacity_for(size_) * sizeof(NodeIndex);
+    }
+
     NodeIndex operator[](size_t const i) const ALWAYS_INLINE {
         if(is_inline()) {
             return data_.inl.links[i];
         } else {
             return data_.ext.links[i];
+        }
+    }
+
+    Character label(size_t const i) const ALWAYS_INLINE {
+        if(is_inline()) {
+            return data_.inl.labels[i];
+        } else {
+            return (Character)data_.ext.select(i);
         }
     }
 

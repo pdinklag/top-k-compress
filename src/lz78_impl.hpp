@@ -32,10 +32,10 @@ void compress(In begin, In const& end, Out out, size_t const block_size, pm::Res
     BlockEncoder enc(out, block_size);
     setup_encoding(enc);
 
-    SimpleTrie trie;
-    SimpleTrie::Node u = trie.root();
+    SimpleTrie<> trie;
+    SimpleTrie<>::Node u = trie.root();
     size_t d = 0;
-    SimpleTrie::Node v;
+    SimpleTrie<>::Node v;
 
     size_t num_phrases = 0;
     size_t longest = 0;

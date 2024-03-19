@@ -1,13 +1,15 @@
 #pragma once
 
+#include <concepts>
 #include <memory>
 #include <vector>
 
 #include "trie_edge_array.hpp"
 
+template<std::unsigned_integral NodeIndex = size_t>
 class SimpleTrie {
 public:
-    using Node = size_t;
+    using Node = NodeIndex;
     using NodeData = TrieEdgeArray<char, Node>;
 
 private:
@@ -19,6 +21,11 @@ private:
     size_t capacity_;
 
     NodeData& node(Node const i) {
+        auto const block = i / block_size_;
+        return blocks_[block][i & block_mask_];
+    }
+
+    NodeData const& node(Node const i) const {
         auto const block = i / block_size_;
         return blocks_[block][i & block_mask_];
     }
@@ -56,11 +63,24 @@ public:
         return found;
     }
 
+    bool try_get_child(Node const v, char const c, Node& out_node) const {
+        return node(v).try_get(c, out_node);
+    }
+
     void clear() {
         size_ = 1;
         capacity_ = block_size_;
         blocks_.clear();
         blocks_.emplace_back(alloc_block());
         node(0) = NodeData();
+    }
+
+    auto const& children_of(Node const v) const { return node(v); }
+
+    void print_debug_info() const {
+    }
+
+    size_t mem_size() const {
+        return sizeof(SimpleTrie) + (capacity_ / block_size_) * sizeof(std::unique_ptr<NodeData[]>) + capacity_ * sizeof(NodeData);
     }
 };

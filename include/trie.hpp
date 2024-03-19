@@ -178,6 +178,10 @@ public:
         return nodes_.get();
     }
 
+    auto const& children_of(NodeIndex const v) const {
+        return nodes_[v].children;
+    }
+
     size_t spell_reverse(NodeIndex const node, Character* buffer) const {
         size_t d = 0;
         auto v = node;
@@ -319,5 +323,13 @@ public:
         analyze_arms(ana, root(), 0);
         analyze_outd(ana);
         return ana;
+    }
+
+    size_t mem_size() const {
+        auto sz = sizeof(Trie) + capacity_ * sizeof(Node);
+        for(size_t v = 0; v < capacity_; v++) {
+            sz += nodes_[v].children.allocated_extra_memory();
+        }
+        return sz;
     }
 };
