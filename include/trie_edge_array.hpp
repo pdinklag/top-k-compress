@@ -93,7 +93,8 @@ private:
                         return UCharacter(i * bits_per_pack_ + rsh + j);
                     } else {
                         // continue
-                        x >>= j + 1;
+                        x >>= j;
+                        x >>= 1; // nb: j may be 63, and shifting by j+1 = 64 would be undefined
                         rsh += j + 1;
                         --k;
                     }
