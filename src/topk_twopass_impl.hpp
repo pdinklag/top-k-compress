@@ -39,23 +39,12 @@ void setup_encoding(BlockEncodingBase& enc, size_t const k) {
 }
 
 template<typename Trie>
-void gather_labels_preorder(Trie const& trie, Node const v, std::string& labels) {
-    labels.push_back(trie.node(v).inlabel);
+void gather_labels(Trie const& trie, Node const v, char const inlabel, std::string& labels) {
+    labels.push_back(inlabel);
 
-    auto const& children = trie.node(v).children;
-    for(size_t i = 0; i < children.size(); i++) {
-        gather_labels_preorder(trie, children[i], labels);
-    }
-}
-
-template<typename Trie>
-void gather_labels(Trie const& trie, Node const v, std::string& labels) {
     auto const& children = trie.children_of(v);
     for(size_t i = 0; i < children.size(); i++) { 
-        labels.push_back(children.label(i));
-    }
-    for(size_t i = 0; i < children.size(); i++) {
-        gather_labels(trie, children[i], labels);
+        gather_labels(trie, children[i], children.label(i), labels);
     }
 }
 
@@ -82,13 +71,12 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
     // write header and initialize encoding
     out.write(MAGIC, 64);
     out.write(k, 64);
-    out.write(max_freq, 64);
 
     // pass 1: build top-k LZ78 trie
     pm::Stopwatch sw;
     sw.start();
 
-    using ReducedTrie = SmallTrie; //SimpleTrie<Node>;
+    using ReducedTrie = SmallTrie<false>; // SimpleTrie<Node>;
     ReducedTrie trie;
     {
         auto begin = in.begin();
@@ -126,17 +114,13 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
         auto const size_trie_topology = (out.num_bits_written() - bits0) / 8;
 
         // compress labels using Huffman
+        bits0 = out.num_bits_written();
         {
             std::string labels;
-            labels.reserve(k);
-            {
-                auto const& root_children = trie.children_of(trie.root());
-                for(size_t i = 0; i < root_children.size(); i++) {
-                    gather_labels(trie, root_children[i], labels);
-                }
-            }
+            labels.reserve(k-1);
+            gather_labels(trie, trie.root(), 0, labels);
+            write_file_str("trie.labels", labels);
 
-            bits0 = out.num_bits_written();
             code::HuffmanTree<char> huff(labels.begin(), labels.end());
             huff.encode(out);
 
@@ -156,7 +140,7 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
         // debug
         trie.print_debug_info();
 
-        out.flush();
+        // out.flush(); // nb: must not flush, there is no corresponding function in the bit source yet
     }
     sw.stop();
     result.add("time_enc_trie", (size_t)sw.elapsed_time_millis());
@@ -238,6 +222,90 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
     result.add("phrases_trie", num_trie);
     result.add("phrases_longest", longest);
     result.add("phrases_avg_len", std::round(100.0 * ((double)total_len / (double)num_phrases)) / 100.0);
+}
+
+template<iopp::BitSource In, std::output_iterator<char> Out>
+void decompress(In in, Out out) {
+    uint64_t const magic = in.read(64);
+    if(magic != MAGIC) {
+        std::cerr << "wrong magic: 0x" << std::hex << magic << " (expected: 0x" << MAGIC << ")" << std::endl;
+        std::abort();
+    }
+
+    auto const k = in.read(64);
+    size_t num_nodes = 1;
+
+    // decode trie
+    using ReducedTrie = SmallTrie<true>; // SimpleTrie<Node>
+    ReducedTrie trie;
+    {
+        // topology
+        std::vector<bool> topology;
+        topology.reserve(2 * k);
+        {
+            const bool open_root = in.read();
+            assert(open_root == true); // nb: must at least open the root ...
+
+            topology.push_back(open_root);
+
+            size_t dv = 1;
+            while(dv) {
+                const bool b = in.read();
+                if(b) {
+                    // open node
+                    ++dv;
+                    ++num_nodes;
+                } else {
+                    // close node
+                    --dv;
+                }
+                topology.push_back(b);
+            }
+        }
+
+        assert(topology.size() % 2 == 0);
+        assert(topology.size() / 2 == num_nodes);
+        assert(topology.size() / 2 <= k);
+
+        // labels
+        std::string labels;
+        labels.reserve(num_nodes);
+        {
+            code::HuffmanTree<char> huff(in);
+            for(size_t i = 0; i < num_nodes; i++) {
+                labels.push_back(code::Huffman::decode(in, huff.root()));
+            }
+        }
+
+        write_file_str("trie.labels.dec", labels);
+
+        // reconstruct trie from topology and labels
+        SimpleTrie<Node> simple_trie(topology, labels);
+        trie = ReducedTrie(simple_trie);
+    }
+
+    {
+        auto const trie_mem = trie.mem_size();
+        std::cout << "# trie_mem=" << trie_mem
+            << ", trie_mem_avg_per_node=" << std::round(100.0 * ((double)trie_mem / (double)k)) / 100.0 << std::endl;
+    }
+
+    // decode input
+    BlockDecoder dec(in);
+    setup_encoding(dec, k);
+    auto buffer = std::make_unique<char[]>(k);
+
+    while(in) {
+        auto const v = dec.read_uint(TOK_TRIE_REF);
+        if(v == 0) {
+            // literal
+            *out++ = (char)dec.read_uint(TOK_LITERAL);
+        } else {
+            // trie
+            auto const len = trie.spell(v, buffer.get());
+            std::copy(buffer.get(), buffer.get() + len, out);
+        }
+    }
 }
 
 }

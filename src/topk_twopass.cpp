@@ -24,7 +24,7 @@ struct Compressor : public TopkCompressor {
     }
     
     virtual void decompress(iopp::FileInputStream& in, iopp::FileOutputStream& out, pm::Result& result) override {
-        std::abort();
+        topk_twopass::decompress(iopp::bitwise_input_from(in.begin(), in.end()), iopp::StreamOutputIterator(out));
     }
 };
 

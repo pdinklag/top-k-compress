@@ -243,15 +243,22 @@ public:
     }
 
     bool contains(NodeIndex const what) const ALWAYS_INLINE {
+        NodeIndex discard;
+        return find(what, discard);
+    }
+
+    bool find(NodeIndex const what, NodeIndex& child_index) const ALWAYS_INLINE {
         if(is_inline()) {
             for(NodeIndex i = 0; i < size_; i++) {
                 if(data_.inl.links[i] == what) {
+                    child_index = i;
                     return true;
                 }
             }
         } else {
             for(NodeIndex i = 0; i < size_; i++) {
                 if(data_.ext.links[i] == what) {
+                    child_index = i;
                     return true;
                 }
             }

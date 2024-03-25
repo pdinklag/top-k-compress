@@ -2,6 +2,7 @@
 
 #include <concepts>
 #include <memory>
+#include <stack>
 #include <vector>
 
 #include "trie_edge_array.hpp"
@@ -72,6 +73,35 @@ public:
     SimpleTrie(Trie const& other) {
         clear();
         construct(other, other.root(), root());
+    }
+
+    SimpleTrie(std::vector<bool> const& topology, std::string const& labels) {
+        clear();
+
+        assert(topology[0] == true);
+
+        auto const last = topology.size() - 1;
+        assert(topology[last] == false);
+
+        Node v = root();
+        std::stack<Node> stack;
+        size_t num_nodes = 1;
+
+        for(size_t i = 1; i < last; i++) {
+            if(topology[i]) {
+                // open
+                stack.push(v);
+
+                auto const b = follow_edge(v, labels[num_nodes++], v);
+                assert(!b);
+                assert(num_nodes == size_);
+            } else {
+                // close
+                assert(!stack.empty());
+                v = stack.top();
+                stack.pop();
+            }
+        }
     }
 
     Node root() const { return 0; }

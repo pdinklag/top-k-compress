@@ -5,6 +5,7 @@
 
 #include <word_packing.hpp>
 
+template<bool with_parents_ = false>
 class SmallTrie {
 private:
     using Pack = uintmax_t;
@@ -19,9 +20,10 @@ private:
     std::unique_ptr<Pack[]> node_children_;
     std::unique_ptr<Pack[]> child_labels_;
     std::unique_ptr<Pack[]> child_nodes_;
+    std::unique_ptr<Pack[]> parents_;
 
     template<typename Trie>
-    size_t construct(Trie const& other, size_t const other_v, size_t& num_nodes, size_t& num_edges) {
+    size_t construct(Trie const& other, size_t const other_v, size_t const parent, size_t& num_nodes, size_t& num_edges) {
         auto node_sizes = word_packing::accessor(node_sizes_.get(), bits_per_size_);
         
         auto const& children = other.children_of(other_v);
@@ -29,6 +31,11 @@ private:
         
         auto const v = num_nodes++;
         node_sizes[v] = num_children;
+
+        if constexpr(with_parents_) {
+            auto parents = word_packing::accessor(parents_.get(), bits_per_ptr_);
+            parents[v] = parent;
+        }
         
         if(children.size() > 0) {
             auto node_children = word_packing::accessor(node_children_.get(), bits_per_ptr_);
@@ -41,7 +48,7 @@ private:
 
             for(size_t i = 0; i < num_children; i++) {
                 child_labels[first_edge + i] = children.label(i);
-                child_nodes[first_edge + i] = construct(other, children[i], num_nodes, num_edges);
+                child_nodes[first_edge + i] = construct(other, children[i], v, num_nodes, num_edges);
             }
         }
 
@@ -89,9 +96,13 @@ public:
         child_labels_ = std::make_unique<Pack[]>(word_packing::num_packs_required<Pack>(size_, bits_per_label_));
         child_nodes_ = std::make_unique<Pack[]>(word_packing::num_packs_required<Pack>(size_, bits_per_ptr_));
 
+        if constexpr(with_parents_) {
+            parents_ = std::make_unique<Pack[]>(word_packing::num_packs_required<Pack>(size_, bits_per_ptr_));
+        }
+
         size_t num_nodes = 0;
         size_t num_edges = 0;
-        construct(other, other.root(), num_nodes, num_edges);
+        construct(other, other.root(), 0, num_nodes, num_edges);
     }
 
     size_t root() const { return 0; }
@@ -122,6 +133,41 @@ public:
         return false;
     }
 
+    size_t spell_reverse(size_t const node, char* buffer) const {
+        if constexpr(with_parents_) {
+            auto parents = word_packing::accessor(parents_.get(), bits_per_ptr_);
+            auto node_children = word_packing::accessor(node_children_.get(), bits_per_ptr_);
+            auto child_labels = word_packing::accessor(child_labels_.get(), bits_per_label_);
+            auto child_nodes = word_packing::accessor(child_nodes_.get(), bits_per_ptr_);
+
+            size_t d = 0;
+            auto v = node;
+            while(v) {
+                auto const parent = parents[v];
+
+                // find node in parent
+                size_t i = node_children[parent];
+                while(child_nodes[i] != v) ++i;
+
+                // append label to buffer
+                *buffer++ = child_labels[i];
+
+                // navigate up
+                ++d;
+                v = parent;
+            }
+            return d;
+        } else {
+            return 0;
+        }
+    }
+
+    size_t spell(size_t const node, char* buffer) const {
+        auto const d = spell_reverse(node, buffer);
+        std::reverse(buffer, buffer +  d);
+        return d;
+    }
+
     void print_debug_info() const {
     }
 
@@ -129,6 +175,6 @@ public:
         return sizeof(SmallTrie) +
             word_packing::num_packs_required<Pack>(size_, bits_per_size_) +
             word_packing::num_packs_required<Pack>(size_, bits_per_label_) +
-            2 * word_packing::num_packs_required<Pack>(size_, bits_per_ptr_);
+            (with_parents_ ? 3 : 2) * word_packing::num_packs_required<Pack>(size_, bits_per_ptr_);
     }
 };
