@@ -35,6 +35,9 @@ target_link_libraries(topk-twopass topk word-packing)
 add_executable(topk-psample topk_psample.cpp)
 target_link_libraries(topk-psample topk)
 
+add_executable(topk-access topk_access.cpp)
+target_link_libraries(topk-access topk ordered word-packing)
+
 option(BUILD_ALL "build ALL algorithms, even those no longer relevant" OFF)
 message(STATUS "BUILD_ALL=${BUILD_ALL}")
 
