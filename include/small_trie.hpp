@@ -113,7 +113,7 @@ public:
     }
 
     template<std::unsigned_integral NodeIndex>
-    bool try_get_child(size_t const v, char const c, NodeIndex& out_node) {
+    bool try_get_child(size_t const v, char const c, NodeIndex& out_node) const {
         auto node_sizes = word_packing::accessor(node_sizes_.get(), bits_per_size_);
         auto const num_children = node_sizes[v];
         if(num_children > 0) {

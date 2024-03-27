@@ -61,9 +61,76 @@ void encode_topology(Trie const& trie, Node const v, Out& out) {
     out.write(bool(0));
 }
 
-inline void write_file_str(std::filesystem::path const& path, std::string const& s) {
-    iopp::FileOutputStream fout(path);
-    std::copy(s.begin(), s.end(), iopp::StreamOutputIterator(fout));
+template<iopp::InputIterator<char> In>
+auto compute_topk(In begin, In const end, size_t const k, size_t const max_freq) {
+    Topk topk(k - 1, max_freq);
+    auto s = topk.empty_string();
+    while(begin != end) {
+        // read next character
+        auto const c = *begin++;
+        auto next = topk.extend(s, c);
+        s = next.frequent ? next : topk.empty_string();
+    }
+
+    // reduce top-k trie to a simple ("static") trie, depth-first
+    auto topk_trie = std::move(topk.trie());
+    return topk_trie;
+}
+
+struct Phrase {
+    uintmax_t node;
+    uintmax_t len;
+    char literal;
+
+    Phrase(uintmax_t const ref, uintmax_t len) : node(ref), len(len), literal(0) {
+    }
+
+    Phrase(char const literal) : node(0), len(1), literal(literal) {
+    }
+
+    bool is_literal() const {
+        return node == 0;
+    }
+};
+
+template<iopp::InputIterator<char> In, typename Trie>
+void parse(In begin, In const end, Trie const& trie, std::function<void(Phrase)> emit) {
+    auto const root = trie.root();
+    auto v = root;
+    size_t dv = 0;
+
+    while(begin != end) {
+        auto const c = *begin++;
+
+        Node u;
+        if(trie.try_get_child(v, c, u)) {
+            // cool, go on
+            v = u;
+            ++dv;
+        } else {
+            if(v != root) {
+                emit(Phrase(v, dv));
+
+                // try to find a child of the root for label c
+                if(trie.try_get_child(root, c, v)) {
+                    dv = 1;
+                } else {
+                    // none found, return to root
+                    v = root;
+                    dv = 0;
+                }
+            }
+
+            // if v is the root, encode (0, c)
+            if(v == root) {
+                emit(Phrase(c));
+            }
+        }
+    }
+
+    if(v != root) {
+        emit(Phrase(v, dv));
+    }
 }
 
 template<iopp::BitSink Out>
@@ -77,25 +144,8 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
     sw.start();
 
     using ReducedTrie = SmallTrie<false>; // SimpleTrie<Node>;
-    ReducedTrie trie;
-    {
-        auto begin = in.begin();
-        auto const end = in.end();
+    ReducedTrie trie(compute_topk(in.begin(), in.end(), k, max_freq));
 
-        Topk topk(k - 1, max_freq);
-        auto s = topk.empty_string();
-        while(begin != end) {
-            // read next character
-            auto const c = *begin++;
-            auto next = topk.extend(s, c);
-            s = next.frequent ? next : topk.empty_string();
-        }
-
-        // reduce top-k trie to a simple ("static") trie, depth-first
-        auto topk_trie = std::move(topk.trie());
-        trie = ReducedTrie(topk_trie);
-        // reduce_depth_first(topk_trie, topk_trie.root(), trie, trie.root());
-    }
     sw.stop();
     result.add("time_build", (size_t)sw.elapsed_time_millis());
 
@@ -105,7 +155,7 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
         result.add("trie_mem_avg_per_node", std::round(100.0 * ((double)trie_mem / (double)k)) / 100.0);
     }
 
-    // relabel and encode trie
+    // encode trie
     sw.start();
     {
         // topology
@@ -119,7 +169,6 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
             std::string labels;
             labels.reserve(k-1);
             gather_labels(trie, trie.root(), 0, labels);
-            write_file_str("trie.labels", labels);
 
             code::HuffmanTree<char> huff(labels.begin(), labels.end());
             huff.encode(out);
@@ -161,55 +210,18 @@ void compress(iopp::FileInputStream& in, Out out, size_t const k, size_t const m
     {
         in.seekg(0, std::ios::beg);
 
-        auto begin = in.begin();
-        auto const end = in.end();
-
-        auto const root = trie.root();
-        auto v = root;
-        size_t dv = 0;
-
-        while(begin != end) {
-            auto const c = *begin++;
-
-            Node u;
-            if(trie.try_get_child(v, c, u)) {
-                // cool, go on
-                v = u;
-                ++dv;
+        parse(in.begin(), in.end(), trie, [&](Phrase f){
+            if(f.is_literal()) {
+                enc.write_uint(TOK_TRIE_REF, 0);
+                enc.write_uint(TOK_LITERAL, f.literal);
+                ++num_literal;
             } else {
-                if(v != root) {
-                    enc.write_uint(TOK_TRIE_REF, v);
-
-                    total_len += dv;
-                    longest = std::max(longest, dv);
-                    ++num_trie;
-
-                    // try to find a child of the root for label c
-                    if(trie.try_get_child(root, c, v)) {
-                        dv = 1;
-                    } else {
-                        // none found, return to root
-                        v = root;
-                        dv = 0;
-                    }
-                }
-
-                // if v is the root, encode (0, c)
-                if(v == root) {
-                    enc.write_uint(TOK_TRIE_REF, 0);
-                    enc.write_uint(TOK_LITERAL, c);
-                    ++num_literal;
-                }
+                enc.write_uint(TOK_TRIE_REF, f.node);
+                total_len += f.len;
+                longest = std::max(longest, f.len);
+                ++num_trie;
             }
-        }
-
-        if(v != root) {
-            enc.write_uint(TOK_TRIE_REF, v);
-
-            total_len += dv;
-            longest = std::max(longest, dv);
-            ++num_trie;
-        }
+        });
 
         enc.flush();
     }
@@ -276,8 +288,6 @@ void decompress(In in, Out out) {
                 labels.push_back(code::Huffman::decode(in, huff.root()));
             }
         }
-
-        write_file_str("trie.labels.dec", labels);
 
         // reconstruct trie from topology and labels
         SimpleTrie<Node> simple_trie(topology, labels);
