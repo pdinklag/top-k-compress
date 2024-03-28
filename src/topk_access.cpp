@@ -69,8 +69,10 @@ int main(int argc, char** argv) {
             sw.stop();
             auto const t_str_decode_1by1 = (uintmax_t)sw.elapsed_time_millis();
 
+            // print stats
             pm::Result r;
             r.add("n", text.length());
+            r.add("h", text.height());
             r.add("z", text.num_phrases());
             r.add("t_topk_construct", t_topk_construct);
             r.add("t_topk_decode_1by1", t_topk_decode_1by1);

@@ -137,6 +137,10 @@ public:
         return parsing_.size();
     }
 
+    size_t height() const {
+        return height_;
+    }
+
     size_t length() const {
         return n_;
     }
