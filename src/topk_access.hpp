@@ -20,7 +20,9 @@ private:
 
     size_t n_;
     size_t k_;
-    SmallTrie<true> trie_;
+    std::unique_ptr<Pack[]> parent_;
+    size_t bits_per_parent_;
+    std::unique_ptr<char[]> inlabel_;
     size_t height_;
     word_packing::PackedIntVector<Pack> parsing_;
     word_packing::BitVector literal_;
@@ -97,7 +99,7 @@ private:
             } else {
                 // trie phrase - spell out and extract character
                 dec_ = std::make_shared<char[]>(topk_->height());
-                dec_size_ = topk_->trie_.spell(v, dec_.get());
+                dec_size_ = topk_->spell(v, dec_.get());
                 payload_.offs = (pos_ - p.start);
             }
         }
@@ -128,6 +130,24 @@ private:
         }
     };
 
+    size_t spell_reverse(size_t const node, char* buffer) const {
+        auto parent = word_packing::accessor(parent_.get(), bits_per_parent_);
+        
+        size_t dv = 0;
+        size_t v = node;
+        while(v) {
+            buffer[dv++] = inlabel_[v];
+            v = parent[v];
+        }
+        return dv;
+    }
+
+    size_t spell(size_t const node, char* buffer) const {
+        auto const d = spell_reverse(node, buffer);
+        std::reverse(buffer, buffer + d);
+        return d;
+    }
+
 public:
     using iterator_category = std::input_iterator_tag;
     using difference_type   = std::ptrdiff_t;
@@ -153,14 +173,14 @@ public:
         iopp::FileInputStream in(path);
 
         // compute trie
-        trie_ = topk_twopass::compute_topk(in.begin(), in.end(), k, k >> 8);
+        auto trie = topk_twopass::compute_topk(in.begin(), in.end(), k, k >> 8);
 
         // compute parsing and mark phrase starts
         size_t i = 0;
         height_ = 0;
 
         in.seekg(0, std::ios::beg);
-        topk_twopass::parse(in.begin(), in.end(), trie_, [&](topk_twopass::Phrase f) {
+        topk_twopass::parse(in.begin(), in.end(), trie, [&](topk_twopass::Phrase f) {
             height_ = std::max(height_, f.len);
 
             if(f.is_literal()) {
@@ -178,6 +198,19 @@ public:
 
         parsing_.shrink_to_fit();
         literal_.shrink_to_fit();
+
+        // compute parent/inlabel arrays and discard trie
+        bits_per_parent_ = std::bit_width(k-1);
+        parent_ = std::make_unique<Pack[]>(word_packing::num_packs_required<Pack>(k, bits_per_parent_));
+        auto parent = word_packing::accessor(parent_.get(), bits_per_parent_);
+        inlabel_ = std::make_unique<char[]>(k);
+        for(size_t v = 1; v < k; v++) {
+            auto const& node = trie.node(v);
+            parent[v] = node.parent;
+            inlabel_[v] = node.inlabel;
+        }
+
+        trie = decltype(trie)();
 
         // compute rank/select data structure on start
         start_rank_ = Rank(start_.get(), n_);
@@ -198,7 +231,7 @@ public:
         } else {
             // trie phrase - spell out and extract character
             if(dec_last_ != v) {
-                dec_last_len_ = trie_.spell_reverse(v, dec_buffer_.get());
+                dec_last_len_ = spell_reverse(v, dec_buffer_.get());
                 dec_last_ = v;
             }
         
@@ -234,5 +267,15 @@ public:
 
     size_t length() const {
         return n_;
+    }
+
+    size_t alloc_size() const {
+        return
+            word_packing::num_packs_required<Pack>(k_, bits_per_parent_) * sizeof(Pack) + // parent_
+            k_ * sizeof(char) + // inlabel_
+            word_packing::num_packs_required<Pack>(parsing_.capacity(), parsing_.width()) * sizeof(Pack) + // parsing_
+            idiv_ceil(literal_.capacity(), 8) + // literal_
+            word_packing::num_packs_required<Pack>(n_, 1) + // start_
+            idiv_ceil(n_, 8); // pessimistic for start_rank_
     }
 };

@@ -46,6 +46,7 @@ int main(int argc, char** argv) {
             r.add("t_topk_construct", t_topk_construct);
             r.add("mem_topk_peak", mem_topk_peak);
             r.add("mem_topk_final", mem_topk_final);
+            r.add("alloc_size", text.alloc_size());
 
             if(options.decode_benchmark) {
                 // decode one by one
