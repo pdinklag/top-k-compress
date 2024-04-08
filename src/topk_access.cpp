@@ -43,10 +43,21 @@ int main(int argc, char** argv) {
             r.add("n", text.length());
             r.add("h", text.height());
             r.add("z", text.num_phrases());
+            r.add("z_literal", text.num_literals());
             r.add("t_topk_construct", t_topk_construct);
             r.add("mem_topk_peak", mem_topk_peak);
             r.add("mem_topk_final", mem_topk_final);
-            r.add("alloc_size", text.alloc_size());
+            
+            {
+                auto a = text.alloc_size();
+                r.add("alloc", a.total());
+                r.add("alloc_parent", a.parent);
+                r.add("alloc_inlabel", a.inlabel);
+                r.add("alloc_parsing", a.parsing);
+                r.add("alloc_literal", a.literal);
+                r.add("alloc_start", a.start);
+                r.add("alloc_start_rank", a.start_rank);
+            }
 
             if(options.decode_benchmark) {
                 // decode one by one

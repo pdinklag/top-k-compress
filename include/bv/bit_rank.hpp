@@ -41,13 +41,14 @@ private:
 
     Pack const* bits_;
 
+    size_t n_;
     std::unique_ptr<Pack[]> blocks_;      // size 64 each
     std::unique_ptr<size_t[]> supblocks_; // size SUP_SZ each
 
 public:
     /// \brief Constructs the rank data structure for the given bit vector.
     /// \param bv the bit vector
-    BitRank(Pack const* bits, size_t const n) : bits_(bits) {
+    BitRank(Pack const* bits, size_t const n) : n_(n), bits_(bits) {
         size_t const num_blocks = idiv_ceil(n, BLOCK_SZ);
         blocks_ = std::make_unique<Pack[]>(word_packing::num_packs_required<Pack>(num_blocks, SUP_W));
         supblocks_ = std::make_unique<size_t[]>(idiv_ceil(n, SUP_SZ));
@@ -111,5 +112,11 @@ public:
     /// \param x the position until which to count
     inline size_t rank0(size_t x) const {
         return x + 1 - rank1(x);
+    }
+
+    inline size_t alloc_size() const {
+        size_t const num_supblocks = idiv_ceil(n_, SUP_SZ);
+        size_t const num_blocks = idiv_ceil(n_, BLOCK_SZ);
+        return num_supblocks * sizeof(size_t) + word_packing::num_packs_required<Pack>(num_blocks, SUP_W) * sizeof(Pack);
     }
 };

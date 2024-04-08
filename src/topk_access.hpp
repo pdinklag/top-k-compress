@@ -29,9 +29,13 @@ private:
     std::unique_ptr<Pack[]> start_;
     Rank start_rank_;
 
+    // decode
     std::unique_ptr<char[]> dec_buffer_;
     mutable size_t dec_last_; // nb: cache to avoid re-spelling of the same phrase on subsequent queries -- modified in a const function
     mutable size_t dec_last_len_;
+
+    // stats
+    size_t num_literals_;
 
     struct PhraseContaining {
         size_t phrase;
@@ -176,6 +180,7 @@ public:
         auto trie = topk_twopass::compute_topk(in.begin(), in.end(), k, k >> 8);
 
         // compute parsing and mark phrase starts
+        num_literals_ = 0;
         size_t i = 0;
         height_ = 0;
 
@@ -186,6 +191,7 @@ public:
             if(f.is_literal()) {
                 literal_.push_back(1);
                 parsing_.push_back((uint8_t)f.literal);
+                ++num_literals_;
             } else {
                 literal_.push_back(0);
                 parsing_.push_back(f.node);
@@ -261,6 +267,10 @@ public:
         return parsing_.size();
     }
 
+    size_t num_literals() const {
+        return num_literals_;
+    }
+
     size_t height() const {
         return height_;
     }
@@ -269,13 +279,29 @@ public:
         return n_;
     }
 
-    size_t alloc_size() const {
-        return
-            word_packing::num_packs_required<Pack>(k_, bits_per_parent_) * sizeof(Pack) + // parent_
-            k_ * sizeof(char) + // inlabel_
-            word_packing::num_packs_required<Pack>(parsing_.capacity(), parsing_.width()) * sizeof(Pack) + // parsing_
-            idiv_ceil(literal_.capacity(), 8) + // literal_
-            word_packing::num_packs_required<Pack>(n_, 1) + // start_
-            idiv_ceil(n_, 8); // pessimistic for start_rank_
+    struct AllocSize {
+        size_t parent;
+        size_t inlabel;
+        size_t parsing;
+        size_t literal;
+        size_t start;
+        size_t start_rank;
+
+        AllocSize(TopKAccess const& topk) {
+            parent = word_packing::num_packs_required<Pack>(topk.k_, topk.bits_per_parent_) * sizeof(Pack);
+            inlabel = topk.k_ * sizeof(char);
+            parsing = word_packing::num_packs_required<Pack>(topk.parsing_.capacity(), topk.parsing_.width()) * sizeof(Pack);
+            literal = idiv_ceil(topk.literal_.capacity(), 8);
+            start = word_packing::num_packs_required<Pack>(topk.n_, 1) * sizeof(Pack);
+            start_rank = topk.start_rank_.alloc_size();
+        }
+
+        size_t total() const {
+            return parent + inlabel + parsing + literal + start + start_rank;
+        }
+    };
+
+    auto alloc_size() const {
+        return AllocSize(*this);
     }
 };
