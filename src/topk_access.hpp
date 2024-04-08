@@ -2,6 +2,7 @@
 
 #include <bit>
 #include <filesystem>
+#include <iterator>
 
 #include <iopp/file_input_stream.hpp>
 #include <ordered/btree/set.hpp>
@@ -51,7 +52,89 @@ private:
         return r;
     }
 
+    class Iterator {
+    private:
+        TopKAccess const* topk_;
+        size_t pos_;
+
+        size_t phrase_;
+        bool dec_literal_;
+        std::shared_ptr<char[]> dec_;
+        size_t dec_size_;
+
+        union {
+            char literal_value;
+            size_t offs;
+        } payload_;
+
+        void advance() {
+            if(pos_ + 1 < topk_->n_) {
+                if(dec_literal_ || payload_.offs + 1 >= dec_size_) {
+                    // we have to go to the next phrase
+                    *this = Iterator(*topk_, pos_ + 1, PhraseContaining { phrase_ + 1, pos_ + 1 });
+                } else {
+                    // we remain within the decoded phrase, simply increment offset within the buffer
+                    ++payload_.offs;
+                    ++pos_;
+                }
+            } else {
+                // we went beyond the input length
+                pos_ = topk_->n_;
+                dec_.reset();
+            }
+        }
+
+    public:
+        Iterator(TopKAccess const& topk) : topk_(&topk), pos_(topk.n_) {
+        }
+
+        Iterator(TopKAccess const& topk, size_t const i, PhraseContaining const p) : topk_(&topk), pos_(i), phrase_(p.phrase) {
+            auto const v = topk_->parsing_[p.phrase];
+            if(dec_literal_ = topk_->literal_[p.phrase]) {
+                // literal phrase, extract the character
+                payload_.literal_value = (char)v;
+                dec_size_ = 0;
+            } else {
+                // trie phrase - spell out and extract character
+                dec_ = std::make_shared<char[]>(topk_->height());
+                dec_size_ = topk_->trie_.spell(v, dec_.get());
+                payload_.offs = (pos_ - p.start);
+            }
+        }
+
+        Iterator(TopKAccess const& topk, size_t const i) : Iterator(topk, i, topk.phrase_containing(i)) {
+        }
+
+        Iterator(Iterator const&) = default;
+        Iterator& operator=(Iterator const&) = default;
+
+        Iterator(Iterator&&) = default;
+        Iterator& operator=(Iterator&&) = default;
+
+        char operator*() const { return dec_literal_ ? payload_.literal_value : dec_[payload_.offs]; }
+
+        bool operator==(Iterator const& other) const { return topk_ == other.topk_ && pos_ == other.pos_; }
+        bool operator!=(Iterator const& other) const { return !(*this == other); }
+
+        Iterator& operator++() {
+            advance();
+            return *this;
+        }
+
+        Iterator operator++(int) {
+            Iterator copy(*this);
+            advance();
+            return copy;
+        }
+    };
+
 public:
+    using iterator_category = std::input_iterator_tag;
+    using difference_type   = std::ptrdiff_t;
+    using value_type        = char;
+    using pointer           = char*;
+    using reference         = char&;
+
     TopKAccess(std::filesystem::path const& path, size_t const k)
         : n_(std::filesystem::file_size(path)),
           k_(k),
@@ -124,12 +207,20 @@ public:
         }
     }
 
+    auto at(size_t const i) const { return Iterator(*this, i); }
+
+    auto begin() const { return Iterator(*this, 0, PhraseContaining { 0, 0 }); }
+    auto end() const { return Iterator(*this); }
+
     void extract(size_t const i, size_t const len, char* buffer) const {
-        // TODO: implement substrings extraction
+        auto it = at(i);
+        for(size_t j = 0; j < len; j++) {
+            buffer[j++] = *it++;
+        }
     }
 
     size_t lce(size_t const i, size_t const j) const {
-        // TODO: implement LCE query
+        // TODO: implement LCE query?
         return 0;
     }
 
