@@ -51,10 +51,6 @@ class rmq_nlgn {
     }
   }
 
-  template <typename C>
-  rmq_nlgn(C const& container) : rmq_nlgn(container.data(), container.size()) {
-  }
-
   // Return the index of the smallest element in m_data[left]..m_data[right] for
   // left = std::min(i, j) and right = std::max(i, j).
   size_t rmq(size_t const i, size_t const j) const {
@@ -154,7 +150,7 @@ class rmq_n {
     }
 
     // Build an RMQ data structure for these block minimas.
-    m_sampled_rmq = rmq_nlgn<key_type>(m_sampled_minimas);
+    m_sampled_rmq = rmq_nlgn<key_type>(m_sampled_minimas.data(), m_sampled_minimas.size());
   }
 
   template <typename C>
@@ -167,6 +163,10 @@ class rmq_n {
     size_t const left = std::min(i, j);
     size_t const right = std::max(i, j);
     return rmq_lr(left, right);
+  }
+  
+  size_t operator()(size_t const i, size_t const j) const {
+      return rmq_lr(i, j);
   }
 
   // Return the index of the smallest element in m_data[left]..m_data[right].

@@ -10,6 +10,7 @@
 #include <word_packing.hpp>
 
 #include <bv/bit_rank.hpp>
+#include <bv/rrr.hpp>
 #include <idiv_ceil.hpp>
 #include <small_trie.hpp>
 
@@ -25,9 +26,8 @@ private:
     std::unique_ptr<char[]> inlabel_;
     size_t height_;
     word_packing::PackedIntVector<Pack> parsing_;
-    word_packing::BitVector literal_;
-    std::unique_ptr<Pack[]> start_;
-    Rank start_rank_;
+    RRR<0> literal_; // FIXME: we don't need rank on literal_
+    RRR<1> start_;
 
     // decode
     std::unique_ptr<char[]> dec_buffer_;
@@ -45,14 +45,13 @@ private:
     PhraseContaining phrase_containing(size_t const i) const {
         // query what phrase contains position i of the original input
         PhraseContaining r;
-        r.phrase = start_rank_(i) - 1;
+        r.phrase = start_.rank1(i) - 1;
         assert(r.phrase != SIZE_MAX);
 
         // find the starting position of that phrase
         // nb: naive select query, but since start_ is expected to be dense, we shouldn't have to scan for long
-        auto start = word_packing::bit_accessor(start_.get());
         size_t j = i;
-        while(!start[j]) --j;
+        while(!start_[j]) --j;
         r.start = j;
 
         return r;
@@ -163,16 +162,10 @@ public:
         : n_(std::filesystem::file_size(path)),
           k_(k),
           parsing_(0, std::bit_width(k-1)) {
-        
+
         // initialize phrase start bit vector
-        {
-            auto const num_packs = word_packing::num_packs_required<Pack>(n_, 1);
-            start_ = std::make_unique<Pack[]>(num_packs);
-            for(size_t i = 0; i < num_packs; i++) {
-                start_[i] = 0;
-            }
-        }
-        auto start = word_packing::bit_accessor(start_.get());
+        word_packing::BitVector start;
+        start.resize(n_);
 
         iopp::FileInputStream in(path);
 
@@ -184,16 +177,17 @@ public:
         size_t i = 0;
         height_ = 0;
 
+        word_packing::BitVector literal;
         in.seekg(0, std::ios::beg);
         topk_twopass::parse(in.begin(), in.end(), trie, [&](topk_twopass::Phrase f) {
             height_ = std::max(height_, f.len);
 
             if(f.is_literal()) {
-                literal_.push_back(1);
+                literal.push_back(1);
                 parsing_.push_back((uint8_t)f.literal);
                 ++num_literals_;
             } else {
-                literal_.push_back(0);
+                literal.push_back(0);
                 parsing_.push_back(f.node);
             }
 
@@ -203,7 +197,7 @@ public:
         assert(i == n_);
 
         parsing_.shrink_to_fit();
-        literal_.shrink_to_fit();
+        literal_ = RRR<0>(literal.data(), literal.size());
 
         // compute parent/inlabel arrays and discard trie
         bits_per_parent_ = std::bit_width(k-1);
@@ -218,9 +212,8 @@ public:
 
         trie = decltype(trie)();
 
-        // compute rank/select data structure on start
-        start_rank_ = Rank(start_.get(), n_);
-        assert(start_rank_(n_ - 1) == parsing_.size());
+        // compress start and compute rank
+        start_ = RRR<1>(start.data(), n_);
         
         // initialize decode buffer
         dec_buffer_ = std::make_unique<char[]>(height_);
@@ -291,9 +284,9 @@ public:
             parent = word_packing::num_packs_required<Pack>(topk.k_, topk.bits_per_parent_) * sizeof(Pack);
             inlabel = topk.k_ * sizeof(char);
             parsing = word_packing::num_packs_required<Pack>(topk.parsing_.capacity(), topk.parsing_.width()) * sizeof(Pack);
-            literal = idiv_ceil(topk.literal_.capacity(), 8);
-            start = word_packing::num_packs_required<Pack>(topk.n_, 1) * sizeof(Pack);
-            start_rank = topk.start_rank_.alloc_size();
+            literal = topk.literal_.alloc_size();
+            start = topk.start_.alloc_size();
+            start_rank = 0; // topk.start_rank_.alloc_size();
         }
 
         size_t total() const {
