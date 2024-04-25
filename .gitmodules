@@ -9,7 +9,7 @@
 	url = https://github.com/rygorous/ryg_rans
 [submodule "extlib/ordered"]
 	path = extlib/ordered
-	url = git@github.com:pdinklag/ordered.git
+	url = https://github.com/pdinklag/ordered.git
 [submodule "extlib/lz77"]
 	path = extlib/lz77
 	url = https://github.com/pdinklag/lz77.git
