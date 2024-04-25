@@ -18,15 +18,23 @@ After a successful build, the `build/src` directory will contain the binaries ne
 
 ## Experiments
 
-After [building](#building) the binaries, the experiments shown in the paper were conducted by calling the relevant binaries as follows:
+After [building](#building) the binaries, the experiments shown in the paper were conducted by running the relevant binaries as follows:
 
-* **topk-lz78**: `build/src/topk-lz77 -k <k>`
-* **topk-lz77**: `build/src/topk-lz77 -k <k> -w <block size>`
-* **blockwise-lz77**: `build/src/lz77-blockwise -w <block size>`
+| Algorithm      | Command-line                                        |
+| -------------- | --------------------------------------------------- |
+| topk-lz78      | `build/src/topk-lz78 -k <k> <FILE>`                 |
+| topk-lz77      | `build/src/topk-lz77 -k <k> -w <block size> <FILE>` |
+| blockwise-lz77 | `build/src/lz77-blockwise -w <block size> <FILE>`   |
 
 The `-k` and `-w` options support IEC units. For example, you may state `1Mi` to say "one mebi" or 2<sup>10</sup>.
 
-In the output, note that the `block_size` column has nothing to do with the blockwise LZ77 compression. Rather, it contains the number of phrases in an encoded block (each of which has its own Huffman table). The block size for blockwise LZ compression (also used in *topk-lz77*) is contained in the `window` column.
+The compressed files will be named `<FILE>.<ext>`, where `<ext>` is an extension depending on the used algorithm. The original file is retained.
+
+In the console output, note that the `block_size` column has nothing to do with the blockwise LZ77 compression. Rather, it contains the number of phrases in an encoded block (each of which has its own Huffman table). The block size for blockwise LZ compression (also used in *topk-lz77*) is contained in the `window` column.
+
+### Decoding
+
+Compressed files can be decoded by running the respective binary with the `-d` parameter (e.g., `build/src/topk-lz78 -d <FILE>.topklz78`). The output will be written to `<FILE>.<ext>.dec`. Using a checksum utility of your choice, you can then verify that it is equal to the original `<FILE>`.
 
 ### Competitors
 
